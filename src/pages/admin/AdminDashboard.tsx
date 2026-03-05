@@ -8,6 +8,7 @@ import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanc
 import { customersService } from "@/lib/supabase/services/customers"
 import { analyticsService } from "@/lib/supabase/services/analytics"
 import AdminLayout from "@/components/admin-layout"
+import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
 
 type Order = Database['public']['Tables']['orders']['Row']
@@ -153,7 +154,7 @@ export default function AdminDashboard() {
     {
       icon: DollarSign,
       label: "Total Revenue",
-      value: `$${stats.totalRevenue.toLocaleString()}`,
+      value: formatCurrency(stats.totalRevenue, { showDecimals: false }),
       change: "+12.5%",
       color: "bg-blue-500",
     },
@@ -330,7 +331,7 @@ export default function AdminDashboard() {
                   <tr key={order.id} className="border-b border-border hover:bg-muted/50 transition-colors">
                     <td className="py-3 px-4 font-semibold">{order.id.substring(0, 8).toUpperCase()}</td>
                     <td className="py-3 px-4">{order.customer_email || order.shipping_address || "N/A"}</td>
-                    <td className="py-3 px-4">${Number(order.total || 0).toFixed(2)}</td>
+                    <td className="py-3 px-4">{formatCurrency(order.total || 0)}</td>
                     <td className="py-3 px-4">
                       <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status || "Pending")}`}>
                         {order.status || "Pending"}

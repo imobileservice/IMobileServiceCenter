@@ -6,6 +6,8 @@ import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ordersService } from "@/lib/supabase/services/orders"
 import { toast } from "sonner"
+import { formatCurrency } from "@/lib/utils/currency"
+import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import type { Database } from "@/lib/supabase/types"
 
 type Order = Database['public']['Tables']['orders']['Row']
@@ -23,6 +25,9 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
+    // Reset updating state when modal opens
+    setUpdating(false)
+
     const fetchOrder = async () => {
       try {
         setLoading(true)
@@ -40,14 +45,14 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
   }, [orderId])
 
   const handleStatusUpdate = async (status: Order['status']) => {
-    if (!order) return
-    
+    if (!order || updating) return
+
     setUpdating(true)
     try {
       await ordersService.updateStatus(order.id, status)
       setOrder({ ...order, status })
       toast.success('Order status updated successfully')
-      window.dispatchEvent(new Event('orderUpdated'))
+      notifyUpdate('order')
     } catch (error: any) {
       console.error('Failed to update order status:', error)
       toast.error(error.message || 'Failed to update order status')
@@ -79,7 +84,7 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
 
   if (!order) return null
 
-  const statuses: Order['status'][] = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"]
+  const statuses: Order['status'][] = ["pending", "processing", "shipped", "delivered", "cancelled"]
 
   return (
     <motion.div
@@ -120,7 +125,7 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total</p>
-              <p className="font-semibold">${Number(order.total || 0).toFixed(2)}</p>
+              <p className="font-semibold">{formatCurrency(order.total || 0)}</p>
             </div>
           </div>
 
@@ -154,7 +159,7 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
                       <p className="font-semibold">{item.product_name}</p>
                       <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
                     </div>
-                    <p className="font-semibold">${Number(item.price || 0) * item.quantity}</p>
+                    <p className="font-semibold">{formatCurrency(Number(item.price || 0) * item.quantity)}</p>
                   </div>
                 ))}
               </div>
@@ -165,7 +170,7 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
           <div className="border-t border-border pt-6">
             <div className="flex justify-between items-center mb-6">
               <p className="text-lg font-bold">Total Amount</p>
-              <p className="text-2xl font-bold text-primary">${Number(order.total || 0).toFixed(2)}</p>
+              <p className="text-2xl font-bold text-primary">{formatCurrency(order.total || 0)}</p>
             </div>
 
             {/* Status Update */}
@@ -180,7 +185,7 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
                     className="bg-transparent"
                     disabled={updating}
                   >
-                    {status}
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
                   </Button>
                 ))}
               </div>

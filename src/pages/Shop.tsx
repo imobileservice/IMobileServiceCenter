@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useMemo, useCallback, memo, useEffect } from "react"
+import { useState, useMemo, useCallback, memo, useEffect, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Filter, ArrowUpDown, X } from "lucide-react"
+import { Filter, ArrowUpDown, X, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { lazy, Suspense } from "react"
 import { productsService } from "@/lib/supabase/services/products"
+import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
 import type { Database } from "@/lib/supabase/types"
 
 type Product = Database["public"]["Tables"]["products"]["Row"]
@@ -22,93 +24,217 @@ const LoadingPlaceholder = () => <div className="h-80 bg-muted animate-pulse rou
 const MemoizedProductCard = memo(ProductCard)
 
 export default function ShopPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-  const [selectedBrand, setSelectedBrand] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(searchParams.get("category"))
+  const [selectedBrand, setSelectedBrand] = useState<string | null>(searchParams.get("brand"))
   const [priceRange, setPriceRange] = useState([0, 1399990])
+  const [dynamicFilters, setDynamicFilters] = useState<Record<string, any>>({})
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [showSidebar, setShowSidebar] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const productsPerPage = 16
 
-  // Load products from database
+  // Ref to store current filters for real-time updates
+  const filtersRef = useRef({
+    selectedCategory,
+    selectedBrand,
+    priceRange,
+    searchQuery,
+    dynamicFilters,
+  })
+
+  // Ref for products container to scroll to top on pagination
+  const productsContainerRef = useRef<HTMLDivElement>(null)
+
+  // Update filters ref when they change
   useEffect(() => {
-    const loadProducts = async () => {
-      try {
+    filtersRef.current = {
+      selectedCategory,
+      selectedBrand,
+      priceRange,
+      searchQuery,
+      dynamicFilters,
+    }
+  }, [selectedCategory, selectedBrand, priceRange, searchQuery, dynamicFilters])
+
+  const handleDynamicFilterChange = useCallback((key: string, value: any) => {
+    setDynamicFilters(prev => {
+      // If value is null, remove the key
+      if (value === null) {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      }
+      return { ...prev, [key]: value }
+    })
+  }, [])
+
+  // Load products function
+  const loadProducts = useCallback(async (silent: boolean = false) => {
+    try {
+      // Only show loading state if not silent update
+      if (!silent) {
         setLoading(true)
-        const filters: {
-          category?: string
-          brand?: string
-          minPrice?: number
-          maxPrice?: number
-          search?: string
-        } = {}
+      }
 
-        if (selectedCategory) {
-          // Handle subcategory selection (e.g., "mobile-phones-apple")
-          if (selectedCategory.includes("-")) {
-            const [category, brand] = selectedCategory.split("-")
-            filters.category = category
-            filters.brand = brand.charAt(0).toUpperCase() + brand.slice(1)
-          } else {
-            filters.category = selectedCategory
-          }
-        }
+      const filters: {
+        category?: string
+        brand?: string
+        minPrice?: number
+        maxPrice?: number
+        search?: string
+        dynamicFilters?: Record<string, any>
+      } = {}
 
-        if (selectedBrand) {
-          filters.brand = selectedBrand
-        }
+      const currentFilters = filtersRef.current
 
-        if (priceRange[0] > 0 || priceRange[1] < 1399990) {
-          filters.minPrice = priceRange[0]
-          filters.maxPrice = priceRange[1]
-        }
+      // Apply category filter
+      // Pass the category slug directly - it can be a parent category (e.g., "mobile-phones")
+      // or a subcategory (e.g., "mobile-phones-iphone")
+      // The API will look up the category_id from the slug
+      if (currentFilters.selectedCategory) {
+        filters.category = currentFilters.selectedCategory
+      }
 
-        if (searchQuery) {
-          filters.search = searchQuery
-        }
+      // Apply brand filter (if not already set by combined format above)
+      if (currentFilters.selectedBrand && !filters.brand) {
+        // Use the brand as-is (FilterSidebar formats it correctly)
+        filters.brand = currentFilters.selectedBrand
+      }
 
-        // Add a timeout so we don't hang forever if Supabase is unreachable
-        const timeoutMs = 20000
-        const data = await Promise.race([
-          productsService.getAll(filters),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `Products request timed out after ${timeoutMs / 1000}s. This usually means Supabase URL/key are incorrect, the project is paused, or there are network issues.`
-                  )
-                ),
-              timeoutMs
-            )
-          ),
-        ])
-        setProducts(data || [])
-      } catch (error) {
-        console.error("Error loading products:", error)
+      // Debug logging to help diagnose filter issues
+      if (filters.brand || filters.category) {
+        console.log('[Shop] Applied filters:', {
+          category: filters.category,
+          brand: filters.brand,
+          selectedCategory: currentFilters.selectedCategory,
+          selectedBrand: currentFilters.selectedBrand,
+          minPrice: filters.minPrice,
+          maxPrice: filters.maxPrice,
+          search: filters.search
+        })
+      }
+
+      // Always apply price range filter (ensures all products respect price filter)
+      filters.minPrice = currentFilters.priceRange[0]
+      filters.maxPrice = currentFilters.priceRange[1]
+
+      // Apply search filter (if provided)
+      if (currentFilters.searchQuery && currentFilters.searchQuery.trim()) {
+        filters.search = currentFilters.searchQuery.trim()
+      }
+
+      if (currentFilters.dynamicFilters && Object.keys(currentFilters.dynamicFilters).length > 0) {
+        filters.dynamicFilters = currentFilters.dynamicFilters
+      }
+
+      // Add a timeout so we don't hang forever if Supabase is unreachable
+      const timeoutMs = 20000
+      const data = await Promise.race([
+        productsService.getAll(filters),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Products request timed out after ${timeoutMs / 1000}s. This usually means Supabase URL/key are incorrect, the project is paused, or there are network issues.`
+                )
+              ),
+            timeoutMs
+          )
+        ),
+      ])
+      setProducts(data || [])
+    } catch (error) {
+      console.error("Error loading products:", error)
+      // Only update to empty array if not silent (to avoid clearing on background errors)
+      if (!silent) {
         setProducts([])
-      } finally {
+      }
+    } finally {
+      if (!silent) {
         setLoading(false)
       }
     }
+  }, [])
 
+  // Load products from database
+  useEffect(() => {
     loadProducts()
-  }, [selectedCategory, selectedBrand, priceRange, searchQuery])
+    // Reset to page 1 when filters change
+    setCurrentPage(1)
+  }, [selectedCategory, selectedBrand, priceRange, searchQuery, dynamicFilters, loadProducts])
 
-  // Optimized filtering with debouncing
+  // Sync state with URL parameters when they change (e.g. navigation)
+  useEffect(() => {
+    const categoryParam = searchParams.get("category")
+    const brandParam = searchParams.get("brand")
+    const searchParam = searchParams.get("search")
+
+    // Only update if value changed to avoid infinite loops
+    if (categoryParam !== selectedCategory) {
+      setSelectedCategory(categoryParam)
+      // Optional: Clear dynamic filters when category changes?
+      // setDynamicFilters({}) 
+      // User might want to keep them if applicable, but usually category change implies different filters.
+      // Let's clear them to be safe as different categories have different filters.
+      setDynamicFilters({})
+    }
+    if (brandParam !== selectedBrand) {
+      setSelectedBrand(brandParam)
+    }
+    if (searchParam && searchParam !== searchQuery) {
+      setSearchQuery(searchParam)
+    }
+  }, [searchParams])
+
+  // Listen for real-time updates from admin panel
+  useRealtimeUpdates(() => {
+    // Silently refresh products when admin makes changes (no loading state)
+    console.log('🔄 Shop page: Received update event, silently refreshing products...')
+    // Use a small delay to ensure the database has been updated
+    setTimeout(() => {
+      loadProducts(true) // Pass true for silent update
+    }, 200)
+  }, [loadProducts])
+
+  // All filtering is done server-side via loadProducts
+  // This just ensures we have the latest filtered products
   const filteredProducts = useMemo(() => {
     if (loading) return []
 
-    // Additional client-side filtering if needed
-    return products.filter((product) => {
-      const matchesSearch = !searchQuery || product.name.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1]
+    // Products are already filtered by loadProducts() based on all filters
+    // Just return them as-is since server-side filtering is more efficient
+    return products
+  }, [products, loading])
 
-      return matchesSearch && matchesPrice
-    })
-  }, [products, searchQuery, priceRange, loading])
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredProducts.length / productsPerPage)
+  const startIndex = (currentPage - 1) * productsPerPage
+  const endIndex = startIndex + productsPerPage
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex)
+
+  // Reset to page 1 if current page is out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1)
+    }
+  }, [currentPage, totalPages])
+
+  // Scroll to top when page changes
+  useEffect(() => {
+    // Scroll to top smoothly when pagination changes
+    if (productsContainerRef.current) {
+      productsContainerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } else {
+      // Fallback to window scroll if ref is not available
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [currentPage])
 
   // Memoized callbacks to prevent unnecessary re-renders
   const handleProductClick = useCallback((product: Product) => {
@@ -170,15 +296,17 @@ export default function ShopPage() {
                 selectedCategory={selectedCategory}
                 selectedBrand={selectedBrand}
                 priceRange={priceRange as [number, number]}
-              onCategoryChange={setSelectedCategory}
-              onBrandChange={setSelectedBrand}
-              onPriceChange={setPriceRange}
-            />
+                dynamicFilters={dynamicFilters}
+                onCategoryChange={setSelectedCategory}
+                onBrandChange={setSelectedBrand}
+                onPriceChange={setPriceRange}
+                onDynamicFilterChange={handleDynamicFilterChange}
+              />
             </Suspense>
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-3" ref={productsContainerRef}>
             {/* Mobile Controls */}
             <div className="lg:hidden flex items-center justify-between mb-4">
               <button
@@ -195,7 +323,14 @@ export default function ShopPage() {
 
             {/* Results Count */}
             <div className="mb-4 text-sm text-gray-600 dark:text-muted-foreground">
-              {loading ? "Loading..." : `Showing ${filteredProducts.length} products`}
+              {loading ? (
+                "Loading..."
+              ) : (
+                <>
+                  Showing {startIndex + 1}-{Math.min(endIndex, filteredProducts.length)} of {filteredProducts.length} products
+                  {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+                </>
+              )}
             </div>
 
             {/* Products Grid - Mobile First: 2 columns */}
@@ -205,45 +340,101 @@ export default function ShopPage() {
                   <div key={i} className="h-80 bg-muted animate-pulse rounded-lg" />
                 ))}
               </div>
-            ) : filteredProducts.length > 0 ? (
-              <motion.div
-                className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-              >
-                {filteredProducts.map((product) => {
-                  // Calculate discount if original_price exists
-                  let discount: number | undefined = undefined
-                  if (product.original_price && product.price) {
-                    const originalPrice = Number(product.original_price)
-                    const currentPrice = Number(product.price)
-                    if (originalPrice > currentPrice) {
-                      discount = Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+            ) : paginatedProducts.length > 0 ? (
+              <>
+                <motion.div
+                  className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
+                  variants={containerVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  {paginatedProducts.map((product) => {
+                    // Calculate discount if original_price exists
+                    let discount: number | undefined = undefined
+                    if (product.original_price && product.price) {
+                      const originalPrice = Number(product.original_price)
+                      const currentPrice = Number(product.price)
+                      if (originalPrice > currentPrice) {
+                        discount = Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+                      }
                     }
-                  }
 
-                  // Convert database product to ProductCard format
-                  const productCardProps = {
-                    id: product.id,
-                    name: product.name,
-                    price: Number(product.price),
-                    image: product.image || product.images?.[0] || "/placeholder.svg",
-                    condition: product.condition,
-                    category: product.category,
-                    brand: product.brand || undefined,
-                    specs: product.specs ? JSON.stringify(product.specs) : undefined,
-                    discount: discount,
-                  }
-                  return (
-                    <motion.div key={product.id} variants={itemVariants}>
-                      <Suspense fallback={<LoadingPlaceholder />}>
-                        <MemoizedProductCard {...productCardProps} onQuickView={() => handleProductClick(product)} />
-                      </Suspense>
-                    </motion.div>
-                  )
-                })}
-              </motion.div>
+                    // Convert database product to ProductCard format
+                    const productCardProps = {
+                      id: product.id,
+                      name: product.name,
+                      price: Number(product.price),
+                      image: product.image || product.images?.[0] || "/placeholder.svg",
+                      condition: product.condition,
+                      category: product.category,
+                      brand: product.brand || undefined,
+                      specs: product.specs ? JSON.stringify(product.specs) : undefined,
+                      discount: discount,
+                    }
+                    return (
+                      <motion.div key={product.id} variants={itemVariants}>
+                        <Suspense fallback={<LoadingPlaceholder />}>
+                          <MemoizedProductCard {...productCardProps} onQuickView={() => handleProductClick(product)} />
+                        </Suspense>
+                      </motion.div>
+                    )
+                  })}
+                </motion.div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-8">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="gap-2"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum: number
+                        if (totalPages <= 5) {
+                          pageNum = i + 1
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i
+                        } else {
+                          pageNum = currentPage - 2 + i
+                        }
+
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                            className="min-w-[40px]"
+                          >
+                            {pageNum}
+                          </Button>
+                        )
+                      })}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="gap-2"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-12">
                 <p className="text-muted-foreground mb-4">No products found matching your criteria</p>
@@ -253,6 +444,7 @@ export default function ShopPage() {
                     setSelectedCategory(null)
                     setSelectedBrand(null)
                     setPriceRange([0, 1399990])
+                    setDynamicFilters({})
                   }}
                   variant="outline"
                 >
@@ -300,9 +492,11 @@ export default function ShopPage() {
                     selectedCategory={selectedCategory}
                     selectedBrand={selectedBrand}
                     priceRange={priceRange as [number, number]}
+                    dynamicFilters={dynamicFilters}
                     onCategoryChange={setSelectedCategory}
                     onBrandChange={setSelectedBrand}
                     onPriceChange={setPriceRange}
+                    onDynamicFilterChange={handleDynamicFilterChange}
                   />
                 </Suspense>
               </div>

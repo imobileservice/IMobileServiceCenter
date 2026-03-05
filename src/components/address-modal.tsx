@@ -40,6 +40,7 @@ interface AddressModalProps {
 }
 
 export default function AddressModal({ isOpen, onClose, onSave, initial }: AddressModalProps) {
+  const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     id: "" as string | undefined,
     type: (initial?.type || "billing") as AddressType,
@@ -74,7 +75,21 @@ export default function AddressModal({ isOpen, onClose, onSave, initial }: Addre
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await onSave(form)
+    
+    if (saving) return
+    
+    try {
+      setSaving(true)
+      console.log('[AddressModal] Saving address:', form)
+      await onSave(form)
+      // onSave will handle closing the modal and showing success toast
+    } catch (error: any) {
+      console.error('[AddressModal] Save error:', error)
+      // Error is handled by parent component
+      throw error
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -147,9 +162,9 @@ export default function AddressModal({ isOpen, onClose, onSave, initial }: Addre
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" onClick={handleSubmit}>
-              {form.id ? "Save Changes" : "Save Address"}
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button type="submit" onClick={handleSubmit} disabled={saving}>
+              {saving ? "Saving..." : form.id ? "Save Changes" : "Save Address"}
             </Button>
           </div>
         </form>

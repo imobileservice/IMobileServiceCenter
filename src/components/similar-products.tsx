@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Plus, Minus, Star } from "lucide-react"
 import { useCartStore, type CartItem } from "@/lib/store"
 import { getApiUrl } from "@/lib/utils/api"
+import { formatCurrency } from "@/lib/utils/currency"
 
 interface Product {
   id: string
@@ -159,11 +160,11 @@ function SimilarProductCard({ product, index }: { product: Product; index: numbe
           >
             {originalPrice && (
               <span className="text-xs sm:text-sm text-gray-400 line-through">
-                ${originalPrice.toFixed(2)}
+                {formatCurrency(originalPrice)}
               </span>
             )}
             <span className="text-base sm:text-lg font-bold text-blue-600 dark:text-primary">
-              ${product.price.toFixed(2)}
+              {formatCurrency(product.price)}
             </span>
           </motion.div>
         </div>

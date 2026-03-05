@@ -1,6 +1,6 @@
 // Load environment variables from .env file
 import dotenv from 'dotenv'
-dotenv.config()
+dotenv.config({ path: '.env' })
 
 import express from 'express'
 import cookieParser from 'cookie-parser'
@@ -18,7 +18,7 @@ console.log('🔧 Environment Status:')
 console.log(`  - Supabase URL: ${supabaseUrl ? '✅ Loaded' : '❌ Missing'}`)
 if (supabaseUrl) {
   // Show first 30 chars and last 10 chars for verification
-  const urlPreview = supabaseUrl.length > 40 
+  const urlPreview = supabaseUrl.length > 40
     ? `${supabaseUrl.substring(0, 30)}...${supabaseUrl.substring(supabaseUrl.length - 10)}`
     : supabaseUrl
   console.log(`    URL: ${urlPreview}`)
@@ -50,27 +50,36 @@ if (!supabaseUrl || !supabaseKey) {
 // Add your Cloudflare Pages URL here when deploying
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [
-      process.env.VITE_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
-      // Cloudflare Pages/Workers URLs
-      process.env.CLOUDFLARE_PAGES_URL,
-      'https://imobile.kalhararashmitha.workers.dev', // Your frontend URL
-      'https://*.workers.dev', // Allow all workers.dev subdomains
-      'https://*.pages.dev', // Allow all pages.dev subdomains
-    ].filter(Boolean)
+    process.env.VITE_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+    // Cloudflare Pages/Workers URLs
+    process.env.CLOUDFLARE_PAGES_URL,
+    'https://imobile.kalhararashmitha.workers.dev', // Your frontend URL
+    'https://*.workers.dev', // Allow all workers.dev subdomains
+    'https://*.pages.dev', // Allow all pages.dev subdomains
+  ].filter(Boolean)
   : [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:5174',
-      process.env.VITE_DEV_URL,
-      // Allow Cloudflare Pages in development too
-      process.env.CLOUDFLARE_PAGES_URL,
-      'https://imobile.kalhararashmitha.workers.dev',
-      'https://*.workers.dev',
-      'https://*.pages.dev',
-    ].filter(Boolean)
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://localhost:3003',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:3002',
+    'http://127.0.0.1:3003',
+    'http://localhost:5175',
+    'http://localhost:5176',
+    process.env.VITE_DEV_URL,
+    // Allow Cloudflare Pages in development too
+    process.env.CLOUDFLARE_PAGES_URL,
+    'https://imobile.kalhararashmitha.workers.dev',
+    'https://*.workers.dev',
+    'https://*.pages.dev',
+  ].filter(Boolean)
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -79,24 +88,24 @@ app.use(cors({
       callback(null, true)
       return
     }
-    
+
     // Check exact matches
     if (allowedOrigins.includes(origin)) {
       callback(null, true)
       return
     }
-    
+
     // Check wildcard patterns for Cloudflare domains
-    const isCloudflareDomain = 
-      origin.endsWith('.workers.dev') || 
+    const isCloudflareDomain =
+      origin.endsWith('.workers.dev') ||
       origin.endsWith('.pages.dev') ||
       origin.endsWith('.trycloudflare.com')
-    
+
     if (isCloudflareDomain) {
       callback(null, true)
       return
     }
-    
+
     // In development, allow all origins for easier debugging
     if (process.env.NODE_ENV !== 'production') {
       callback(null, true)
@@ -126,18 +135,18 @@ app.use((req, res, next) => {
 app.use('/api', (req, res, next) => {
   // Store original json method
   const originalJson = res.json.bind(res)
-  
+
   // Override json to ensure Content-Type is set
-  res.json = function(body: any) {
+  res.json = function (body: any) {
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'application/json')
     }
     return originalJson(body)
   }
-  
+
   // Override send to ensure JSON for API routes
   const originalSend = res.send.bind(res)
-  res.send = function(body: any) {
+  res.send = function (body: any) {
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'application/json')
       // If body is not already JSON, convert it
@@ -147,14 +156,14 @@ app.use('/api', (req, res, next) => {
     }
     return originalSend(body)
   }
-  
+
   next()
 })
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: {
@@ -171,7 +180,7 @@ app.use('/api', apiRouter)
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../dist')
   app.use(express.static(distPath))
-  
+
   // Serve index.html for all non-API routes (SPA fallback)
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
@@ -184,7 +193,7 @@ if (process.env.NODE_ENV === 'production') {
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('❌ Server Error:', err)
   console.error('❌ Error Stack:', err?.stack)
-  
+
   // Ensure we always return JSON for API routes
   if (req.path.startsWith('/api')) {
     if (!res.headersSent) {

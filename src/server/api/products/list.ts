@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 
 /**
  * GET /api/products/list
- * MIGRATION: Converted from Next.js API route to Express handler
+ * Updated to use category_id and load images from product_images table
  */
 export async function listHandler(req: Request, res: Response) {
   try {
@@ -36,16 +36,40 @@ export async function listHandler(req: Request, res: Response) {
       }
     )
 
-    let query = supabase.from('products').select('*')
-
     const { category, brand, condition, search, minPrice, maxPrice } = req.query
 
+    // Build query - join with categories for filtering
+    let query = supabase
+      .from('products')
+      .select(`
+        *,
+        categories:category_id (
+          id,
+          name,
+          slug
+        )
+      `)
+
+    // Filter by category slug (using category_id join)
     if (category) {
-      query = query.eq('category', category as string)
+      // First, get category_id from slug
+      const { data: categoryData, error: categoryError } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', category as string)
+        .maybeSingle()
+
+      if (categoryError || !categoryData?.id) {
+        // If category not found, return empty results
+        console.warn(`[Products API] Category not found: ${category}`)
+        return res.json({ data: [] })
+      }
+
+      query = query.eq('category_id', categoryData.id)
     }
 
     if (brand) {
-      query = query.eq('brand', brand as string)
+      query = query.ilike('brand', brand as string)
     }
 
     if (condition) {
@@ -74,11 +98,45 @@ export async function listHandler(req: Request, res: Response) {
       })
     }
 
-    return res.json({ data })
+    // Load images from product_images table for each product
+    if (data && data.length > 0) {
+      const productIds = data.map((p: any) => p.id)
+      
+      const { data: imagesData } = await supabase
+        .from('product_images')
+        .select('product_id, url, display_order, is_primary')
+        .in('product_id', productIds)
+        .order('display_order', { ascending: true })
+
+      // Group images by product_id
+      const imagesMap = new Map<string, any[]>()
+      imagesData?.forEach((img: any) => {
+        if (!imagesMap.has(img.product_id)) {
+          imagesMap.set(img.product_id, [])
+        }
+        imagesMap.get(img.product_id)?.push(img.url)
+      })
+
+      // Attach images to products
+      const productsWithImages = data.map((product: any) => {
+        const images = imagesMap.get(product.id) || []
+        const primaryImage = imagesData?.find((img: any) => img.product_id === product.id && img.is_primary)?.url || images[0]
+        
+        return {
+          ...product,
+          image: primaryImage || product.image, // Fallback to old field if exists
+          images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
+          category: product.categories?.slug || product.category, // Use category slug from join or fallback
+        }
+      })
+
+      return res.json({ data: productsWithImages })
+    }
+
+    return res.json({ data: data || [] })
   } catch (e: any) {
     return res.status(500).json({
       error: e?.message || 'Unexpected error fetching products',
     })
   }
 }
-

@@ -159,6 +159,46 @@ export const getMessagesHandler = asyncHandler(async (req: Request, res: Respons
 })
 
 /**
+ * GET /api/admin/data/orders/:id
+ * Get single order by ID (admin only, uses service role)
+ */
+export const getOrderByIdHandler = asyncHandler(async (req: Request, res: Response) => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(503).json({
+      error: 'Supabase not configured',
+    })
+  }
+
+  const { id } = req.params
+  if (!id) {
+    return res.status(400).json({ error: 'Order ID is required' })
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  })
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select(`
+      *,
+      order_items (*)
+    `)
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    console.error('Error fetching order:', error)
+    return res.status(404).json({ error: error.message || 'Order not found' })
+  }
+
+  return res.json({ data })
+})
+
+/**
  * GET /api/admin/data/stats
  * Get dashboard statistics (admin only)
  */

@@ -8,6 +8,7 @@ const Shop = lazy(() => import('./pages/Shop'))
 const ProductDetail = lazy(() => import('./pages/ProductDetail'))
 const Cart = lazy(() => import('./pages/Cart'))
 const Checkout = lazy(() => import('./pages/Checkout'))
+const Invoice = lazy(() => import('./pages/Invoice'))
 const Contact = lazy(() => import('./pages/Contact'))
 const Profile = lazy(() => import('./pages/Profile'))
 const SignIn = lazy(() => import('./pages/SignIn'))
@@ -19,10 +20,15 @@ const TestSupabase = lazy(() => import('./pages/TestSupabase'))
 const AuthError = lazy(() => import('./pages/AuthError'))
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'))
+const AdminCategories = lazy(() => import('./pages/admin/AdminCategories'))
 const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'))
 const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers'))
 const AdminMessages = lazy(() => import('./pages/admin/AdminMessages'))
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'))
+const AdminFilters = lazy(() => import('./pages/admin/AdminFilters'))
+const AdminHeroSlides = lazy(() => import('./pages/admin/AdminHeroSlides'))
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
+const AdminGuide = lazy(() => import('./pages/admin/Guide'))
 
 // Loading component
 const PageLoading = () => (
@@ -40,6 +46,7 @@ export default function App() {
         <Route path="/product/:id" element={<ProductDetail />} />
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/invoice/:id" element={<Invoice />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/signin" element={<SignIn />} />
@@ -52,10 +59,15 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/products" element={<AdminProducts />} />
+        <Route path="/admin/categories" element={<AdminCategories />} />
         <Route path="/admin/orders" element={<AdminOrders />} />
         <Route path="/admin/customers" element={<AdminCustomers />} />
         <Route path="/admin/messages" element={<AdminMessages />} />
+        <Route path="/admin/hero-slides" element={<AdminHeroSlides />} />
+        <Route path="/admin/settings" element={<AdminSettings />} />
+        <Route path="/admin/filters" element={<AdminFilters />} />
         <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin/guide" element={<AdminGuide />} />
       </Routes>
     </Suspense>
   )

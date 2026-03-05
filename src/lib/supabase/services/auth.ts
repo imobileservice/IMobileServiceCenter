@@ -1,4 +1,4 @@
-import { createClient } from '../client'
+import { createClient, clearSupabaseCache } from '../client'
 import { getApiUrl } from '../../utils/api'
 
 export const authService = {
@@ -10,10 +10,42 @@ export const authService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name, whatsapp }),
     })
-    const data = await res.json()
-    if (!res.ok) {
-      throw new Error(data?.error || 'Signup failed')
+    
+    // Check content type before parsing JSON
+    const contentType = res.headers.get('content-type')
+    let apiData: any = {}
+    
+    if (contentType && contentType.includes('application/json')) {
+      try {
+        apiData = await res.json()
+      } catch (jsonError) {
+        // If JSON parsing fails, try to get text for debugging
+        const text = await res.text().catch(() => 'Unknown error')
+        console.error('Failed to parse JSON response:', text)
+        throw new Error(`Server returned invalid JSON: ${text.substring(0, 100)}`)
+      }
+    } else {
+      // Server returned non-JSON (probably HTML error page)
+      const text = await res.text().catch(() => 'Unknown error')
+      console.error('Server returned non-JSON response:', text.substring(0, 200))
+      throw new Error(`Server error: Received ${contentType || 'unknown'} instead of JSON. This usually means the backend server crashed. Check server logs.`)
     }
+    
+    if (!res.ok) {
+      // Preserve the original error message from the API
+      console.error('[authService.signUp] API returned error status:', res.status)
+      console.error('[authService.signUp] Error data:', apiData)
+      const error = new Error(apiData?.error || 'Signup failed')
+      if (apiData?.code) {
+        (error as any).code = apiData.code
+      }
+      if (res.status) {
+        (error as any).status = res.status
+      }
+      throw error
+    }
+    
+    const data = apiData
 
     // If signup returned a session (email confirmations disabled), set client session
     try {
@@ -269,13 +301,21 @@ export const authService = {
 
   // Sign out
   async signOut() {
-    const supabase = createClient()
-    
-    // Remove stored session token
+    // Clear localStorage first to prevent refresh token attempts
     try {
       if (typeof window !== 'undefined') {
         const storedToken = localStorage.getItem('supabase_session_token')
         localStorage.removeItem('supabase_session_token')
+        
+        // Clear all Supabase-related localStorage items
+        const keysToRemove: string[] = []
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key && (key.includes('supabase') || key.includes('sb-'))) {
+            keysToRemove.push(key)
+          }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key))
         
         // Also delete from database if we have a token
         if (storedToken) {
@@ -289,10 +329,24 @@ export const authService = {
       }
     } catch (e) {
       // Ignore localStorage errors
+      console.warn('Error clearing localStorage during signout:', e)
     }
     
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    // Try to sign out from Supabase, but don't fail if it errors (e.g., network issues)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signOut()
+      if (error && !error.message?.includes('Failed to fetch') && !error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+        // Only throw if it's not a network error (network errors are expected if Supabase is down)
+        throw error
+      }
+    } catch (e: any) {
+      // If signout fails due to network issues, that's okay - we've already cleared localStorage
+      if (!e?.message?.includes('Failed to fetch') && !e?.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+        throw e
+      }
+      console.warn('Supabase signout failed (likely network issue), but localStorage was cleared:', e?.message)
+    }
   },
 
   // Get current user
@@ -305,6 +359,25 @@ export const authService = {
 
   // Get user profile
   async getProfile(userId: string) {
+    // Try backend API first
+    if (typeof window !== 'undefined') {
+      try {
+        const { getApiUrl } = await import('../../utils/api')
+        const response = await fetch(getApiUrl('/api/profile'), {
+          credentials: 'include',
+          signal: AbortSignal.timeout(10000),
+        })
+        
+        if (response.ok) {
+          const payload = await response.json()
+          return payload.data
+        }
+      } catch (e: any) {
+        if (!e.message?.includes('timeout') && e.name !== 'AbortError') {
+          console.warn('[authService] Profile API failed, using direct Supabase:', e.message)
+        }
+      }
+    }
     const supabase = createClient()
     const { data, error } = await supabase
       .from('profiles')
@@ -321,6 +394,7 @@ export const authService = {
     name?: string
     whatsapp?: string
     avatar_url?: string
+    checkout_status?: 'success' | 'pending' | 'cancel'
   }) {
     const supabase = createClient()
     
@@ -409,51 +483,208 @@ export const authService = {
 
   // Sign in with Google OAuth
   async signInWithGoogle() {
-    const supabase = createClient()
-    const siteUrl = import.meta.env.VITE_SITE_URL || import.meta.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-    const redirectTo = `${siteUrl}/api/auth/callback`
-
-    console.log('🔐 Initiating Google OAuth sign-in...')
-    console.log('📍 Redirect URL:', redirectTo)
-    console.log('🌐 Site URL:', siteUrl)
-    console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL)
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    })
-
-    if (error) {
-      console.error('❌ Google OAuth error:', error)
-      console.error('Error details:', {
-        message: error.message,
-        status: error.status,
-        name: error.name,
-      })
+    try {
+      // First, validate Supabase configuration
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
       
-      // Provide more helpful error messages
-      if (error.message?.includes('provider is not enabled') || error.message?.includes('Unsupported provider')) {
+      if (!supabaseUrl || !supabaseKey) {
         throw new Error(
-          'Google OAuth is not properly configured in Supabase.\n\n' +
-          'Please verify:\n' +
-          '1. Go to Supabase Dashboard → Authentication → Providers\n' +
-          '2. Make sure Google is enabled (toggle is ON)\n' +
-          '3. Enter your Google Client ID and Client Secret\n' +
-          '4. Click "Save" and wait a few seconds\n' +
-          '5. Try again\n\n' +
-          'If the issue persists, check that your Client ID and Secret are correct in Google Cloud Console.'
+          'Supabase is not configured. Please check your .env file:\n\n' +
+          'Required variables:\n' +
+          '- VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL\n' +
+          '- VITE_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY\n\n' +
+          'After adding them, restart your development server.'
         )
       }
-      throw error
-    }
+      
+      // Validate URL format
+      if (!supabaseUrl.startsWith('https://') || !supabaseUrl.includes('.supabase.co')) {
+        throw new Error(
+          `Invalid Supabase URL format: ${supabaseUrl}\n\n` +
+          'Expected format: https://xxxxx.supabase.co\n\n' +
+          'Please check your .env file and ensure the URL is correct.\n' +
+          'Get the correct URL from: Supabase Dashboard → Settings → API'
+        )
+      }
+      
+      // Clear any old/cached Supabase sessions that might have wrong URL
+      console.log('🧹 Clearing old Supabase cache...')
+      clearSupabaseCache()
+      
+      // Test if Supabase URL is reachable (quick check)
+      try {
+        const testUrl = `${supabaseUrl}/rest/v1/`
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 3000)
+        
+        await fetch(testUrl, {
+          method: 'HEAD',
+          signal: controller.signal,
+          headers: {
+            'apikey': supabaseKey,
+          }
+        }).catch(() => {
+          // Ignore fetch errors - just checking if URL resolves
+        })
+        
+        clearTimeout(timeoutId)
+      } catch (testError: any) {
+        if (testError.name === 'AbortError' || testError.message?.includes('Failed to fetch') || testError.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+          throw new Error(
+            `Cannot connect to Supabase: ${supabaseUrl}\n\n` +
+            'Possible causes:\n' +
+            '1. ❌ Wrong Supabase URL in .env file\n' +
+            '2. ❌ Supabase project is paused (free tier pauses after inactivity)\n' +
+            '3. ❌ Supabase project was deleted\n' +
+            '4. ❌ Network/DNS issue\n\n' +
+            'How to fix:\n' +
+            '1. Go to https://supabase.com/dashboard\n' +
+            '2. Check if your project is active (not paused)\n' +
+            '3. If paused, click "Restore project"\n' +
+            '4. Copy the correct URL from Settings → API\n' +
+            '5. Update your .env file\n' +
+            '6. Restart your server'
+          )
+        }
+      }
+      
+      const supabase = createClient()
+      
+      // Validate Supabase client was created successfully
+      if (!supabase || !supabase.auth) {
+        throw new Error(
+          'Failed to create Supabase client. Please check your environment variables.'
+        )
+      }
+      
+      // Sign out any existing session to clear old data
+      try {
+        await supabase.auth.signOut()
+      } catch (signOutError) {
+        // Ignore sign out errors - might not have a session
+      }
+      
+      const siteUrl = import.meta.env.VITE_SITE_URL || import.meta.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+      // CRITICAL: Ensure redirect URL is the APP URL, not Supabase URL
+      const redirectTo = `${siteUrl}/api/auth/callback`
+      
+      // Validate redirect URL doesn't point to Supabase
+      if (redirectTo.includes('.supabase.co')) {
+        throw new Error(
+          'Invalid redirect URL configuration. Redirect URL should point to your app, not Supabase.\n\n' +
+          `Current redirect: ${redirectTo}\n` +
+          `Site URL: ${siteUrl}\n\n` +
+          'Please set VITE_SITE_URL in your .env file to your app URL (e.g., http://localhost:3000)'
+        )
+      }
 
-    console.log('✅ Google OAuth initiated successfully')
-    return data
+      console.log('🔐 Initiating Google OAuth sign-in...')
+      console.log('📍 Redirect URL:', redirectTo)
+      console.log('🌐 Site URL:', siteUrl)
+      console.log('🔗 Supabase URL:', supabaseUrl)
+      console.log('✅ Supabase client created successfully')
+
+      // CRITICAL: Use skipBrowserRedirect: false to ensure proper redirect handling
+      // and explicitly set redirectTo to our app callback, not Supabase
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectTo,
+          skipHttpRedirect: false,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      })
+
+      if (error) {
+        console.error('❌ Google OAuth error:', error)
+        console.error('Error details:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+        })
+        
+        // Check for network/DNS errors
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('ERR_NAME_NOT_RESOLVED') || 
+            error.message?.includes('network') ||
+            error.message?.includes('ENOTFOUND')) {
+          throw new Error(
+            'Cannot connect to Supabase for OAuth.\n\n' +
+            'The Supabase URL appears to be incorrect or unreachable:\n' +
+            `${supabaseUrl}\n\n` +
+            'Please check:\n' +
+            '1. ✅ Your Supabase project is active (not paused)\n' +
+            '2. ✅ VITE_SUPABASE_URL is correct in your .env file\n' +
+            '3. ✅ The URL matches your Supabase Dashboard\n' +
+            '4. ✅ Your internet connection is working\n\n' +
+            'Get the correct URL from: Supabase Dashboard → Settings → API'
+          )
+        }
+        
+        // Check for provider configuration errors
+        if (error.message?.includes('provider is not enabled') || 
+            error.message?.includes('Unsupported provider') ||
+            error.message?.includes('not configured')) {
+          throw new Error(
+            'Google OAuth is not properly configured in Supabase.\n\n' +
+            'Setup steps:\n' +
+            '1. Go to Supabase Dashboard → Authentication → Providers\n' +
+            '2. Find "Google" provider\n' +
+            '3. Toggle it ON (enable it)\n' +
+            '4. Enter your Google Client ID\n' +
+            '5. Enter your Google Client Secret\n' +
+            '6. Add redirect URL: ' + redirectTo + '\n' +
+            '7. Click "Save"\n' +
+            '8. Wait 10-30 seconds for changes to propagate\n' +
+            '9. Try again\n\n' +
+            'Get Google credentials from: Google Cloud Console → APIs & Services → Credentials'
+          )
+        }
+        
+        // Generic error
+        throw new Error(
+          `Google OAuth failed: ${error.message}\n\n` +
+          'If this persists, check:\n' +
+          '1. Google OAuth is enabled in Supabase\n' +
+          '2. Redirect URL is configured correctly\n' +
+          '3. Google Client ID and Secret are correct'
+        )
+      }
+
+      if (!data?.url) {
+        throw new Error(
+          'Google OAuth initiation failed: No redirect URL returned.\n\n' +
+          'This usually means:\n' +
+          '1. Google OAuth is not enabled in Supabase\n' +
+          '2. Google Client ID/Secret are missing or incorrect\n' +
+          '3. Redirect URL is not configured in Supabase'
+        )
+      }
+
+      console.log('✅ Google OAuth initiated successfully')
+      console.log('🔗 Redirecting to:', data.url)
+      return data
+    } catch (err: any) {
+      // Catch any errors during client creation or OAuth initiation
+      console.error('❌ Google OAuth sign-in failed:', err)
+      
+      // Re-throw with better context if it's already a formatted error
+      if (err.message && (err.message.includes('\n') || err.message.length > 50)) {
+        throw err
+      }
+      
+      // Format unknown errors
+      throw new Error(
+        `Google sign-in failed: ${err?.message || 'Unknown error'}\n\n` +
+        'Please check:\n' +
+        '1. Supabase configuration in .env file\n' +
+        '2. Google OAuth is enabled in Supabase Dashboard\n' +
+        '3. Redirect URL is configured correctly'
+      )
+    }
   },
 }

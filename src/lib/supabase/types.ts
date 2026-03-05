@@ -20,6 +20,7 @@ export interface Database {
           email: string | null
           whatsapp: string | null
           avatar_url: string | null
+          checkout_status: 'success' | 'pending' | 'cancel' | null
           created_at: string
           updated_at: string
         }
@@ -29,6 +30,7 @@ export interface Database {
           email?: string | null
           whatsapp?: string | null
           avatar_url?: string | null
+          checkout_status?: 'success' | 'pending' | 'cancel' | null
           created_at?: string
           updated_at?: string
         }
@@ -38,6 +40,7 @@ export interface Database {
           email?: string | null
           whatsapp?: string | null
           avatar_url?: string | null
+          checkout_status?: 'success' | 'pending' | 'cancel' | null
           created_at?: string
           updated_at?: string
         }

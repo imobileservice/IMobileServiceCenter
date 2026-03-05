@@ -3,15 +3,29 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Package, UserIcon, Edit2, Check, X, CreditCard, Download, MapPin, Heart, Lock } from "lucide-react"
+import { LogOut, Package, UserIcon, Edit2, Check, X, CreditCard, Download, MapPin, Heart, Lock, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { useAuthStore } from "@/lib/store"
 import { authService } from "@/lib/supabase/services/auth"
 import { accountService } from "@/lib/supabase/services/account"
+import { userService } from "@/lib/supabase/services/user"
+import { clearSupabaseCache } from "@/lib/supabase/client"
 import AddressModal from "@/components/address-modal"
 import OrderHistory from "@/components/order-history"
 import { toast } from "sonner"
+import { formatCurrency } from "@/lib/utils/currency"
 
 export default function ProfilePage() {
   const navigate = useNavigate()
@@ -31,6 +45,7 @@ export default function ProfilePage() {
   const [downloads, setDownloads] = useState<any[]>([])
   const [addressModalOpen, setAddressModalOpen] = useState(false)
   const [addressInitial, setAddressInitial] = useState<any | null>(null)
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -42,29 +57,54 @@ export default function ProfilePage() {
     }
   }, [user])
 
-  // Load tab-specific data
+  // Load tab-specific data from database
   useEffect(() => {
+    if (!user) return
+
     const load = async () => {
       try {
         if (activeTab === "addresses") {
+          console.log('[Profile] Loading addresses...')
           const data = await accountService.listAddresses()
+          console.log('[Profile] Addresses loaded:', data?.length || 0)
           setAddresses(data || [])
         } else if (activeTab === "wishlist") {
+          console.log('[Profile] Loading wishlist...')
           const data = await accountService.getWishlist()
+          console.log('[Profile] Wishlist loaded:', data?.length || 0)
           setWishlist(data || [])
         } else if (activeTab === "credits") {
+          console.log('[Profile] Loading credits...')
           const value = await accountService.getCredits()
+          console.log('[Profile] Credits loaded:', value)
           setCredits(Number(value || 0))
         } else if (activeTab === "downloads") {
+          console.log('[Profile] Loading downloads...')
           const data = await accountService.getDownloads()
+          console.log('[Profile] Downloads loaded:', data?.length || 0)
           setDownloads(data || [])
+        } else if (activeTab === "account") {
+          // Load profile data for account tab
+          try {
+            const profile = await authService.getProfile(user.id)
+            if (profile) {
+              setEditData({
+                name: profile.name || "",
+                email: profile.email || user.email || "",
+                whatsapp: profile.whatsapp || "",
+              })
+            }
+          } catch (profileError) {
+            console.warn('[Profile] Failed to load profile data:', profileError)
+          }
         }
       } catch (err: any) {
-        console.error("Failed to load profile data:", err?.message || err)
+        console.error("[Profile] Failed to load profile data:", err?.message || err)
+        toast.error(`Failed to load ${activeTab} data: ${err.message || 'Unknown error'}`)
       }
     }
     load()
-  }, [activeTab])
+  }, [activeTab, user])
 
   const addAddress = async (type: "billing" | "shipping") => {
     setAddressInitial({ type })
@@ -126,6 +166,32 @@ export default function ProfilePage() {
     }
   }
 
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeletingAccount(true)
+      await userService.deleteAccount()
+
+      toast.success("Account deleted successfully")
+
+      toast.success("Account deleted successfully")
+
+      // Manual cleanup to avoid 403 error from server (since user is already deleted)
+      // Do not call logout() here as it tries to reach the server
+      clearSupabaseCache()
+      localStorage.removeItem('supabase_session_token')
+      setUser(null)
+
+      navigate("/")
+    } catch (error: any) {
+      console.error("Failed to delete account:", error)
+      toast.error(error.message || "Failed to delete account")
+      setIsDeletingAccount(false)
+      toast.error(error.message || "Failed to delete account")
+      setIsDeletingAccount(false)
+    }
+  }
+
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: UserIcon },
     { id: "orders", label: "Orders", icon: Package },
@@ -147,7 +213,7 @@ export default function ProfilePage() {
                 From your account dashboard you can view your recent orders, manage your shipping and billing addresses, and edit your password and account details.
               </p>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {menuItems.slice(1).map((item) => {
                 const Icon = item.icon
@@ -167,10 +233,10 @@ export default function ProfilePage() {
             </div>
           </div>
         )
-      
+
       case "orders":
         return <OrderHistory />
-      
+
       case "addresses":
         return (
           <div className="space-y-6">
@@ -178,7 +244,7 @@ export default function ProfilePage() {
               <h1 className="text-2xl font-bold mb-2">Addresses</h1>
               <p className="text-muted-foreground">The following addresses will be used on the checkout page by default.</p>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-card border border-border rounded-lg p-6">
                 <h2 className="text-lg font-bold mb-4">BILLING ADDRESS</h2>
@@ -203,7 +269,7 @@ export default function ProfilePage() {
                   </div>
                 )}
               </div>
-              
+
               <div className="bg-card border border-border rounded-lg p-6">
                 <h2 className="text-lg font-bold mb-4">SHIPPING ADDRESS</h2>
                 <Button variant="outline" className="gap-2 mb-4" onClick={() => addAddress("shipping")}>
@@ -230,18 +296,18 @@ export default function ProfilePage() {
             </div>
           </div>
         )
-      
+
       case "account":
         return (
           <div className="space-y-6">
             <div>
               <h1 className="text-2xl font-bold mb-2">Account details</h1>
             </div>
-            
+
             <div className="bg-card border border-border rounded-lg p-6 space-y-6">
               <div>
                 <label className="block text-sm font-semibold mb-2">Full name *</label>
-                <Input 
+                <Input
                   value={editData.name}
                   onChange={(e) => setEditData({ ...editData, name: e.target.value })}
                   placeholder="Enter your name"
@@ -249,11 +315,11 @@ export default function ProfilePage() {
                 />
                 <p className="text-sm text-muted-foreground mt-1">This will be how your name will be displayed in the account section and in reviews</p>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-semibold mb-2">Email address *</label>
-                <Input 
-                  type="email" 
+                <Input
+                  type="email"
                   value={editData.email}
                   disabled
                   className="bg-muted cursor-not-allowed"
@@ -262,16 +328,16 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">WhatsApp Number</label>
-                <Input 
+                <label className="block text-sm font-semibold mb-2">Phone Number</label>
+                <Input
                   type="tel"
                   value={editData.whatsapp}
                   onChange={(e) => setEditData({ ...editData, whatsapp: e.target.value })}
-                  placeholder="+1 (555) 123-4567"
+                  placeholder="+94 77 123 4567"
                   disabled={!isEditing}
                 />
               </div>
-              
+
               <div className="flex gap-2">
                 {isEditing ? (
                   <>
@@ -279,8 +345,8 @@ export default function ProfilePage() {
                       <Check className="w-4 h-4 mr-2" />
                       Save Changes
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => {
                         setIsEditing(false)
                         setEditData({
@@ -301,10 +367,50 @@ export default function ProfilePage() {
                   </Button>
                 )}
               </div>
+
+              <div className="pt-6 border-t border-border mt-6">
+                <h3 className="text-lg font-semibold text-destructive mb-2">Danger Zone</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Once you delete your account, there is no going back. Please be certain.
+                </p>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full sm:w-auto">
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete My Account
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete your account
+                        and remove your data from our servers.
+                        <br /><br />
+                        Note: All your orders, addresses, and wishlist items will be permanently deleted.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={(e) => {
+                          e.preventDefault()
+                          handleDeleteAccount()
+                        }}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        disabled={isDeletingAccount}
+                      >
+                        {isDeletingAccount ? "Deleting..." : "Delete Permanently"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             </div>
           </div>
         )
-      
+
       case "credits":
         return (
           <div className="space-y-6">
@@ -319,7 +425,7 @@ export default function ProfilePage() {
             </div>
           </div>
         )
-      
+
       case "downloads":
         return (
           <div className="space-y-6">
@@ -348,7 +454,7 @@ export default function ProfilePage() {
             )}
           </div>
         )
-      
+
       case "wishlist":
         return (
           <div className="space-y-6">
@@ -363,18 +469,45 @@ export default function ProfilePage() {
                 <p className="text-muted-foreground">Start adding products to your wishlist to save them for later.</p>
               </div>
             ) : (
-              <div className="bg-card border border-border rounded-lg p-6 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {wishlist.map((w) => (
-                  <div key={w.id} className="flex items-center justify-between">
-                    <div className="text-sm">Product ID: {w.product_id}</div>
-                    <Button size="sm" variant="outline" onClick={async () => { await accountService.removeFromWishlist(w.product_id); setWishlist(wishlist.filter((x) => x.product_id !== w.product_id))}}>Remove</Button>
+                  <div key={w.id} className="bg-card border border-border rounded-lg p-4">
+                    {w.products ? (
+                      <>
+                        <img
+                          src={w.products.image || "/placeholder.svg"}
+                          alt={w.products.name}
+                          className="w-full h-32 object-cover rounded mb-2"
+                        />
+                        <h3 className="font-semibold text-sm mb-1">{w.products.name}</h3>
+                        <p className="text-sm text-muted-foreground mb-2">{formatCurrency(w.products.price)}</p>
+                      </>
+                    ) : (
+                      <div className="text-sm mb-2">Product ID: {w.product_id}</div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full mt-2"
+                      onClick={async () => {
+                        try {
+                          await accountService.removeFromWishlist(w.product_id)
+                          setWishlist(wishlist.filter((x) => x.product_id !== w.product_id))
+                          toast.success("Removed from wishlist")
+                        } catch (error: any) {
+                          toast.error(error.message || "Failed to remove from wishlist")
+                        }
+                      }}
+                    >
+                      Remove
+                    </Button>
                   </div>
                 ))}
               </div>
             )}
           </div>
         )
-      
+
       default:
         return null
     }
@@ -396,11 +529,10 @@ export default function ProfilePage() {
                     <button
                       key={item.id}
                       onClick={() => setActiveTab(item.id as any)}
-                      className={`w-full text-left px-4 py-3 rounded-lg transition-colors flex items-center gap-3 ${
-                        isActive 
-                          ? "bg-primary text-primary-foreground" 
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      }`}
+                      className={`w-full text-left px-4 py-3 rounded-lg transition-colors flex items-center gap-3 ${isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
                     >
                       <Icon className="w-4 h-4" />
                       <span>{item.label}</span>
@@ -437,15 +569,31 @@ export default function ProfilePage() {
         onClose={() => setAddressModalOpen(false)}
         onSave={async (payload) => {
           try {
-            console.log("Saving address payload:", payload)
-            await accountService.upsertAddress(payload)
+            console.log("[Profile] Saving address payload:", payload)
+
+            // Validate required fields
+            if (!payload.full_name || !payload.address_line1 || !payload.city || !payload.country) {
+              toast.error("Please fill in all required fields")
+              return
+            }
+
+            const savedAddress = await accountService.upsertAddress(payload)
+            console.log("[Profile] Address saved successfully:", savedAddress?.id)
+
+            // Reload addresses
             const data = await accountService.listAddresses()
             setAddresses(data || [])
             setAddressModalOpen(false)
-            toast.success("Address saved")
+            toast.success("Address saved successfully!")
           } catch (e: any) {
-            console.error("Address save failed:", e)
-            toast.error(e.message || "Failed to save address")
+            console.error("[Profile] Address save failed:", e)
+            const errorMessage = e.message || "Failed to save address"
+            toast.error(errorMessage.includes('timeout')
+              ? "Request timed out. Please check your connection and try again."
+              : errorMessage.includes('Not authenticated')
+                ? "Please sign in to save addresses"
+                : errorMessage)
+            throw e // Re-throw so modal can handle it
           }
         }}
       />

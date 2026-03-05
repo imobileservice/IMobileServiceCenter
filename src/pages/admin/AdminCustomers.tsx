@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { customersService } from "@/lib/supabase/services/customers"
 import CustomerModal from "@/components/admin/customer-modal"
 import AdminLayout from "@/components/admin-layout"
+import { formatCurrency } from "@/lib/utils/currency"
 import type { Customer } from "@/lib/supabase/services/customers"
 
 export default function CustomersPage() {
@@ -137,7 +138,7 @@ export default function CustomersPage() {
                   <td className="py-4 px-6">{customer.email}</td>
                   <td className="py-4 px-6">{customer.phone || 'N/A'}</td>
                   <td className="py-4 px-6">{customer.totalOrders}</td>
-                  <td className="py-4 px-6 font-semibold">${customer.totalSpent}</td>
+                  <td className="py-4 px-6 font-semibold">{formatCurrency(customer.totalSpent)}</td>
                   <td className="py-4 px-6">
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-semibold ${

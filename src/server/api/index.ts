@@ -2,6 +2,13 @@ import { Router, Request, Response, NextFunction } from 'express'
 import authRouter from './auth'
 import productsRouter from './products'
 import adminRouter from './admin'
+import ordersRouter from './orders'
+import addressesRouter from './addresses'
+import profileRouter from './profile'
+import userRouter from './user'
+import cartRouter from './cart'
+import heroSlidesRouter from './hero-slides'
+import emailRouter from './email'
 import { testEnvHandler } from './test-env'
 
 const router = Router()
@@ -25,6 +32,13 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
 router.use('/auth', authRouter)
 router.use('/products', productsRouter)
 router.use('/admin', adminRouter)
+router.use('/orders', ordersRouter)
+router.use('/addresses', addressesRouter)
+router.use('/profile', profileRouter)
+router.use('/user', userRouter)
+router.use('/cart', cartRouter)
+router.use('/hero-slides', heroSlidesRouter)
+router.use('/email', emailRouter)
 router.get('/test-env', asyncHandler(testEnvHandler))
 
 export default router

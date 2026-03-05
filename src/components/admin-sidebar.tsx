@@ -3,16 +3,21 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { motion } from "framer-motion"
-import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X } from "lucide-react"
+import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen } from "lucide-react"
 import { useAdminStore } from "@/lib/admin-store"
 import { Button } from "@/components/ui/button"
 
 const MENU_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
   { icon: Package, label: "Products", href: "/admin/products" },
+  { icon: FolderTree, label: "Categories", href: "/admin/categories" },
+  { icon: FilterIcon, label: "Filters", href: "/admin/filters" },
   { icon: ShoppingCart, label: "Orders", href: "/admin/orders" },
   { icon: Users, label: "Customers", href: "/admin/customers" },
   { icon: MessageSquare, label: "Messages", href: "/admin/messages" },
+  { icon: Image, label: "Hero Slides", href: "/admin/hero-slides" },
+  { icon: Settings, label: "Settings", href: "/admin/settings" },
+  { icon: BookOpen, label: "Guide", href: "/admin/guide" },
 ]
 
 export default function AdminSidebar() {
@@ -51,9 +56,8 @@ export default function AdminSidebar() {
               <Link key={item.href} to={item.href}>
                 <motion.button
                   whileHover={{ x: 4 }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                   <span>{item.label}</span>
@@ -91,9 +95,8 @@ export default function AdminSidebar() {
               <Link key={item.href} to={item.href}>
                 <motion.button
                   whileHover={{ x: 4 }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                    }`}
                   onClick={() => setIsOpen(false)}
                 >
                   <Icon className="w-5 h-5" />

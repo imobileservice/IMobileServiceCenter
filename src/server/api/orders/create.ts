@@ -1,0 +1,127 @@
+import { Request, Response } from 'express'
+import { createServerClient } from '@supabase/ssr'
+import { asyncHandler } from '../utils/async-handler'
+import { generateInvoicePDF } from '../utils/invoice-generator'
+import { sendEmail } from '../utils/email'
+
+/**
+ * POST /api/orders
+ * Create a new order
+ */
+export const createOrderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    return res.status(503).json({
+      error: 'Supabase not configured',
+      message: 'Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file'
+    })
+  }
+
+  // Get user from session
+  // We need to use createServerClient with cookie handling to verify the user
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      get(name: string) {
+        return req.cookies?.[name]
+      },
+      set(name: string, value: string, options: any) {
+        // No-op for read-only operations
+      },
+      remove(name: string, options: any) {
+        // No-op for read-only operations
+      },
+    },
+  })
+
+  // Get user from session
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const { order, items } = req.body
+
+  if (!order || !items || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'Order and items are required' })
+  }
+
+  console.log('[Orders API] Creating order:', { orderNumber: order.order_number, userId: user.id, itemCount: items.length })
+
+  // Use admin client for DB operations to bypass RLS policies
+  const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!secretKey) {
+    return res.status(500).json({ error: 'Server configuration error: Missing service key' })
+  }
+
+  // Dynamic import to avoid issues if @supabase/supabase-js isn't used elsewhere in this file
+  const { createClient } = await import('@supabase/supabase-js')
+  const adminClient = createClient(supabaseUrl, secretKey)
+
+  // Create order
+  const { data: orderData, error: orderError } = await adminClient
+    .from('orders')
+    .insert({
+      ...order,
+      user_id: user.id,
+    })
+    .select()
+    .single()
+
+  if (orderError) {
+    console.error('[Orders API] Order creation error:', orderError)
+    return res.status(500).json({ error: orderError.message })
+  }
+
+  console.log('[Orders API] Order created:', orderData.id)
+
+  // Create order items
+  if (items.length > 0) {
+    const orderItems = items.map((item: any) => ({
+      order_id: orderData.id,
+      ...item,
+    }))
+
+    const { error: itemsError } = await adminClient
+      .from('order_items')
+      .insert(orderItems)
+
+    if (itemsError) {
+      console.error('[Orders API] Order items creation error:', itemsError)
+      // Cleanup empty order
+      await adminClient.from('orders').delete().eq('id', orderData.id)
+      return res.status(500).json({ error: `Failed to create order items: ${itemsError.message}` })
+    } else {
+      console.log('[Orders API] Order items created successfully')
+    }
+  }
+
+  // Generate Invoice PDF and Send Email (Awaited to ensure execution)
+  try {
+    const { invoiceService } = await import('../services/invoice-service')
+    await invoiceService.sendInvoice(orderData, items)
+    console.log('[Orders API] Invoice email sent successfully (via service)')
+  } catch (emailError: any) {
+    console.error('[Orders API] Failed to send invoice email:', emailError)
+    // Return the error as a warning so the client knows
+    return res.status(201).json({
+      data: {
+        ...orderData,
+        warning: emailError.message || 'Failed to send email'
+      }
+    })
+  }
+
+  return res.status(201).json({ data: orderData })
+
+  // Helper for currency formatting in email
+  function formatCurrency(amount: number) {
+    return new Intl.NumberFormat('en-LK', {
+      style: 'currency',
+      currency: 'LKR',
+    }).format(amount)
+  }
+
+  return res.status(201).json({ data: orderData })
+})

@@ -26,7 +26,16 @@ export default function CustomerModal({ isOpen, onClose, editingCustomerId }: Cu
   })
 
   useEffect(() => {
-    if (editingCustomerId && isOpen) {
+    // Reset loading state when modal opens/closes
+    if (!isOpen) {
+      setLoading(false)
+      return
+    }
+
+    // Reset loading state when opening modal
+    setLoading(false)
+
+    if (editingCustomerId) {
       const fetchCustomer = async () => {
         try {
           setLoading(true)
@@ -64,6 +73,12 @@ export default function CustomerModal({ isOpen, onClose, editingCustomerId }: Cu
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Prevent double submission
+    if (loading) {
+      return
+    }
+    
     setLoading(true)
 
     try {

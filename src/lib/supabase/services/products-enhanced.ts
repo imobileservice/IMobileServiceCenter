@@ -219,15 +219,20 @@ export const productsServiceEnhanced = {
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('products').select('id', { count: 'exact', head: true }).gt('stock', 0),
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('stock', 0),
-        supabase.from('products').select('category'),
+        supabase.from('products').select('category_id'),
         supabase.from('products').select('brand'),
       ])
+
+      // Count unique category_ids (excluding nulls)
+      const uniqueCategories = new Set(
+        categories.data?.map(p => p.category_id).filter(Boolean) || []
+      )
 
       return {
         total: total.count || 0,
         inStock: inStock.count || 0,
         outOfStock: outOfStock.count || 0,
-        categories: new Set(categories.data?.map(p => p.category) || []).size,
+        categories: uniqueCategories.size,
         brands: new Set(brands.data?.map(p => p.brand).filter(Boolean) || []).size,
       }
     })

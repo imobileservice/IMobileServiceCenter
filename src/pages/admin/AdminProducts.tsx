@@ -6,8 +6,10 @@ import { Plus, Edit2, Trash2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
+import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import ProductModal from "@/components/admin/product-modal"
 import AdminLayout from "@/components/admin-layout"
+import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
 
 type Product = Database['public']['Tables']['products']['Row']
@@ -56,6 +58,11 @@ export default function ProductsPage() {
     try {
       await productsService.delete(id)
       setProducts(prev => prev.filter(p => p.id !== id))
+      // Notify all pages about the product deletion (real-time refresh)
+      // Small delay to ensure database transaction is committed
+      setTimeout(() => {
+        notifyUpdate('product')
+      }, 300)
     } catch (error) {
       console.error('Failed to delete product:', error)
       alert('Failed to delete product')
@@ -147,7 +154,7 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="py-4 px-6">{product.category}</td>
-                  <td className="py-4 px-6 font-semibold">${product.price}</td>
+                  <td className="py-4 px-6 font-semibold">{formatCurrency(product.price)}</td>
                   <td className="py-4 px-6">
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-semibold ${

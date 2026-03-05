@@ -16,42 +16,42 @@ export default function AdminLoginPage() {
   const navigate = useNavigate()
   const login = useAdminStore((state) => state.login)
   const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [otp, setOtp] = useState("")
-  const [step, setStep] = useState<"email" | "otp">("email")
+  const [step, setStep] = useState<"credentials" | "otp">("credentials")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
+  const handleInitLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
     setIsLoading(true)
 
     try {
-      const response = await fetch(getApiUrl("/api/admin/otp/generate"), {
+      const response = await fetch(getApiUrl("/api/admin/login/init"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to generate OTP")
+        throw new Error(data.error || "Login failed")
       }
 
       setOtpSent(true)
       setStep("otp")
-      toast.success("OTP sent successfully! Check your email.")
-      
+      toast.success("Validation successful. Check your email for OTP.")
+
       // In development, show OTP in console
       if (data.otp && process.env.NODE_ENV === "development") {
         console.log(`[DEV] OTP for ${email}: ${data.otp}`)
-        toast.info(`[DEV] OTP: ${data.otp}`, { duration: 10000 })
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send OTP")
-      toast.error(err instanceof Error ? err.message : "Failed to send OTP")
+      setError(err instanceof Error ? err.message : "Failed to initiate login")
+      toast.error(err instanceof Error ? err.message : "Failed to initiate login")
     } finally {
       setIsLoading(false)
     }
@@ -63,10 +63,10 @@ export default function AdminLoginPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(getApiUrl("/api/admin/otp/verify"), {
+      const response = await fetch(getApiUrl("/api/admin/login/verify"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp }),
+        body: JSON.stringify({ email, password, otp }),
       })
 
       const data = await response.json()
@@ -111,8 +111,8 @@ export default function AdminLoginPage() {
             </motion.div>
           )}
 
-          {step === "email" ? (
-            <form onSubmit={handleRequestOtp} className="space-y-6">
+          {step === "credentials" ? (
+            <form onSubmit={handleInitLogin} className="space-y-6">
               <div>
                 <label className="block text-sm font-semibold mb-2">Admin Email</label>
                 <div className="relative">
@@ -129,8 +129,24 @@ export default function AdminLoginPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold mb-2">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="pl-10"
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+              </div>
+
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Sending OTP..." : "Request OTP"}
+                {isLoading ? "Validating..." : "Log In"}
               </Button>
             </form>
           ) : (
@@ -149,7 +165,7 @@ export default function AdminLoginPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setStep("email")
+                    setStep("credentials")
                     setOtp("")
                     setOtpSent(false)
                   }}
@@ -160,14 +176,14 @@ export default function AdminLoginPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">OTP Code</label>
+                <label className="block text-sm font-semibold mb-2">Email OTP Code</label>
                 <div className="relative">
                   <Key className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
                   <Input
                     type="text"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="Enter 6-digit OTP"
+                    placeholder="Enter 6-digit Code"
                     className="pl-10 text-center text-lg tracking-widest"
                     required
                     disabled={isLoading}
@@ -176,21 +192,22 @@ export default function AdminLoginPage() {
                 </div>
                 {otpSent && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    OTP sent! Check your email. (Valid for 10 minutes)
+                    Code sent to your email. (Valid for 10 minutes)
                   </p>
                 )}
               </div>
 
               <Button type="submit" className="w-full" disabled={isLoading || otp.length !== 6}>
-                {isLoading ? "Verifying..." : "Verify OTP & Login"}
+                {isLoading ? "Verifying..." : "Verify & Login"}
               </Button>
             </form>
           )}
 
           <div className="mt-6 p-4 bg-muted rounded-lg text-sm text-muted-foreground">
-            <p className="font-semibold mb-2">Admin Login:</p>
-            <p>Enter your admin email to receive a one-time password (OTP)</p>
-            <p className="mt-2 text-xs">OTP expires in 10 minutes</p>
+            <p className="font-semibold mb-2">Security Notice:</p>
+            <p>1. Enter your admin credentials.</p>
+            <p>2. You will receive a verification code in your email.</p>
+            <p className="mt-2 text-xs">Ensure your email address is valid and accessible.</p>
           </div>
         </div>
       </motion.div>

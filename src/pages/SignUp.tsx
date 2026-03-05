@@ -211,9 +211,23 @@ export default function SignUpPage() {
       setCaptchaToken(null)
       
       // Handle specific error cases
-      if (error.message?.includes("already registered")) {
-        setErrors({ email: "This email is already registered. Please sign in instead." })
-        toast.error("Email already registered")
+      if (error.message?.includes("already registered") || error.message?.includes("Account already exists")) {
+        // Check if it's an OAuth account
+        if (error.code === 'ACCOUNT_EXISTS_OAUTH' || error.message?.includes("Google sign-in")) {
+          setErrors({ 
+            email: "An account with this email already exists using Google sign-in. Please sign in with Google instead.",
+            general: "You can sign in using the 'Sign in with Google' button on the sign in page."
+          })
+          toast.error("Account exists with Google", {
+            description: "Please use Google OAuth to sign in with this email",
+            duration: 6000
+          })
+        } else {
+          setErrors({ email: "This email is already registered. Please sign in instead." })
+          toast.error("Email already registered", {
+            description: "Use the sign in page to access your account"
+          })
+        }
       } else if (error.message?.includes("invalid email")) {
         setErrors({ email: "Please enter a valid email address" })
         toast.error("Invalid email address")

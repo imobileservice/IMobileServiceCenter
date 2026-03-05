@@ -12,6 +12,7 @@ import { useAuthStore } from "@/lib/store"
 import { authService } from "@/lib/supabase/services/auth"
 import { validateEmail } from "@/lib/utils/auth-validation"
 import { checkSupabaseConfig } from "@/lib/utils/supabase-check"
+import { getApiUrl } from "@/lib/utils/api"
 import { toast } from "sonner"
 import HCaptcha from "@hcaptcha/react-hcaptcha"
 
@@ -42,6 +43,13 @@ export default function SignInPage() {
           general: "Your email verification link has expired. Email links are valid for 1 hour. Please sign up again to receive a new verification email.",
         })
         toast.error("Verification link expired")
+      } else if (errorCode === "account_exists") {
+        setErrors({
+          general: errorMessage || "An account with this email already exists. Please sign in with your password instead.",
+        })
+        toast.error("Account already exists", {
+          description: "Please use the sign in form below with your password"
+        })
       } else if (errorMessage) {
         setErrors({ general: errorMessage })
         toast.error("Authentication error")

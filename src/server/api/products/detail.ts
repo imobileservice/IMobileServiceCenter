@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 
 /**
  * GET /api/products/:id
- * Get a single product by ID
+ * Updated to load images from product_images table
  */
 export async function detailHandler(req: Request, res: Response) {
   try {
@@ -43,15 +43,22 @@ export async function detailHandler(req: Request, res: Response) {
       }
     )
 
-    const { data, error } = await supabase
+    // Get product with category info
+    const { data: product, error } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        categories:category_id (
+          id,
+          name,
+          slug
+        )
+      `)
       .eq('id', id)
       .single()
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // No rows returned
         return res.status(404).json({
           error: 'Product not found',
         })
@@ -63,11 +70,29 @@ export async function detailHandler(req: Request, res: Response) {
       })
     }
 
-    return res.json({ data })
+    // Load images from product_images table
+    const { data: imagesData } = await supabase
+      .from('product_images')
+      .select('url, display_order, is_primary, alt_text')
+      .eq('product_id', id)
+      .order('display_order', { ascending: true })
+
+    // Build images array
+    const images = imagesData?.map((img: any) => img.url) || []
+    const primaryImage = imagesData?.find((img: any) => img.is_primary)?.url || images[0]
+
+    // Combine product data with images
+    const productWithImages = {
+      ...product,
+      image: primaryImage || product.image, // Fallback to old field if exists
+      images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
+      category: product.categories?.slug || product.category, // Use category slug from join or fallback
+    }
+
+    return res.json({ data: productWithImages })
   } catch (e: any) {
     return res.status(500).json({
       error: e?.message || 'Unexpected error fetching product',
     })
   }
 }
-

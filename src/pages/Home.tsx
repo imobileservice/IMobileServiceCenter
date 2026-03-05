@@ -1,9 +1,14 @@
-import { useState, memo, useCallback } from "react"
+import { useState, memo, useCallback, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
-import { ArrowRight, Zap, Shield, Truck } from "lucide-react"
+import { ArrowRight, Zap, Shield, Truck, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { lazy, Suspense } from "react"
+import { productsService } from "@/lib/supabase/services/products"
+import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
+import type { Database } from "@/lib/supabase/types"
+
+type Product = Database["public"]["Tables"]["products"]["Row"]
 
 // Lazy load heavy components
 const ProductCard = lazy(() => import("@/components/product-card"))
@@ -13,62 +18,6 @@ const CategoryGrid = lazy(() => import("@/components/category-grid"))
 const ProductsCarousel = lazy(() => import("@/components/products-carousel"))
 
 const LoadingPlaceholder = () => <div className="h-80 bg-muted animate-pulse rounded-lg" />
-
-const FEATURED_PRODUCTS = [
-  {
-    id: "1",
-    name: "iPhone 15 Pro Max",
-    price: 1199,
-    image: "/iphone-15-pro-max.png",
-    condition: "new" as const,
-    specs: "256GB Storage • 8GB RAM • Company Warranty",
-    discount: 13,
-  },
-  {
-    id: "2",
-    name: "Samsung Galaxy S24 Ultra",
-    price: 1299,
-    image: "/samsung-galaxy-s24-ultra.png",
-    condition: "new" as const,
-    specs: "512GB Storage • 12GB RAM • Company Warranty",
-    discount: 18,
-  },
-  {
-    id: "3",
-    name: "Google Pixel 8 Pro",
-    price: 999,
-    image: "/google-pixel-8-pro.png",
-    condition: "new" as const,
-    specs: "256GB Storage • 12GB RAM • Company Warranty",
-    discount: 6,
-  },
-  {
-    id: "4",
-    name: "OnePlus 12",
-    price: 799,
-    image: "/oneplus-12-smartphone.jpg",
-    condition: "new" as const,
-    specs: "256GB Storage • 12GB RAM • Company Warranty",
-    discount: 26,
-  },
-  {
-    id: "5",
-    name: "iPhone 14 Pro",
-    price: 899,
-    image: "/iphone-14-pro-used.jpg",
-    condition: "used" as const,
-    specs: "256GB Storage • 6GB RAM • 6 Months Warranty",
-  },
-  {
-    id: "6",
-    name: "Samsung Galaxy A54",
-    price: 449,
-    image: "/samsung-galaxy-a54.png",
-    condition: "new" as const,
-    specs: "128GB Storage • 8GB RAM • Company Warranty",
-    discount: 10,
-  },
-]
 
 const FEATURES = [
   {
@@ -84,7 +33,7 @@ const FEATURES = [
   {
     icon: Truck,
     title: "Free Shipping",
-    description: "On orders over $500",
+    description: "On orders over Rs. 15,000",
   },
 ]
 
@@ -93,6 +42,44 @@ const MemoizedProductCard = memo(ProductCard)
 
 export default function Home() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
+  const [loadingFeatured, setLoadingFeatured] = useState(true)
+
+  // Load featured products from database
+  const loadFeaturedProducts = async (silent: boolean = false) => {
+    try {
+      if (!silent) {
+        setLoadingFeatured(true)
+      }
+      console.log('[Home] Loading featured products...')
+      const products = await productsService.getFeatured(8)
+      console.log('[Home] Featured products loaded:', products?.length || 0)
+      setFeaturedProducts(products || [])
+    } catch (error: any) {
+      console.error('[Home] Failed to load featured products:', error)
+    } finally {
+      if (!silent) {
+        setLoadingFeatured(false)
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadFeaturedProducts()
+  }, [])
+
+  // Real-time updates for featured products
+  useRealtimeUpdates('products', 'is_featured=eq.true', () => loadFeaturedProducts(true))
+
+  // Listen for custom events
+  useEffect(() => {
+    const handleUpdate = () => {
+      console.log('[Home] Products update event received')
+      loadFeaturedProducts(true)
+    }
+    window.addEventListener('productsUpdated', handleUpdate)
+    return () => window.removeEventListener('productsUpdated', handleUpdate)
+  }, [])
 
   // Memoized callback
   const handleProductClick = useCallback((productId: string) => {
@@ -205,21 +192,56 @@ export default function Home() {
             </Link>
           </motion.div>
 
-          <motion.div
-            className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-          >
-            {FEATURED_PRODUCTS.map((product) => (
-              <motion.div key={product.id} variants={itemVariants}>
-                <Suspense fallback={<LoadingPlaceholder />}>
-                  <ProductCard {...product} />
-                </Suspense>
-              </motion.div>
-            ))}
-          </motion.div>
+          {loadingFeatured ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading featured products...</p>
+            </div>
+          ) : featuredProducts.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">No featured products available</p>
+            </div>
+          ) : (
+            <motion.div
+              className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+            >
+              {featuredProducts.map((product) => {
+                // Parse specs if it's a JSON string
+                let specsText = ""
+                if (product.specs) {
+                  try {
+                    const parsedSpecs = typeof product.specs === 'string' ? JSON.parse(product.specs) : product.specs
+                    const storage = parsedSpecs?.Storage || parsedSpecs?.storage
+                    const ram = parsedSpecs?.RAM || parsedSpecs?.ram
+                    const warranty = parsedSpecs?.Warranty || parsedSpecs?.warranty || 'Company Warranty'
+                    specsText = [storage, ram, warranty].filter(Boolean).join(' • ')
+                  } catch (e) {
+                    specsText = String(product.specs)
+                  }
+                }
+
+                return (
+                  <motion.div key={product.id} variants={itemVariants}>
+                    <Suspense fallback={<LoadingPlaceholder />}>
+                      <ProductCard
+                        id={product.id}
+                        name={product.name}
+                        price={Number(product.price)}
+                        image={product.image || "/placeholder.svg"}
+                        condition={product.condition as "new" | "used"}
+                        specs={specsText}
+                        discount={product.discount || undefined}
+                      />
+                    </Suspense>
+                  </motion.div>
+                )
+              })}
+            </motion.div>
+          )}
         </div>
       </section>
 

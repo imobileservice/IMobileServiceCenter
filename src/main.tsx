@@ -24,7 +24,7 @@ root.render(
     <ErrorBoundary>
       <HelmetProvider>
         <BrowserRouter>
-          <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
             <AuthProvider>
               <ConditionalLayout>
                 <App />

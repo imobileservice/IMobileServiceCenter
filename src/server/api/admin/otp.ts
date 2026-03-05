@@ -48,12 +48,15 @@ export async function generateOtpHandler(req: Request, res: Response) {
       .eq('email', email)
       .eq('used', false)
 
-    // Insert new OTP
+    // Hash the OTP before storing it for security
+    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+
+    // Insert new OTP hash
     const { data, error } = await supabase
       .from('admin_otps')
       .insert({
         email,
-        otp,
+        otp: hashedOtp,
         expires_at: expiresAt.toISOString(),
         used: false,
       })
@@ -75,8 +78,6 @@ export async function generateOtpHandler(req: Request, res: Response) {
     return res.json({
       success: true,
       message: 'OTP generated successfully',
-      // Remove this in production - OTP should be sent via email/SMS
-      otp: process.env.NODE_ENV === 'development' ? otp : undefined,
       expiresIn: 600, // 10 minutes in seconds
     })
   } catch (e: any) {
@@ -112,12 +113,15 @@ export async function verifyOtpHandler(req: Request, res: Response) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Find OTP
+    // Hash the incoming OTP to compare with the stored hash
+    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+
+    // Find OTP by hash
     const { data: otpData, error: fetchError } = await supabase
       .from('admin_otps')
       .select('*')
       .eq('email', email)
-      .eq('otp', otp)
+      .eq('otp', hashedOtp)
       .eq('used', false)
       .single()
 

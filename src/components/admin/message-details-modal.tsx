@@ -21,6 +21,9 @@ export default function MessageDetailsModal({ messageId, onClose }: MessageDetai
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
+    // Reset updating state when modal opens
+    setUpdating(false)
+    
     const fetchMessage = async () => {
       try {
         setLoading(true)
@@ -37,7 +40,7 @@ export default function MessageDetailsModal({ messageId, onClose }: MessageDetai
   }, [messageId])
 
   const handleStatusUpdate = async (status: Message['status']) => {
-    if (!message) return
+    if (!message || updating) return
     
     setUpdating(true)
     try {

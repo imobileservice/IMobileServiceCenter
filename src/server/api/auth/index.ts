@@ -5,6 +5,7 @@ import { verifyOtpHandler } from './verify-otp'
 import { callbackHandler } from './callback'
 import { sessionHandler } from './session'
 import { signoutHandler } from './signout'
+import { verifyEmailHandler, resendVerificationHandler } from './verify-email'
 
 const router = Router()
 
@@ -13,7 +14,7 @@ const asyncHandler = (fn: (req: Request, res: Response, next?: NextFunction) => 
   return (req: Request, res: Response, next: NextFunction) => {
     // Set Content-Type immediately for API routes
     res.setHeader('Content-Type', 'application/json')
-    
+
     Promise.resolve(fn(req, res, next)).catch((error) => {
       console.error('[asyncHandler] Caught error:', error)
       console.error('[asyncHandler] Error stack:', error?.stack)
@@ -33,6 +34,8 @@ const asyncHandler = (fn: (req: Request, res: Response, next?: NextFunction) => 
 router.post('/signin', asyncHandler(signinHandler))
 router.post('/signup', asyncHandler(signupHandler))
 router.post('/verify-otp', asyncHandler(verifyOtpHandler))
+router.post('/verify-email', asyncHandler(verifyEmailHandler))
+router.post('/resend-verification', asyncHandler(resendVerificationHandler))
 router.get('/callback', asyncHandler(callbackHandler))
 router.get('/session', asyncHandler(sessionHandler))
 router.post('/signout', asyncHandler(signoutHandler))

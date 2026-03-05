@@ -9,7 +9,7 @@ interface AdminUser {
 interface AdminState {
   user: AdminUser | null
   isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, otp: string, userData?: any) => Promise<void>
   logout: () => void
 }
 

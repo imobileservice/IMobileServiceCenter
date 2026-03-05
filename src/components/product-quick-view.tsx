@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, ShoppingCart, Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useCartStore, type CartItem } from "@/lib/store"
+import { formatCurrency } from "@/lib/utils/currency"
 
 interface ProductQuickViewProps {
   product: {
@@ -86,8 +87,8 @@ export default function ProductQuickView({ product, onClose }: ProductQuickViewP
                 <h2 className="text-3xl font-bold mb-4">{product.name}</h2>
 
                 <div className="mb-6">
-                  <p className="text-4xl font-bold text-primary mb-2">${product.price.toFixed(2)}</p>
-                  <p className="text-muted-foreground">Free shipping on orders over $500</p>
+                  <p className="text-4xl font-bold text-primary mb-2">{formatCurrency(product.price)}</p>
+                  <p className="text-muted-foreground">Free shipping on orders over Rs. 15,000</p>
                 </div>
 
                 <div className="space-y-3 mb-6">

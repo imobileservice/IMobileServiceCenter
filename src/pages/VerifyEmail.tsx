@@ -9,6 +9,7 @@ import { Mail, ArrowLeft, RefreshCw, CheckCircle2, AlertCircle } from "lucide-re
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { authService } from "@/lib/supabase/services/auth"
+import { getApiUrl } from "@/lib/utils/api"
 import { toast } from "sonner"
 
 function VerifyEmailContent() {
@@ -59,7 +60,26 @@ function VerifyEmailContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, token: verificationCode, type: 'signup' }),
       })
-      const data = await res.json()
+      
+      // Check content type before parsing JSON
+      const contentType = res.headers.get('content-type')
+      let data: any = {}
+      
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          data = await res.json()
+        } catch (jsonError) {
+          // If JSON parsing fails, try to get text for debugging
+          const text = await res.text().catch(() => 'Unknown error')
+          console.error('Failed to parse JSON response:', text)
+          throw new Error(`Server returned invalid JSON: ${text.substring(0, 100)}`)
+        }
+      } else {
+        // Server returned non-JSON (probably HTML error page)
+        const text = await res.text().catch(() => 'Unknown error')
+        console.error('Server returned non-JSON response:', text.substring(0, 200))
+        throw new Error(`Server error: Received ${contentType || 'unknown'} instead of JSON. Please check your server configuration.`)
+      }
 
       if (!res.ok) {
         throw new Error(data?.error || 'Verification failed')

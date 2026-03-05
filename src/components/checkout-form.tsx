@@ -2,18 +2,22 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useAuthStore } from "@/lib/store"
+import { authService } from "@/lib/supabase/services/auth"
+import { accountService } from "@/lib/supabase/services/account"
 
 interface CheckoutFormProps {
   step: number
   onNext: () => void
   onPrevious: () => void
-  onComplete: () => void
+  onComplete: (orderData: any) => void
 }
 
 export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: CheckoutFormProps) {
+  const user = useAuthStore((state) => state.user)
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -21,19 +25,73 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
     addressLine1: "",
     addressLine2: "",
     postalCode: "",
+    city: "",
     alternateNumber: "",
-    paymentMethod: "cash",
+    paymentMethod: "cash_on_delivery",
   })
+  const [loading, setLoading] = useState(false)
+
+  // Auto-load profile data when component mounts
+  useEffect(() => {
+    const loadProfileData = async () => {
+      if (!user) return
+
+      try {
+        // Load profile
+        const profile = await authService.getProfile(user.id)
+        if (profile) {
+          setFormData(prev => ({
+            ...prev,
+            fullName: profile.name || user.name || prev.fullName,
+            email: user.email || profile.email || prev.email,
+            whatsapp: profile.whatsapp || user.whatsapp || prev.whatsapp,
+          }))
+        }
+
+        // Load default address
+        const addresses = await accountService.listAddresses()
+        const defaultAddress = addresses?.find((a: any) => a.is_default) || addresses?.[0]
+        if (defaultAddress) {
+          setFormData(prev => ({
+            ...prev,
+            addressLine1: defaultAddress.address_line1 || prev.addressLine1,
+            addressLine2: defaultAddress.address_line2 || prev.addressLine2,
+            postalCode: defaultAddress.postal_code || prev.postalCode,
+            city: defaultAddress.city || prev.city,
+          }))
+        }
+      } catch (error) {
+        console.error("Failed to load profile data:", error)
+      }
+    }
+
+    loadProfileData()
+  }, [user])
+
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
+    console.log('[CheckoutForm] handleChange:', name, value)
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handlePaymentChange = (method: string) => {
+    console.log('[CheckoutForm] Payment method changed to:', method)
+    setFormData((prev) => ({ ...prev, paymentMethod: method }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (step === 3) {
-      onComplete()
+      setLoading(true)
+      try {
+        // Pass form data to parent for order creation
+        await onComplete(formData)
+      } catch (error) {
+        console.error("Order creation failed:", error)
+      } finally {
+        setLoading(false)
+      }
     } else {
       onNext()
     }
@@ -70,13 +128,13 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
           </div>
 
           <div>
-            <label className="block text-sm font-semibold mb-2">WhatsApp Number</label>
+            <label className="block text-sm font-semibold mb-2">Phone Number</label>
             <Input
               type="tel"
               name="whatsapp"
               value={formData.whatsapp}
               onChange={handleChange}
-              placeholder="+1 (555) 123-4567"
+              placeholder="+94 77 123 4567"
               required
             />
           </div>
@@ -104,16 +162,29 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold mb-2">Postal Code</label>
-            <Input
-              type="text"
-              name="postalCode"
-              value={formData.postalCode}
-              onChange={handleChange}
-              placeholder="10001"
-              required
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold mb-2">City</label>
+              <Input
+                type="text"
+                name="city"
+                value={formData.city}
+                onChange={handleChange}
+                placeholder="New York"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-2">Postal Code</label>
+              <Input
+                type="text"
+                name="postalCode"
+                value={formData.postalCode}
+                onChange={handleChange}
+                placeholder="10001"
+                required
+              />
+            </div>
           </div>
 
           <div>
@@ -134,13 +205,16 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
           <h2 className="text-2xl font-bold mb-6">Payment Method</h2>
 
           <div className="space-y-3">
-            <label className="flex items-center p-4 border border-border rounded-lg cursor-pointer hover:bg-muted transition-colors">
+            <label
+              className={`flex items-center p-4 border rounded-lg cursor-pointer hover:bg-muted transition-colors ${formData.paymentMethod === "cash_on_delivery" ? "border-primary bg-muted" : "border-border"}`}
+              onClick={() => handlePaymentChange("cash_on_delivery")}
+            >
               <input
                 type="radio"
                 name="paymentMethod"
-                value="cash"
-                checked={formData.paymentMethod === "cash"}
-                onChange={handleChange}
+                value="cash_on_delivery"
+                checked={formData.paymentMethod === "cash_on_delivery"}
+                readOnly
                 className="w-4 h-4"
               />
               <span className="ml-3">
@@ -149,18 +223,21 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
               </span>
             </label>
 
-            <label className="flex items-center p-4 border border-border rounded-lg cursor-pointer hover:bg-muted transition-colors">
+            <label
+              className={`flex items-center p-4 border rounded-lg cursor-pointer hover:bg-muted transition-colors ${formData.paymentMethod === "visit_shop" ? "border-primary bg-muted" : "border-border"}`}
+              onClick={() => handlePaymentChange("visit_shop")}
+            >
               <input
                 type="radio"
                 name="paymentMethod"
-                value="shop"
-                checked={formData.paymentMethod === "shop"}
-                onChange={handleChange}
+                value="visit_shop"
+                checked={formData.paymentMethod === "visit_shop"}
+                readOnly
                 className="w-4 h-4"
               />
               <span className="ml-3">
-                <span className="font-semibold">Book & Pay at Shop</span>
-                <p className="text-sm text-muted-foreground">Reserve and pay at our store</p>
+                <span className="font-semibold">Visit Shop & Pay</span>
+                <p className="text-sm text-muted-foreground">Visit our store to complete payment</p>
               </span>
             </label>
           </div>
@@ -189,7 +266,7 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
             <div className="flex justify-between pb-3 border-b border-border">
               <span className="text-muted-foreground">Payment:</span>
               <span className="font-semibold capitalize">
-                {formData.paymentMethod === "cash" ? "Cash on Delivery" : "Book & Pay at Shop"}
+                {formData.paymentMethod === "cash_on_delivery" ? "Cash on Delivery" : "Visit Shop & Pay"}
               </span>
             </div>
           </div>
@@ -207,8 +284,8 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
             Previous
           </Button>
         )}
-        <Button type="submit" className="flex-1">
-          {step === 3 ? "Place Order" : "Next"}
+        <Button type="submit" className="flex-1" disabled={loading}>
+          {loading ? "Processing..." : step === 3 ? "Place Order" : "Next"}
         </Button>
       </div>
     </form>

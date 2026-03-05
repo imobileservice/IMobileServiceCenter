@@ -2,70 +2,79 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Link } from "react-router-dom"
-
-interface HeroSlide {
-  id: string
-  brand: string
-  title: string
-  subtitle: string
-  image: string
-  image2?: string
-  link: string
-}
-
-const HERO_SLIDES: HeroSlide[] = [
-  {
-    id: "1",
-    brand: "Apple",
-    title: "iPhone 16 Pro",
-    subtitle: "Hello, Apple Intelligence.",
-    image: "/iphone-15-pro-max.png",
-    image2: "/iphone-15-pro-max-2.jpg",
-    link: "/shop?brand=Apple",
-  },
-  {
-    id: "2",
-    brand: "Samsung",
-    title: "Galaxy S24 Ultra",
-    subtitle: "Experience the future of smartphones.",
-    image: "/samsung-galaxy-s24-ultra.png",
-    image2: "/samsung-galaxy-s24-ultra-2.jpg",
-    link: "/shop?brand=Samsung",
-  },
-  {
-    id: "3",
-    brand: "OnePlus",
-    title: "OnePlus 12",
-    subtitle: "Never Settle for less.",
-    image: "/oneplus-12-smartphone.jpg",
-    image2: "/oneplus-12-2.jpg",
-    link: "/shop?brand=OnePlus",
-  },
-]
+import { heroSlidesService, type HeroSlide } from "@/lib/supabase/services/hero-slides"
+import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
 
 export default function HeroSection() {
   const [currentSlide, setCurrentSlide] = useState(0)
+  const [slides, setSlides] = useState<HeroSlide[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const loadSlides = async (silent: boolean = false) => {
+    try {
+      if (!silent) {
+        setLoading(true)
+      }
+      console.log('[HeroSection] Loading slides...')
+      const data = await heroSlidesService.getAll()
+      console.log('[HeroSection] Slides loaded:', data?.length || 0)
+      setSlides(data || [])
+      
+      // Reset to first slide if current slide is out of bounds
+      if (data && data.length > 0 && currentSlide >= data.length) {
+        setCurrentSlide(0)
+      }
+    } catch (error: any) {
+      console.error('[HeroSection] Failed to load slides:', error)
+      if (!silent) {
+        // Show empty state or fallback
+      }
+    } finally {
+      if (!silent) {
+        setLoading(false)
+      }
+    }
+  }
 
   useEffect(() => {
+    loadSlides()
+  }, [])
+
+  // Real-time updates
+  useRealtimeUpdates('hero_slides', 'is_active=eq.true', () => loadSlides(true))
+
+  // Listen for custom events
+  useEffect(() => {
+    const handleUpdate = () => {
+      console.log('[HeroSection] Hero slides update event received')
+      loadSlides(true)
+    }
+    window.addEventListener('heroSlidesUpdated', handleUpdate)
+    return () => window.removeEventListener('heroSlidesUpdated', handleUpdate)
+  }, [])
+
+  useEffect(() => {
+    if (slides.length === 0) return
+
     const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length)
+      setCurrentSlide((prev) => (prev + 1) % slides.length)
     }, 6000) // Auto-advance every 6 seconds
 
     return () => clearInterval(interval)
-  }, [])
+  }, [slides.length])
 
   const goToSlide = (index: number) => {
     setCurrentSlide(index)
   }
 
   const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % HERO_SLIDES.length)
+    setCurrentSlide((prev) => (prev + 1) % slides.length)
   }
 
   const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)
+    setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)
   }
 
   const slideVariants = {
@@ -85,7 +94,28 @@ export default function HeroSection() {
     },
   }
 
-  const currentSlideData = HERO_SLIDES[currentSlide]
+  if (loading) {
+    return (
+      <section className="relative w-full overflow-hidden bg-gray-100 dark:bg-gray-900 py-8 md:py-12 lg:py-16">
+        <div className="max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative w-full h-[450px] sm:h-[550px] md:h-[600px] lg:h-[650px] xl:h-[700px] rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center">
+            <Loader2 className="w-12 h-12 animate-spin text-primary" />
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  if (slides.length === 0) {
+    return null // Don't show hero section if no slides
+  }
+
+  const currentSlideData = slides[currentSlide]
+  const productLink = currentSlideData.product_id 
+    ? `/product/${currentSlideData.product_id}` 
+    : currentSlideData.products?.id 
+      ? `/product/${currentSlideData.products.id}`
+      : '/shop'
 
   return (
     <section className="relative w-full overflow-hidden bg-gray-100 dark:bg-gray-900 py-8 md:py-12 lg:py-16">
@@ -140,17 +170,19 @@ export default function HeroSection() {
                       </motion.h1>
 
                       {/* Subtitle with Glow Effect */}
-                      <motion.p
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.6, delay: 0.2 }}
-                        className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-white/90 font-medium"
-                        style={{
-                          textShadow: "0 0 15px rgba(255, 255, 255, 0.25), 0 0 30px rgba(255, 255, 255, 0.15)",
-                        }}
-                      >
-                        {currentSlideData.subtitle}
-                      </motion.p>
+                      {currentSlideData.subtitle && (
+                        <motion.p
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.6, delay: 0.2 }}
+                          className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-white/90 font-medium"
+                          style={{
+                            textShadow: "0 0 15px rgba(255, 255, 255, 0.25), 0 0 30px rgba(255, 255, 255, 0.15)",
+                          }}
+                        >
+                          {currentSlideData.subtitle}
+                        </motion.p>
+                      )}
 
                       {/* CTA Button */}
                       <motion.div
@@ -160,7 +192,7 @@ export default function HeroSection() {
                         className="pt-4"
                       >
                         <Link
-                          to={currentSlideData.link}
+                          to={productLink}
                           className="inline-block px-6 sm:px-8 py-3 sm:py-4 bg-white text-gray-900 font-semibold rounded-full hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                         >
                           Shop Now
@@ -183,7 +215,7 @@ export default function HeroSection() {
                           className="relative w-full h-full"
                         >
                           <img
-                            src={currentSlideData.image}
+                            src={currentSlideData.image || "/placeholder.svg"}
                             alt={currentSlideData.title}
                             className="object-contain w-full h-full"
                           />
@@ -215,37 +247,43 @@ export default function HeroSection() {
           </AnimatePresence>
 
           {/* Navigation Arrows */}
-          <button
-            onClick={prevSlide}
-            className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 flex items-center justify-center transition-all duration-300 hover:scale-110"
-            aria-label="Previous slide"
-          >
-            <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-          </button>
+          {slides.length > 1 && (
+            <>
+              <button
+                onClick={prevSlide}
+                className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 flex items-center justify-center transition-all duration-300 hover:scale-110"
+                aria-label="Previous slide"
+              >
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </button>
 
-          <button
-            onClick={nextSlide}
-            className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/20 hover:bg-black/30 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-sm border border-white/20 flex items-center justify-center transition-all duration-300 hover:scale-110"
-            aria-label="Next slide"
-          >
-            <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-          </button>
+              <button
+                onClick={nextSlide}
+                className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-black/20 hover:bg-black/30 dark:bg-white/10 dark:hover:bg-white/20 backdrop-blur-sm border border-white/20 flex items-center justify-center transition-all duration-300 hover:scale-110"
+                aria-label="Next slide"
+              >
+                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </button>
+            </>
+          )}
 
           {/* Slide Indicators */}
-          <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2">
-            {HERO_SLIDES.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goToSlide(index)}
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  index === currentSlide
-                    ? "w-8 bg-white"
-                    : "w-2 bg-white/40 hover:bg-white/60"
-                }`}
-                aria-label={`Go to slide ${index + 1}`}
-              />
-            ))}
-          </div>
+          {slides.length > 1 && (
+            <div className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+              {slides.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => goToSlide(index)}
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    index === currentSlide
+                      ? "w-8 bg-white"
+                      : "w-2 bg-white/40 hover:bg-white/60"
+                  }`}
+                  aria-label={`Go to slide ${index + 1}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </section>

@@ -1,10 +1,13 @@
 "use client"
 
-import { useState, memo } from "react"
-import { Link } from "react-router-dom"
+import { useState, memo, useEffect } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import { Plus, Minus } from "lucide-react"
-import { useCartStore, type CartItem } from "@/lib/store"
+import { useAuthStore } from "@/lib/store"
+import { cartService } from "@/lib/supabase/services/cart"
+import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
+import { formatCurrency } from "@/lib/utils/currency"
 
 interface ProductCardProps {
   id: string
@@ -18,49 +21,207 @@ interface ProductCardProps {
 }
 
 function ProductCard({ id, name, price, image, condition, discount, specs, onQuickView }: ProductCardProps) {
+  const navigate = useNavigate()
   const [isHovered, setIsHovered] = useState(false)
-  const cartItems = useCartStore((state) => state.items)
-  const addToCart = useCartStore((state) => state.addToCart)
-  const updateQuantity = useCartStore((state) => state.updateQuantity)
-  const removeFromCart = useCartStore((state) => state.removeFromCart)
+  const [quantity, setQuantity] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const user = useAuthStore((state) => state.user)
 
-  const cartItem = cartItems.find((item) => item.id === id)
-  const quantity = cartItem?.quantity || 0
+  // Load cart quantity for this product (non-blocking)
+  useEffect(() => {
+    if (!user) {
+      setQuantity(0)
+      return
+    }
+
+    const loadCartQuantity = async () => {
+      try {
+        // Use a shorter timeout for quantity check (non-critical)
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Quantity check timeout')), 5000)
+        )
+        
+        const itemsPromise = cartService.getCartItems(user.id)
+        const items = await Promise.race([itemsPromise, timeoutPromise])
+        const item = items?.find((item: any) => item.product_id === id)
+        setQuantity(item?.quantity || 0)
+      } catch (error) {
+        // Silently fail - quantity check is non-critical
+        // User can still add to cart even if quantity check fails
+        setQuantity(0)
+      }
+    }
+
+    loadCartQuantity()
+  }, [user, id])
+
   const isInCart = quantity > 0
 
   const originalPrice = discount ? Math.round(price / (1 - discount / 100)) : null
 
-  const handleAddToCart = (e: React.MouseEvent) => {
+  const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    const item: CartItem = {
-      id,
-      name,
-      price,
-      image,
-      quantity: 1,
-      condition,
+
+    console.log('[ProductCard] Add to cart clicked', { userId: user?.id, productId: id, loading })
+
+    if (!user) {
+      console.warn('[ProductCard] No user found, redirecting to signin')
+      toast.error("Please sign in to add items to cart")
+      navigate("/signin")
+      return
     }
-    addToCart(item)
+
+    if (loading) {
+      console.log('[ProductCard] Already loading, ignoring click')
+      return
+    }
+
+    try {
+      setLoading(true)
+      console.log('[ProductCard] Starting add to cart...', { userId: user.id, productId: id })
+      
+      // Use a timeout for add to cart operation
+      const addItemPromise = cartService.addItem(user.id, id, 1)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Add to cart timeout - please try again')), 10000)
+      )
+      
+      const result = await Promise.race([addItemPromise, timeoutPromise])
+      console.log('[ProductCard] Add to cart successful:', result)
+      
+      setQuantity(prev => {
+        const newQuantity = prev + 1
+        console.log('[ProductCard] Updated quantity:', { prev, newQuantity })
+        return newQuantity
+      })
+      
+      toast.success("Added to cart")
+      
+      // Trigger cart count update
+      window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { timestamp: Date.now() } }))
+      console.log('[ProductCard] Cart update event dispatched')
+    } catch (error: any) {
+      console.error("[ProductCard] Failed to add to cart:", error)
+      console.error("[ProductCard] Error details:", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
+      
+      const errorMessage = error.message || "Failed to add to cart"
+      const displayMessage = errorMessage.includes('timeout') 
+        ? "Request timed out. Please check your connection and try again." 
+        : errorMessage.includes('Unauthorized')
+        ? "Please sign in to add items to cart"
+        : errorMessage
+        
+      toast.error(displayMessage)
+    } finally {
+      setLoading(false)
+      console.log('[ProductCard] Add to cart finished, loading set to false')
+    }
   }
 
-  const handleIncrement = (e: React.MouseEvent) => {
+  const handleIncrement = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (cartItem) {
-      updateQuantity(id, quantity + 1)
-    } else {
-      handleAddToCart(e)
+
+    if (!user) {
+      toast.error("Please sign in to update cart")
+      navigate("/signin")
+      return
+    }
+
+    if (loading) return
+
+    try {
+      setLoading(true)
+      
+      // Find the cart item ID with timeout
+      const getItemsPromise = cartService.getCartItems(user.id)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Get cart timeout')), 8000)
+      )
+      
+      const items = await Promise.race([getItemsPromise, timeoutPromise])
+      const item = items?.find((item: any) => item.product_id === id)
+      
+      if (item) {
+        const updatePromise = cartService.updateQuantity(user.id, item.id, quantity + 1)
+        const updateTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Update cart timeout')), 8000)
+        )
+        
+        await Promise.race([updatePromise, updateTimeout])
+        setQuantity(prev => prev + 1)
+        
+        // Trigger cart count update
+        window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { timestamp: Date.now() } }))
+      } else {
+        await handleAddToCart(e)
+      }
+    } catch (error: any) {
+      console.error("Failed to update cart:", error)
+      const errorMessage = error.message || "Failed to update cart"
+      toast.error(errorMessage.includes('timeout') ? "Request timed out. Please try again." : errorMessage)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleDecrement = (e: React.MouseEvent) => {
+  const handleDecrement = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (quantity > 1) {
-      updateQuantity(id, quantity - 1)
-    } else {
-      removeFromCart(id)
+
+    if (!user) {
+      toast.error("Please sign in to update cart")
+      navigate("/signin")
+      return
+    }
+
+    if (loading) return
+
+    try {
+      setLoading(true)
+      
+      // Find the cart item ID with timeout
+      const getItemsPromise = cartService.getCartItems(user.id)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Get cart timeout')), 8000)
+      )
+      
+      const items = await Promise.race([getItemsPromise, timeoutPromise])
+      const item = items?.find((item: any) => item.product_id === id)
+      
+      if (item) {
+        if (quantity > 1) {
+          const updatePromise = cartService.updateQuantity(user.id, item.id, quantity - 1)
+          const updateTimeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Update cart timeout')), 8000)
+          )
+          
+          await Promise.race([updatePromise, updateTimeout])
+          setQuantity(prev => prev - 1)
+        } else {
+          const removePromise = cartService.removeItem(user.id, item.id)
+          const removeTimeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Remove cart timeout')), 8000)
+          )
+          
+          await Promise.race([removePromise, removeTimeout])
+          setQuantity(0)
+        }
+        
+        // Trigger cart count update
+        window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { timestamp: Date.now() } }))
+      }
+    } catch (error: any) {
+      console.error("Failed to update cart:", error)
+      const errorMessage = error.message || "Failed to update cart"
+      toast.error(errorMessage.includes('timeout') ? "Request timed out. Please try again." : errorMessage)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -171,33 +332,49 @@ function ProductCard({ id, name, price, image, condition, discount, specs, onQui
           >
             {originalPrice && (
               <span className="text-xs text-gray-400 dark:text-gray-500 line-through">
-                ${originalPrice.toFixed(2)}
+                {formatCurrency(originalPrice)}
               </span>
             )}
             <span className="text-lg font-bold text-gray-900 dark:text-white">
-              ${price.toFixed(2)}
+              {formatCurrency(price)}
             </span>
           </motion.div>
         </div>
       </Link>
 
-      {/* Add to Cart / Quantity Selector - Hidden on mobile, shown on hover for desktop */}
-      <div className="px-3 sm:px-4 pb-3 sm:pb-4 hidden sm:block">
+      {/* Add to Cart / Quantity Selector - Always visible */}
+      <div className="px-3 sm:px-4 pb-3 sm:pb-4 relative z-20" onClick={(e) => e.stopPropagation()}>
         <AnimatePresence mode="wait" initial={false}>
           {!isInCart ? (
             <motion.button
               key="add-button"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: isHovered ? 1 : 0.7, scale: 1 }}
+              initial={{ opacity: 1, scale: 1 }}
+              animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.3 }}
-              onClick={handleAddToCart}
-              className="w-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full px-4 py-2.5 flex items-center justify-between transition-colors duration-200 group"
+              transition={{ duration: 0.2 }}
+              onClick={(e) => {
+                console.log('[ProductCard] Button clicked directly', { productId: id, userId: user?.id, loading })
+                e.preventDefault()
+                e.stopPropagation()
+                if (!loading) {
+                  handleAddToCart(e)
+                }
+              }}
+              disabled={loading}
+              type="button"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-4 py-2.5 flex items-center justify-center gap-2 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed relative z-30 shadow-sm hover:shadow-md"
             >
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Add</span>
-              <div className="w-7 h-7 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
-              </div>
+              {loading ? (
+                <>
+                  <span className="text-sm">Adding...</span>
+                  <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" strokeWidth={2.5} />
+                  <span className="text-sm">Add to Cart</span>
+                </>
+              )}
             </motion.button>
           ) : (
             <motion.div
@@ -212,7 +389,8 @@ function ProductCard({ id, name, price, image, condition, discount, specs, onQui
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={handleDecrement}
-                className="w-8 h-8 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow"
+                disabled={loading}
+                className="w-8 h-8 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Minus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
               </motion.button>
@@ -232,7 +410,8 @@ function ProductCard({ id, name, price, image, condition, discount, specs, onQui
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={handleIncrement}
-                className="w-8 h-8 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow"
+                disabled={loading}
+                className="w-8 h-8 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
               </motion.button>

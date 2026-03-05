@@ -32,15 +32,63 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
     auth: { persistSession: false, autoRefreshToken: false }
   })
 
+  // Convert category slug to category_id if category is provided
+  let productData: any = { ...req.body }
+  const imageUrls = productData.images || (productData.image ? [productData.image] : [])
+
+  // Remove old image fields (they're stored in product_images table now)
+  delete productData.image
+  delete productData.images
+
+  if (productData.category && !productData.category_id) {
+    // Get category_id from slug
+    const { data: categoryData, error: categoryError } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', productData.category)
+      .single()
+
+    if (categoryError || !categoryData) {
+      return res.status(400).json({
+        error: `Category not found: ${productData.category}`
+      })
+    }
+
+    productData.category_id = categoryData.id
+    // Remove the category slug field as it's not a column in the products table
+    delete productData.category
+  }
+
+  // Insert product (without image fields)
   const { data, error } = await supabase
     .from('products')
-    .insert(req.body)
+    .insert(productData)
     .select()
     .single()
 
   if (error) {
     console.error('Error creating product:', error)
     return res.status(500).json({ error: error.message })
+  }
+
+  // Insert images into product_images table
+  if (imageUrls.length > 0 && data?.id) {
+    const imageInserts = imageUrls.map((url: string, index: number) => ({
+      product_id: data.id,
+      url: url,
+      display_order: index,
+      is_primary: index === 0,
+      alt_text: `${productData.name} image ${index + 1}`,
+    }))
+
+    const { error: imagesError } = await supabase
+      .from('product_images')
+      .insert(imageInserts)
+
+    if (imagesError) {
+      console.error('Error inserting product images:', imagesError)
+      // Don't fail the request, just log the error
+    }
   }
 
   return res.json({ data })
@@ -64,9 +112,37 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
 
   const { id } = req.params
 
+  // Convert category slug to category_id if category is provided
+  let updateData: any = { ...req.body }
+  const imageUrls = updateData.images || (updateData.image ? [updateData.image] : undefined)
+
+  // Remove old image fields (they're stored in product_images table now)
+  delete updateData.image
+  delete updateData.images
+
+  if (updateData.category && !updateData.category_id) {
+    // Get category_id from slug
+    const { data: categoryData, error: categoryError } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', updateData.category)
+      .single()
+
+    if (categoryError || !categoryData) {
+      return res.status(400).json({
+        error: `Category not found: ${updateData.category}`
+      })
+    }
+
+    updateData.category_id = categoryData.id
+    // Remove the category slug field as it's not a column in the products table
+    delete updateData.category
+  }
+
+  // Update product (without image fields)
   const { data, error } = await supabase
     .from('products')
-    .update(req.body)
+    .update(updateData)
     .eq('id', id)
     .select()
     .single()
@@ -74,6 +150,35 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
   if (error) {
     console.error('Error updating product:', error)
     return res.status(500).json({ error: error.message })
+  }
+
+  // Update images in product_images table if provided
+  if (imageUrls !== undefined && data?.id) {
+    // Delete existing images
+    await supabase
+      .from('product_images')
+      .delete()
+      .eq('product_id', id)
+
+    // Insert new images
+    if (imageUrls.length > 0) {
+      const imageInserts = imageUrls.map((url: string, index: number) => ({
+        product_id: id,
+        url: url,
+        display_order: index,
+        is_primary: index === 0,
+        alt_text: `${updateData.name || data.name} image ${index + 1}`,
+      }))
+
+      const { error: imagesError } = await supabase
+        .from('product_images')
+        .insert(imageInserts)
+
+      if (imagesError) {
+        console.error('Error updating product images:', imagesError)
+        // Don't fail the request, just log the error
+      }
+    }
   }
 
   return res.json({ data })
@@ -133,6 +238,8 @@ export const updateOrderStatusHandler = asyncHandler(async (req: Request, res: R
     return res.status(400).json({ error: 'Status is required' })
   }
 
+  console.log(`[Admin] Updating order status: ${id} -> ${status}`)
+
   const { data, error } = await supabase
     .from('orders')
     .update({ status })
@@ -143,6 +250,11 @@ export const updateOrderStatusHandler = asyncHandler(async (req: Request, res: R
   if (error) {
     console.error('Error updating order status:', error)
     return res.status(500).json({ error: error.message })
+  }
+
+  if (!data) {
+    console.error(`[Admin] Order not found for update: ${id}`)
+    return res.status(404).json({ error: 'Order not found' })
   }
 
   return res.json({ data })
