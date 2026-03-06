@@ -94,7 +94,7 @@ export async function sessionHandler(req: Request, res: Response) {
               res.cookie(name, value, {
                 ...options,
                 httpOnly: options?.httpOnly ?? true,
-                sameSite: options?.sameSite ?? 'lax',
+                sameSite: options?.sameSite ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax'),
                 secure: process.env.NODE_ENV === 'production',
                 path: '/',
               })
