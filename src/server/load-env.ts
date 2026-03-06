@@ -1,11 +1,25 @@
-import dotenv from 'dotenv'
-import path from 'path'
+import * as dotenv from 'dotenv'
+import * as path from 'path'
+import * as fs from 'fs'
 
-// Load environment variables from .env file and override existing process.env values
-// This is critical on Railway to bypass stale dashboard variables
-dotenv.config({
-    path: path.resolve(process.cwd(), '.env'),
-    override: true
-})
+try {
+    const envPath = path.resolve(process.cwd(), '.env')
+    console.log(`🔍 Checking for .env at: ${envPath}`)
 
-console.log('✨ Environment variables loaded and overridden from .env')
+    if (fs.existsSync(envPath)) {
+        const result = dotenv.config({
+            path: envPath,
+            override: true
+        })
+
+        if (result.error) {
+            console.error('❌ Error loading .env file:', result.error)
+        } else {
+            console.log('✨ Environment variables successfully overridden from .env')
+        }
+    } else {
+        console.warn('⚠️ No .env file found at root, using existing environment variables')
+    }
+} catch (err) {
+    console.error('❌ Critical error in load-env:', err)
+}
