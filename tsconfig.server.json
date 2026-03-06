@@ -1,22 +1,28 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "commonjs",
+    "lib": [
+      "es2020",
+      "dom"
+    ],
+    "allowJs": true,
     "target": "ES2020",
-    "outDir": "./dist-server",
-    "noEmit": false,
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "strict": false,
+    "noEmit": false,
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "outDir": "./dist-server",
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "."
   },
   "include": [
     "src/server/**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "dist-server"
   ]
 }

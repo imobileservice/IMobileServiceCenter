@@ -53,29 +53,17 @@ export function clearSupabaseCache() {
 }
 
 export function createClient() {
-  // Helper to safely get env vars from either import.meta.env (Vite) or process.env (Node)
-  const getEnv = (key: string) => {
-    // Check Vite env first (with typeof guard to prevent Node errors)
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-      const val = (import.meta as any).env[key]
-      if (val !== undefined) return val
-    }
-    // Fallback to Node process.env (with typeof guard to prevent browser errors)
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env[key]
-    }
-    return undefined
-  }
-
+  // Read env vars via process.env — Vite replaces these at build time via vite.config.ts define.
+  // Node.js reads them natively. No import.meta needed — safe for both environments.
   const supabaseUrl =
-    getEnv('VITE_SUPABASE_URL') ||
-    getEnv('NEXT_PUBLIC_SUPABASE_URL') ||
-    getEnv('SUPABASE_URL')
+    process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL
 
   const supabaseAnonKey =
-    getEnv('VITE_SUPABASE_ANON_KEY') ||
-    getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
-    getEnv('SUPABASE_ANON_KEY')
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY
 
   // Validate environment variables
   if (!supabaseUrl || !supabaseAnonKey) {
