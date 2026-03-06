@@ -71,7 +71,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const newState = { user, isAuthenticated: !!user }
     set(newState)
     console.log('[AuthStore] setUser called:', newState)
-    
+
     // Expose to window for debugging
     if (typeof window !== 'undefined') {
       (window as any).__AUTH_STORE_DEBUG__ = {
@@ -97,52 +97,52 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       console.log('[AuthStore] ⏭️ Initialization already in progress, skipping...')
       return
     }
-    
+
     // Prevent re-initialization if user is already set
     const currentState = get()
     if (currentState.user && currentState.isAuthenticated) {
       console.log('[AuthStore] ⏭️ Skipping initialization - user already authenticated:', currentState.user.id)
       return
     }
-    
+
     isInitializing = true
     try {
       console.log('[AuthStore] Initializing auth state...')
       const { createClient } = await import('./supabase/client')
       const { authService } = await import('./supabase/services/auth')
       const supabase = createClient()
-      
+
       // Strategy: Check backend database first using stored token, then fallback to localStorage
       // This avoids hanging on getSession() which might timeout
-      
+
       console.log('[AuthStore] Checking backend database for session...')
       try {
         // Get stored session token from localStorage
-        const storedToken = typeof window !== 'undefined' 
+        const storedToken = typeof window !== 'undefined'
           ? localStorage.getItem('supabase_session_token')
           : null
-        
+
         const headers: HeadersInit = {
           'Content-Type': 'application/json',
         }
-        
+
         // Add token to header if available
         if (storedToken) {
           headers['x-session-token'] = storedToken
         }
-        
+
         const response = await fetch(getApiUrl('/api/auth/session' + (storedToken ? `?token=${encodeURIComponent(storedToken)}` : '')), {
           method: 'GET',
           headers,
           credentials: 'include',
           cache: 'no-store',
         })
-        
+
         if (response.ok) {
           const sessionData = await response.json()
           if (sessionData?.user && sessionData?.session) {
             console.log('[AuthStore] ✅ Session found in backend!')
-            
+
             // Update stored token in localStorage
             if (sessionData.session.access_token) {
               try {
@@ -153,7 +153,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
                 // Ignore localStorage errors
               }
             }
-            
+
             // Set user state IMMEDIATELY (don't wait for setSession)
             // This ensures the user is logged in even if setSession fails
             let userState = {
@@ -162,14 +162,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               email: sessionData.user.email || '',
               whatsapp: '',
             }
-            
+
             // Try to fetch profile (with timeout to prevent hanging)
             try {
               const profilePromise = authService.getProfile(sessionData.user.id)
-              const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Profile fetch timeout')), 2000)
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
               )
-              
+
               const profile = await Promise.race([profilePromise, timeoutPromise]) as any
               if (profile) {
                 userState = {
@@ -183,24 +183,24 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               // Profile fetch failed or timed out - use basic user info
               console.warn('[AuthStore] Profile fetch failed, using basic user info:', profileError.message)
             }
-            
+
             // Set user state - this is the critical part
             const newState = {
               user: userState,
               isAuthenticated: true,
             }
-            
+
             console.log('[AuthStore] 🔄 Setting user state:', newState)
             set(newState)
-            
+
             // Verify state was set
             const verifyState = useAuthStore.getState()
-            console.log('[AuthStore] ✅ User state set! Verification:', { 
-              user: verifyState.user, 
+            console.log('[AuthStore] ✅ User state set! Verification:', {
+              user: verifyState.user,
               isAuthenticated: verifyState.isAuthenticated,
-              userId: verifyState.user?.id 
+              userId: verifyState.user?.id
             })
-            
+
             // Expose to window for debugging
             if (typeof window !== 'undefined') {
               (window as any).__AUTH_STORE_DEBUG__ = {
@@ -210,21 +210,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               }
               console.log('[AuthStore] 💡 Debug: Check window.__AUTH_STORE_DEBUG__ in console')
             }
-            
+
             // Try to set session in Supabase client (non-blocking, fire and forget)
             if (sessionData.session.access_token && sessionData.session.refresh_token) {
               // Fire and forget - don't wait for this
-              ;(async () => {
+              ; (async () => {
                 try {
                   const setSessionPromise = supabase.auth.setSession({
                     access_token: sessionData.session.access_token,
                     refresh_token: sessionData.session.refresh_token,
                   })
-                  
-                  const timeoutPromise = new Promise((_, reject) => 
+
+                  const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Timeout')), 1000)
                   )
-                  
+
                   await Promise.race([setSessionPromise, timeoutPromise])
                   console.log('[AuthStore] ✅ Session also set in Supabase client')
                 } catch (setError: any) {
@@ -235,7 +235,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
                 }
               })()
             }
-            
+
             return // Exit early - user is authenticated
           }
         } else if (response.status === 401) {
@@ -246,24 +246,24 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       } catch (fetchError: any) {
         console.warn('[AuthStore] ⚠️ Backend check failed (non-fatal):', fetchError.message, '- checking localStorage...')
       }
-      
+
       // Fallback: Check localStorage (with timeout)
       console.log('[AuthStore] Checking localStorage for session...')
       try {
         const getSessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout')), 2000)
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout')), 5000)
         )
-        
+
         const { data: { session }, error: sessionError } = await Promise.race([
           getSessionPromise,
           timeoutPromise
         ]) as any
-        
+
         if (sessionError) {
           console.error('[AuthStore] Error getting session:', sessionError)
         }
-        
+
         if (session?.user) {
           console.log('[AuthStore] ✅ Session found in localStorage!')
           try {
@@ -300,7 +300,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           console.warn('[AuthStore] ⚠️ getSession() failed:', err.message)
         }
       }
-      
+
       // No session found anywhere - only reset if we don't already have a user
       const finalState = get()
       if (!finalState.user) {

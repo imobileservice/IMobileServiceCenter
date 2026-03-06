@@ -5,24 +5,21 @@
  * In production: Returns VITE_API_URL if set, otherwise falls back to site URL
  */
 export function getApiBaseUrl(): string {
-  // In development, use relative URLs which will go through Vite proxy
-  if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
-    // Use relative URLs - Vite proxy will handle routing to port 4000
+  // 1. If we're on localhost, use relative URLs (Vite proxy)
+  if (typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     return ''
   }
 
-  // In production, prioritize VITE_API_URL, but fallback to known hardcoded Railway backend URL
-  const apiUrl = import.meta.env.VITE_API_URL || "imobileservicecenter-production.up.railway.app"
-  if (apiUrl) {
-    return apiUrl.startsWith("http") ? apiUrl : `https://${apiUrl}`
+  // 2. In production/deployed environments, prioritize VITE_API_URL
+  const envApiUrl = import.meta.env.VITE_API_URL
+  if (envApiUrl) {
+    return envApiUrl.startsWith("http") ? envApiUrl : `https://${envApiUrl}`
   }
 
-  // Last fallback - use current origin (not ideal for production)
-  if (typeof window !== 'undefined') {
-    return window.location.origin
-  }
-
-  return ''
+  // 3. Absolute Fallback for production: Your known Railway backend URL
+  // This is the most reliable way to prevent hitting the frontend domain
+  return "https://imobileservicecenter-production.up.railway.app"
 }
 
 /**

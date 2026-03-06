@@ -3,6 +3,11 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import path from 'path'
 import apiRouter from './api'
+import dotenv from 'dotenv'
+
+// Load environment variables from .env file and override existing process.env values
+// This is critical on Railway to bypass stale dashboard variables
+dotenv.config({ path: '.env', override: true })
 
 // SURGICAL FIX: Force correct Supabase URL if Railway dashboard has stale/broken ones
 const CORRECT_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
