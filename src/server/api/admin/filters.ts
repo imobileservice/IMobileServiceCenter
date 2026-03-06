@@ -1,20 +1,26 @@
-import { Router } from 'express'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { Router, Request } from 'express'
+import { createServerClient } from '@supabase/ssr'
 
 const router = Router()
 
-// Server-side Supabase client (uses process.env, not import.meta.env)
-function getSupabase() {
+// Server-side Supabase client using @supabase/ssr (same pattern as other server routes)
+function getSupabase(req: Request) {
     const url = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!url || !key) throw new Error('Supabase env vars not configured')
-    return createSupabaseClient(url, key)
+    return createServerClient(url, key, {
+        cookies: {
+            get(name: string) { return (req as any).cookies?.[name] },
+            set() { },
+            remove() { },
+        },
+    })
 }
 
 // Get all filters
 router.get('/', async (req, res) => {
     try {
-        const supabase = getSupabase()
+        const supabase = getSupabase(req)
         const { data, error } = await supabase
             .from('filters')
             .select(`*, categories:filter_categories(category_id)`)
@@ -30,7 +36,7 @@ router.get('/', async (req, res) => {
 // Get filter by ID
 router.get('/:id', async (req, res) => {
     try {
-        const supabase = getSupabase()
+        const supabase = getSupabase(req)
         const { data, error } = await supabase
             .from('filters')
             .select(`*, categories:filter_categories(category_id)`)
@@ -49,7 +55,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
     try {
         const { category_ids, ...filterData } = req.body
-        const supabase = getSupabase()
+        const supabase = getSupabase(req)
         const { data: newFilter, error } = await supabase
             .from('filters')
             .insert(filterData)
@@ -79,7 +85,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { category_ids, ...filterData } = req.body
-        const supabase = getSupabase()
+        const supabase = getSupabase(req)
         const { data: updatedFilter, error } = await supabase
             .from('filters')
             .update(filterData)
@@ -109,7 +115,7 @@ router.put('/:id', async (req, res) => {
 // Delete filter
 router.delete('/:id', async (req, res) => {
     try {
-        const supabase = getSupabase()
+        const supabase = getSupabase(req)
         const { error } = await supabase.from('filters').delete().eq('id', req.params.id)
         if (error) throw error
         res.json({ success: true })
@@ -126,7 +132,7 @@ router.post('/reorder', async (req, res) => {
         if (!Array.isArray(items)) {
             return res.status(400).json({ error: 'Items must be an array' })
         }
-        const supabase = getSupabase()
+        const supabase = getSupabase(req)
         for (const item of items) {
             const { error } = await supabase
                 .from('filters')
