@@ -131,7 +131,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           headers['x-session-token'] = storedToken
         }
 
-        const response = await fetch(getApiUrl('/api/auth/session' + (storedToken ? `?token=${encodeURIComponent(storedToken)}` : '')), {
+        const apiUrl = getApiUrl('/api/auth/session' + (storedToken ? `?token=${encodeURIComponent(storedToken)}` : ''))
+        console.log('[AuthStore] 🌐 Fetching session from:', apiUrl)
+
+        const response = await fetch(apiUrl, {
           method: 'GET',
           headers,
           credentials: 'include',
