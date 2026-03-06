@@ -3,9 +3,7 @@ import { createBrowserClient } from '@supabase/ssr'
 /**
  * Creates a Supabase client for browser/client-side usage.
  * 
- * Uses process.env for environment variable access.
- * Vite automatically replaces process.env.VITE_* at build time.
- * Node.js uses process.env natively.
+ * Uses import.meta.env for environment variable access (Vite handles this natively).
  */
 
 /**
@@ -53,25 +51,22 @@ export function clearSupabaseCache() {
 }
 
 export function createClient() {
-  // Read env vars via process.env — Vite replaces these at build time via vite.config.ts define.
-  // Node.js reads them natively. No import.meta needed — safe for both environments.
+  // Use import.meta.env — Vite statically replaces these at build time
   const supabaseUrl =
-    process.env.VITE_SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.SUPABASE_URL
+    import.meta.env.VITE_SUPABASE_URL ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_URL
 
   const supabaseAnonKey =
-    process.env.VITE_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   // Validate environment variables
   if (!supabaseUrl || !supabaseAnonKey) {
     const errorMsg =
       'Supabase environment variables are not configured.\n\n' +
       'Please check your .env file and ensure:\n' +
-      '1. VITE_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is set\n' +
-      '2. VITE_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY is set\n' +
+      '1. VITE_SUPABASE_URL is set\n' +
+      '2. VITE_SUPABASE_ANON_KEY is set\n' +
       '3. You have restarted your dev server after adding/changing .env\n\n' +
       'Current status:\n' +
       `- SUPABASE_URL: ${supabaseUrl ? '✓ Set' : '✗ Missing'}\n` +
@@ -80,7 +75,7 @@ export function createClient() {
     console.warn(errorMsg)
 
     // In development mode, return a placeholder client to prevent app crash
-    const isDev = process.env.NODE_ENV === 'development'
+    const isDev = import.meta.env.DEV
 
     if (isDev) {
       console.warn('⚠️ Running in development mode without Supabase config. App will load but Supabase features will not work.')

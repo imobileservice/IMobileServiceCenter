@@ -384,7 +384,7 @@ async function searchDuckDuckGo(modelName: string): Promise<Partial<ProductSearc
 
         if (!response.ok) return null
 
-        const data = await response.json()
+        const data: any = await response.json()
 
         const result: Partial<ProductSearchResult> = {}
 
