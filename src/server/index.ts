@@ -5,14 +5,19 @@ import path from 'path'
 import apiRouter from './api'
 
 // SURGICAL FIX: Force correct Supabase URL if Railway dashboard has stale/broken ones
-if (process.env.VITE_SUPABASE_URL?.includes('pjflufiupam') || !process.env.VITE_SUPABASE_URL) {
-  process.env.VITE_SUPABASE_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
-  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
+const CORRECT_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
+const CORRECT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
+
+if (!process.env.VITE_SUPABASE_URL?.includes('jzdsgqdwpmfrrspxpehi')) {
+  process.env.VITE_SUPABASE_URL = CORRECT_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = CORRECT_URL;
+  process.env.SUPABASE_URL = CORRECT_URL;
 }
 
-if (process.env.VITE_SUPABASE_ANON_KEY?.startsWith('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqZmx1Zml1cGFtcGM') || !process.env.VITE_SUPABASE_ANON_KEY) {
-  process.env.VITE_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
+if (!process.env.VITE_SUPABASE_ANON_KEY?.includes('jzdsgqdwpmfrrspxpehi') || !process.env.VITE_SUPABASE_ANON_KEY?.includes('wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc')) {
+  process.env.VITE_SUPABASE_ANON_KEY = CORRECT_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = CORRECT_KEY;
+  process.env.SUPABASE_ANON_KEY = CORRECT_KEY;
 }
 
 const app = express()
