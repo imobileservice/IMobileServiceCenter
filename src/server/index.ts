@@ -1,11 +1,19 @@
-// Load environment variables from .env file immediately
-require('./load-env')
-
 import express from 'express'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import path from 'path'
 import apiRouter from './api'
+
+// SURGICAL FIX: Force correct Supabase URL if Railway dashboard has stale/broken ones
+if (process.env.VITE_SUPABASE_URL?.includes('pjflufiupam') || !process.env.VITE_SUPABASE_URL) {
+  process.env.VITE_SUPABASE_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
+}
+
+if (process.env.VITE_SUPABASE_ANON_KEY?.startsWith('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqZmx1Zml1cGFtcGM') || !process.env.VITE_SUPABASE_ANON_KEY) {
+  process.env.VITE_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
+}
 
 const app = express()
 const PORT = process.env.PORT || 4000
