@@ -1,9 +1,20 @@
-// 1. Load environment variables FIRST before any other imports
-try {
-  require('dotenv').config({ path: '.env', override: true });
-  console.log('✅ Environment variables loaded');
-} catch (e) {
-  console.error('❌ Failed to load dotenv:', e);
+// SURGICAL FIX: Force correct Supabase URL if Railway dashboard has stale/broken ones
+// This MUST be at the very top of the entry point to override variables before other modules load
+const CORRECT_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
+const CORRECT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
+
+if (!process.env.VITE_SUPABASE_URL?.includes('jzdsgqdwpmfrrspxpehi')) {
+  console.log('🔧 Surgical Override: Setting correct Supabase URL');
+  process.env.VITE_SUPABASE_URL = CORRECT_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = CORRECT_URL;
+  process.env.SUPABASE_URL = CORRECT_URL;
+}
+
+if (!process.env.VITE_SUPABASE_ANON_KEY?.includes('jzdsgqdwpmfrrspxpehi') || !process.env.VITE_SUPABASE_ANON_KEY?.includes('wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc')) {
+  console.log('🔧 Surgical Override: Setting correct Supabase Key');
+  process.env.VITE_SUPABASE_ANON_KEY = CORRECT_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = CORRECT_KEY;
+  process.env.SUPABASE_ANON_KEY = CORRECT_KEY;
 }
 
 import express from 'express'
@@ -11,24 +22,6 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import path from 'path'
 import apiRouter from './api'
-
-// SURGICAL FIX: Force correct Supabase URL if Railway dashboard has stale/broken ones
-const CORRECT_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
-const CORRECT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc';
-
-if (!process.env.VITE_SUPABASE_URL?.includes('jzdsgqdwpmfrrspxpehi')) {
-  console.log('🔧 Overriding stale Supabase URL');
-  process.env.VITE_SUPABASE_URL = CORRECT_URL;
-  process.env.NEXT_PUBLIC_SUPABASE_URL = CORRECT_URL;
-  process.env.SUPABASE_URL = CORRECT_URL;
-}
-
-if (!process.env.VITE_SUPABASE_ANON_KEY?.includes('jzdsgqdwpmfrrspxpehi') || !process.env.VITE_SUPABASE_ANON_KEY?.includes('wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc')) {
-  console.log('🔧 Overriding stale Supabase Key');
-  process.env.VITE_SUPABASE_ANON_KEY = CORRECT_KEY;
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = CORRECT_KEY;
-  process.env.SUPABASE_ANON_KEY = CORRECT_KEY;
-}
 
 const app = express()
 const PORT = process.env.PORT || 4000
