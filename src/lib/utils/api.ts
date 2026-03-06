@@ -10,24 +10,18 @@ export function getApiBaseUrl(): string {
     // Use relative URLs - Vite proxy will handle routing to port 4000
     return ''
   }
-  
-  // In production, prioritize VITE_API_URL (for Cloudflare Tunnel or custom backend)
-  const apiUrl = import.meta.env.VITE_API_URL
+
+  // In production, prioritize VITE_API_URL, but fallback to known hardcoded Railway backend URL
+  const apiUrl = import.meta.env.VITE_API_URL || "imobileservicecenter-production.up.railway.app"
   if (apiUrl) {
     return apiUrl.startsWith("http") ? apiUrl : `https://${apiUrl}`
-  }
-  
-  // Fallback to site URL if no API URL is configured
-  const envUrl = import.meta.env.VITE_SITE_URL || import.meta.env.NEXT_PUBLIC_SITE_URL
-  if (envUrl) {
-    return envUrl.startsWith("http") ? envUrl : `https://${envUrl}`
   }
 
   // Last fallback - use current origin (not ideal for production)
   if (typeof window !== 'undefined') {
     return window.location.origin
   }
-  
+
   return ''
 }
 
@@ -42,17 +36,17 @@ export function getApiUrl(endpoint: string): string {
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint
   }
-  
+
   const apiBase = getApiBaseUrl()
-  
+
   // Ensure endpoint starts with /
   const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
-  
+
   // If we have an API base URL, prepend it
   if (apiBase) {
     return `${apiBase}${normalizedEndpoint}`
   }
-  
+
   // Otherwise return relative URL (for dev/Vite proxy)
   return normalizedEndpoint
 }
