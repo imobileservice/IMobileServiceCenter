@@ -18,6 +18,7 @@ const About = lazy(() => import('./pages/About'))
 const Problem = lazy(() => import('./pages/Problem'))
 const TestSupabase = lazy(() => import('./pages/TestSupabase'))
 const AuthError = lazy(() => import('./pages/AuthError'))
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'))
 const AdminProducts = lazy(() => import('./pages/admin/AdminProducts'))
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories'))
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/problem" element={<Problem />} />
         <Route path="/test-supabase" element={<TestSupabase />} />
         <Route path="/auth/error" element={<AuthError />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/products" element={<AdminProducts />} />

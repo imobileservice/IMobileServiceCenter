@@ -10,11 +10,11 @@ export const authService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, name, whatsapp }),
     })
-    
+
     // Check content type before parsing JSON
     const contentType = res.headers.get('content-type')
     let apiData: any = {}
-    
+
     if (contentType && contentType.includes('application/json')) {
       try {
         apiData = await res.json()
@@ -30,7 +30,7 @@ export const authService = {
       console.error('Server returned non-JSON response:', text.substring(0, 200))
       throw new Error(`Server error: Received ${contentType || 'unknown'} instead of JSON. This usually means the backend server crashed. Check server logs.`)
     }
-    
+
     if (!res.ok) {
       // Preserve the original error message from the API
       console.error('[authService.signUp] API returned error status:', res.status)
@@ -44,7 +44,7 @@ export const authService = {
       }
       throw error
     }
-    
+
     const data = apiData
 
     // If signup returned a session (email confirmations disabled), set client session
@@ -80,7 +80,7 @@ export const authService = {
             // Exponential backoff: 500ms, 1000ms, 2000ms, 4000ms, 8000ms
             const delay = initialDelay * Math.pow(2, i)
             await new Promise(resolve => setTimeout(resolve, delay))
-            
+
             // First, check if profile exists
             try {
               const existingProfile = await this.getProfile(data.user!.id)
@@ -94,12 +94,12 @@ export const authService = {
               }
               continue
             }
-            
+
             // Profile exists, try to update it
             const updates: { name?: string; whatsapp?: string } = {}
             if (name) updates.name = name
             if (whatsapp) updates.whatsapp = whatsapp
-            
+
             await this.updateProfile(data.user!.id, updates)
             console.log('Profile updated successfully with:', updates)
             return // Success, exit retry loop
@@ -119,7 +119,7 @@ export const authService = {
           }
         }
       }
-      
+
       // Don't await this - let it run in background so signup can complete
       updateProfileWithRetry().catch(err => {
         console.error('Background profile update failed:', err)
@@ -173,7 +173,7 @@ export const authService = {
         // Check content type to ensure we're getting JSON
         const contentType = res.headers.get('content-type')
         let apiData: any = {}
-        
+
         if (contentType && contentType.includes('application/json')) {
           try {
             apiData = await res.json()
@@ -189,7 +189,7 @@ export const authService = {
           console.error('Server returned non-JSON response:', text.substring(0, 200))
           throw new Error(`Server error: Received ${contentType || 'unknown'} instead of JSON. This usually means the backend server crashed. Check server logs.`)
         }
-        
+
         // Log the response for debugging
         console.log('[authService.signIn] API response status:', res.status)
         console.log('[authService.signIn] API response data:', {
@@ -226,39 +226,39 @@ export const authService = {
         if (apiData?.session && apiData.session.access_token && apiData.session.refresh_token) {
           console.log('[authService.signIn] Setting client session...')
           const supabase = createClient()
-          
-          // Try to set session with reasonable timeout
-          // If it fails, the backend has the session in cookies, and initialize() will recover it
-          ;(async () => {
-            try {
-              const timeout = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Timeout')), 3000)
-              )
-              
-              const result = await Promise.race([
-                supabase.auth.setSession({
-                  access_token: apiData.session.access_token,
-                  refresh_token: apiData.session.refresh_token,
-                }),
-                timeout
-              ]) as any
-              
-              if (result?.error) {
-                console.warn('[authService.signIn] ⚠️ setSession error:', result.error.message)
-              } else {
-                console.log('[authService.signIn] ✅ Session set and persisted in client')
+
+            // Try to set session with reasonable timeout
+            // If it fails, the backend has the session in cookies, and initialize() will recover it
+            ; (async () => {
+              try {
+                const timeout = new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('Timeout')), 3000)
+                )
+
+                const result = await Promise.race([
+                  supabase.auth.setSession({
+                    access_token: apiData.session.access_token,
+                    refresh_token: apiData.session.refresh_token,
+                  }),
+                  timeout
+                ]) as any
+
+                if (result?.error) {
+                  console.warn('[authService.signIn] ⚠️ setSession error:', result.error.message)
+                } else {
+                  console.log('[authService.signIn] ✅ Session set and persisted in client')
+                }
+              } catch (err: any) {
+                // Non-fatal - session is in backend cookies, will be recovered on refresh
+                if (err.message === 'Timeout') {
+                  console.warn('[authService.signIn] ⚠️ setSession timed out - session will be recovered from backend on refresh')
+                } else {
+                  console.warn('[authService.signIn] ⚠️ setSession failed (non-fatal):', err.message)
+                }
               }
-            } catch (err: any) {
-              // Non-fatal - session is in backend cookies, will be recovered on refresh
-              if (err.message === 'Timeout') {
-                console.warn('[authService.signIn] ⚠️ setSession timed out - session will be recovered from backend on refresh')
-              } else {
-                console.warn('[authService.signIn] ⚠️ setSession failed (non-fatal):', err.message)
-              }
-            }
-          })()
+            })()
         }
-        
+
         // Store access_token in localStorage for database session lookup
         if (apiData?.session?.access_token) {
           try {
@@ -268,7 +268,7 @@ export const authService = {
             console.warn('[authService.signIn] ⚠️ Failed to store token in localStorage:', storageError.message)
           }
         }
-        
+
         console.log('[authService.signIn] ✅ Returning apiData')
         return apiData
       }
@@ -281,19 +281,19 @@ export const authService = {
       console.error("Auth service sign in error:", error)
       console.error("Error type:", error?.constructor?.name)
       console.error("Error message:", error?.message)
-      
+
       // Re-throw with more context if needed
       if (error?.message?.includes("Failed to fetch") || error?.message?.includes("NetworkError") || error?.code === "ECONNREFUSED") {
         const networkError = new Error("Network error: Unable to connect to Supabase. Please check:\n1. Your internet connection\n2. Your Supabase URL is correct in .env.local\n3. Your Supabase project is active (not paused)")
         networkError.name = "NetworkError"
         throw networkError
       }
-      
+
       // If it's already a Supabase error, throw it as-is
       if (error?.status || error?.message) {
         throw error
       }
-      
+
       // Otherwise, wrap it
       throw new Error(error?.message || "Unknown error during sign in")
     }
@@ -306,7 +306,7 @@ export const authService = {
       if (typeof window !== 'undefined') {
         const storedToken = localStorage.getItem('supabase_session_token')
         localStorage.removeItem('supabase_session_token')
-        
+
         // Clear all Supabase-related localStorage items
         const keysToRemove: string[] = []
         for (let i = 0; i < localStorage.length; i++) {
@@ -316,7 +316,7 @@ export const authService = {
           }
         }
         keysToRemove.forEach(key => localStorage.removeItem(key))
-        
+
         // Also delete from database if we have a token
         if (storedToken) {
           // Call backend to delete session from database
@@ -324,14 +324,14 @@ export const authService = {
             method: 'POST',
             headers: { 'x-session-token': storedToken },
             credentials: 'include',
-          }).catch(() => {}) // Ignore errors
+          }).catch(() => { }) // Ignore errors
         }
       }
     } catch (e) {
       // Ignore localStorage errors
       console.warn('Error clearing localStorage during signout:', e)
     }
-    
+
     // Try to sign out from Supabase, but don't fail if it errors (e.g., network issues)
     try {
       const supabase = createClient()
@@ -367,7 +367,7 @@ export const authService = {
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           const payload = await response.json()
           return payload.data
@@ -397,7 +397,7 @@ export const authService = {
     checkout_status?: 'success' | 'pending' | 'cancel'
   }) {
     const supabase = createClient()
-    
+
     // First, try to get the current user to ensure we're authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user || user.id !== userId) {
@@ -421,7 +421,7 @@ export const authService = {
         userId,
         updates,
       })
-      
+
       // If profile doesn't exist, try to create it
       if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
         console.log('Profile does not exist, creating new profile...')
@@ -434,18 +434,18 @@ export const authService = {
           })
           .select()
           .single()
-        
+
         if (insertError) {
           console.error('Failed to create profile:', insertError)
           throw new Error(`Failed to create profile: ${insertError.message}`)
         }
-        
+
         return newProfile
       }
-      
+
       throw error
     }
-    
+
     return data
   },
 
@@ -487,7 +487,7 @@ export const authService = {
       // First, validate Supabase configuration
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      
+
       if (!supabaseUrl || !supabaseKey) {
         throw new Error(
           'Supabase is not configured. Please check your .env file:\n\n' +
@@ -497,7 +497,7 @@ export const authService = {
           'After adding them, restart your development server.'
         )
       }
-      
+
       // Validate URL format
       if (!supabaseUrl.startsWith('https://') || !supabaseUrl.includes('.supabase.co')) {
         throw new Error(
@@ -507,17 +507,17 @@ export const authService = {
           'Get the correct URL from: Supabase Dashboard → Settings → API'
         )
       }
-      
+
       // Clear any old/cached Supabase sessions that might have wrong URL
       console.log('🧹 Clearing old Supabase cache...')
       clearSupabaseCache()
-      
+
       // Test if Supabase URL is reachable (quick check)
       try {
         const testUrl = `${supabaseUrl}/rest/v1/`
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 3000)
-        
+
         await fetch(testUrl, {
           method: 'HEAD',
           signal: controller.signal,
@@ -527,7 +527,7 @@ export const authService = {
         }).catch(() => {
           // Ignore fetch errors - just checking if URL resolves
         })
-        
+
         clearTimeout(timeoutId)
       } catch (testError: any) {
         if (testError.name === 'AbortError' || testError.message?.includes('Failed to fetch') || testError.message?.includes('ERR_NAME_NOT_RESOLVED')) {
@@ -548,27 +548,27 @@ export const authService = {
           )
         }
       }
-      
+
       const supabase = createClient()
-      
+
       // Validate Supabase client was created successfully
       if (!supabase || !supabase.auth) {
         throw new Error(
           'Failed to create Supabase client. Please check your environment variables.'
         )
       }
-      
+
       // Sign out any existing session to clear old data
       try {
         await supabase.auth.signOut()
       } catch (signOutError) {
         // Ignore sign out errors - might not have a session
       }
-      
+
       const siteUrl = import.meta.env.VITE_SITE_URL || import.meta.env.NEXT_PUBLIC_SITE_URL || window.location.origin
       // CRITICAL: Ensure redirect URL is the APP URL, not Supabase URL
-      const redirectTo = `${siteUrl}/api/auth/callback`
-      
+      const redirectTo = `${siteUrl}/auth/callback`
+
       // Validate redirect URL doesn't point to Supabase
       if (redirectTo.includes('.supabase.co')) {
         throw new Error(
@@ -606,12 +606,12 @@ export const authService = {
           status: error.status,
           name: error.name,
         })
-        
+
         // Check for network/DNS errors
-        if (error.message?.includes('Failed to fetch') || 
-            error.message?.includes('ERR_NAME_NOT_RESOLVED') || 
-            error.message?.includes('network') ||
-            error.message?.includes('ENOTFOUND')) {
+        if (error.message?.includes('Failed to fetch') ||
+          error.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+          error.message?.includes('network') ||
+          error.message?.includes('ENOTFOUND')) {
           throw new Error(
             'Cannot connect to Supabase for OAuth.\n\n' +
             'The Supabase URL appears to be incorrect or unreachable:\n' +
@@ -624,11 +624,11 @@ export const authService = {
             'Get the correct URL from: Supabase Dashboard → Settings → API'
           )
         }
-        
+
         // Check for provider configuration errors
-        if (error.message?.includes('provider is not enabled') || 
-            error.message?.includes('Unsupported provider') ||
-            error.message?.includes('not configured')) {
+        if (error.message?.includes('provider is not enabled') ||
+          error.message?.includes('Unsupported provider') ||
+          error.message?.includes('not configured')) {
           throw new Error(
             'Google OAuth is not properly configured in Supabase.\n\n' +
             'Setup steps:\n' +
@@ -644,7 +644,7 @@ export const authService = {
             'Get Google credentials from: Google Cloud Console → APIs & Services → Credentials'
           )
         }
-        
+
         // Generic error
         throw new Error(
           `Google OAuth failed: ${error.message}\n\n` +
@@ -671,12 +671,12 @@ export const authService = {
     } catch (err: any) {
       // Catch any errors during client creation or OAuth initiation
       console.error('❌ Google OAuth sign-in failed:', err)
-      
+
       // Re-throw with better context if it's already a formatted error
       if (err.message && (err.message.includes('\n') || err.message.length > 50)) {
         throw err
       }
-      
+
       // Format unknown errors
       throw new Error(
         `Google sign-in failed: ${err?.message || 'Unknown error'}\n\n` +
