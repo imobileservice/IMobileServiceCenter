@@ -70,7 +70,6 @@ export default defineConfig(({ mode }) => {
       'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''),
       'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || ''),
       'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.SUPABASE_ANON_KEY || ''),
-      'process.env.NODE_ENV': JSON.stringify(mode),
     },
   }
 })
