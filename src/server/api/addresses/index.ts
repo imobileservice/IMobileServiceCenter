@@ -32,7 +32,7 @@ const getSupabase = (req: Request) => {
 // GET /api/addresses - Get user's addresses
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
-  
+
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
@@ -71,14 +71,19 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
   // If setting as default, unset other defaults of the same type (non-blocking)
   if (address.is_default) {
-    supabase
-      .from('addresses')
-      .update({ is_default: false })
-      .eq('user_id', user.id)
-      .eq('type', payload.type)
-      .neq('id', address.id || '00000000-0000-0000-0000-000000000000')
-      .then(() => console.log('[Addresses API] Unset other defaults'))
-      .catch((err) => console.warn('[Addresses API] Failed to unset defaults (non-critical):', err.message))
+    void (async () => {
+      try {
+        await supabase
+          .from('addresses')
+          .update({ is_default: false })
+          .eq('user_id', user.id)
+          .eq('type', payload.type)
+          .neq('id', address.id || '00000000-0000-0000-0000-000000000000')
+        console.log('[Addresses API] Unset other defaults')
+      } catch (err: any) {
+        console.warn('[Addresses API] Failed to unset defaults (non-critical):', err.message)
+      }
+    })()
   }
 
   let data = null

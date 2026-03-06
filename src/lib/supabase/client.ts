@@ -56,19 +56,27 @@ export function clearSupabaseCache() {
 export function createClient() {
   // MIGRATION: Support both Vite (VITE_*) and Next.js (NEXT_PUBLIC_*) env var names
   // This preserves existing .env files without requiring immediate changes
+  // Helper to safely get env vars from either import.meta.env (Vite) or process.env (Node)
+  const getEnv = (key: string) => {
+    // @ts-ignore - import.meta is only available in ESM/Vite
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env[key]
+    }
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key]
+    }
+    return undefined
+  }
+
   const supabaseUrl =
-    import.meta.env.VITE_SUPABASE_URL ??
-    import.meta.env.NEXT_PUBLIC_SUPABASE_URL ??
-    import.meta.env.SUPABASE_URL ??
-    (typeof process !== 'undefined' && process.env ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) ??
-    (typeof process !== 'undefined' && process.env ? process.env.VITE_SUPABASE_URL : undefined)
+    getEnv('VITE_SUPABASE_URL') ??
+    getEnv('NEXT_PUBLIC_SUPABASE_URL') ??
+    getEnv('SUPABASE_URL')
 
   const supabaseAnonKey =
-    import.meta.env.VITE_SUPABASE_ANON_KEY ??
-    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    import.meta.env.SUPABASE_ANON_KEY ??
-    (typeof process !== 'undefined' && process.env ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) ??
-    (typeof process !== 'undefined' && process.env ? process.env.VITE_SUPABASE_ANON_KEY : undefined)
+    getEnv('VITE_SUPABASE_ANON_KEY') ??
+    getEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY') ??
+    getEnv('SUPABASE_ANON_KEY')
 
   // Validate environment variables
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -80,17 +88,15 @@ export function createClient() {
       '3. You have restarted your dev server after adding/changing .env\n\n' +
       'Current status:\n' +
       `- SUPABASE_URL: ${supabaseUrl ? '✓ Set' : '✗ Missing'}\n` +
-      `- SUPABASE_ANON_KEY: ${supabaseAnonKey ? '✓ Set' : '✗ Missing'}\n\n` +
-      `Debug info:\n` +
-      `- import.meta.env keys: ${Object.keys(import.meta.env).filter(k => k.includes('SUPABASE')).join(', ') || 'none'}\n` +
-      `- VITE_SUPABASE_URL: ${import.meta.env.VITE_SUPABASE_URL ? 'found' : 'not found'}\n` +
-      `- NEXT_PUBLIC_SUPABASE_URL: ${import.meta.env.NEXT_PUBLIC_SUPABASE_URL ? 'found' : 'not found'}`
+      `- SUPABASE_ANON_KEY: ${supabaseAnonKey ? '✓ Set' : '✗ Missing'}\n\n`
 
     console.warn(errorMsg)
 
     // In development mode, return a placeholder client to prevent app crash
-    // The app will still work for UI, but Supabase features won't function
-    if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
+    // @ts-ignore
+    const isDev = typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.DEV || import.meta.env.MODE === 'development') : process.env.NODE_ENV === 'development'
+
+    if (isDev) {
       console.warn('⚠️ Running in development mode without Supabase config. App will load but Supabase features will not work.')
       console.warn('💡 To fix: Create a .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY')
 
