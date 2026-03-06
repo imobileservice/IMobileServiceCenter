@@ -65,12 +65,16 @@ if (!supabaseUrl || !supabaseKey) {
 // Add your Cloudflare Pages URL here when deploying
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [
+    // Primary frontend URL (configure in Railway/production env vars if possible)
     process.env.VITE_SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
+    // Explicit custom domains currently in use
+    'https://imobileservicecenter.lk',
+    'https://www.imobileservicecenter.lk',
     // Cloudflare Pages/Workers URLs
     process.env.CLOUDFLARE_PAGES_URL,
-    'https://imobile.kalhararashmitha.workers.dev', // Your frontend URL
-    'https://*.workers.dev', // Allow all workers.dev subdomains
-    'https://*.pages.dev', // Allow all pages.dev subdomains
+    'https://imobile.kalhararashmitha.workers.dev',
+    'https://*.workers.dev',
+    'https://*.pages.dev',
   ].filter(Boolean)
   : [
     'http://localhost:3000',
@@ -89,8 +93,10 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
     'http://localhost:5175',
     'http://localhost:5176',
     process.env.VITE_DEV_URL,
-    // Allow Cloudflare Pages in development too
+    // Allow Cloudflare Pages/custom domains in development too for testing
     process.env.CLOUDFLARE_PAGES_URL,
+    'https://imobileservicecenter.lk',
+    'https://www.imobileservicecenter.lk',
     'https://imobile.kalhararashmitha.workers.dev',
     'https://*.workers.dev',
     'https://*.pages.dev',
