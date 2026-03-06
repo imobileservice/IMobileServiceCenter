@@ -8,7 +8,7 @@
     "preview": "vite preview --port 5173",
     "dev:server": "tsx watch src/server/index.ts",
     "start:server": "node dist-server/server/index.js",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "node -e \"const fs = require('fs'); fs.rmSync('dist-server', { recursive: true, force: true });\" && tsc -p tsconfig.server.json",
     "build:all": "npm run build && npm run build:server",
     "deploy": "wrangler pages deploy dist",
     "deploy:worker": "wrangler deploy --assets=./dist",
