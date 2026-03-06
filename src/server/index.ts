@@ -1,6 +1,6 @@
 // Load environment variables from .env file
 import dotenv from 'dotenv'
-dotenv.config({ path: '.env' })
+dotenv.config({ path: '.env', override: true })
 
 import express from 'express'
 import cookieParser from 'cookie-parser'
