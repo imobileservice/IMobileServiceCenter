@@ -15,12 +15,13 @@ export async function callbackHandler(req: Request, res: Response) {
       return res.redirect('/auth/error?error=missing_code&message=Authorization code is missing')
     }
 
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || 'https://imobileservicecenter.lk'
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!supabaseUrl || !supabaseKey) {
-      return res.redirect('/auth/error?error=supabase_not_configured&message=Supabase environment variables are not set')
+      return res.redirect(`${siteUrl}/auth/error?error=supabase_not_configured&message=Supabase environment variables are not set`)
     }
 
     // Create Supabase client with Express cookie handling
@@ -51,23 +52,23 @@ export async function callbackHandler(req: Request, res: Response) {
     // Check for existing account BEFORE exchanging code (if we can get email from code)
     // Note: We can't get email from code directly, so we'll check after exchange
     // But we'll handle duplicates more aggressively
-    
+
     // Exchange code for session
     let data: any
     let error: any
-    
+
     try {
       const result = await supabase.auth.exchangeCodeForSession(code as string)
       data = result.data
       error = result.error
     } catch (exchangeError: any) {
       console.error('[api/auth/callback] Exchange code exception:', exchangeError)
-      
+
       // Check for network/DNS errors
-      if (exchangeError.message?.includes('Failed to fetch') || 
-          exchangeError.message?.includes('ERR_NAME_NOT_RESOLVED') ||
-          exchangeError.message?.includes('ENOTFOUND')) {
-        return res.redirect('/auth/error?error=supabase_connection&message=' + 
+      if (exchangeError.message?.includes('Failed to fetch') ||
+        exchangeError.message?.includes('ERR_NAME_NOT_RESOLVED') ||
+        exchangeError.message?.includes('ENOTFOUND')) {
+        return res.redirect(`${siteUrl}/auth/error?error=supabase_connection&message=` +
           encodeURIComponent(
             'Cannot connect to Supabase. Please check:\n' +
             '1. Your Supabase project is active (not paused)\n' +
@@ -75,34 +76,34 @@ export async function callbackHandler(req: Request, res: Response) {
             '3. The URL matches your Supabase Dashboard'
           ))
       }
-      
-      return res.redirect(`/auth/error?error=${encodeURIComponent(exchangeError?.message || 'Failed to exchange code for session')}`)
+
+      return res.redirect(`${siteUrl}/auth/error?error=${encodeURIComponent(exchangeError?.message || 'Failed to exchange code for session')}`)
     }
 
     if (error) {
       console.error('[api/auth/callback] Exchange code error:', error)
-      
+
       // Check if error is about user already exists or email conflict
-      if (error.message?.includes('already registered') || 
-          error.message?.includes('User already registered') ||
-          error.message?.includes('email address is already registered') ||
-          error.message?.includes('Email already registered')) {
-        return res.redirect('/signin?error=account_exists&message=' + 
+      if (error.message?.includes('already registered') ||
+        error.message?.includes('User already registered') ||
+        error.message?.includes('email address is already registered') ||
+        error.message?.includes('Email already registered')) {
+        return res.redirect(`${siteUrl}/signin?error=account_exists&message=` +
           encodeURIComponent('An account with this email already exists. Please sign in with your password instead.'))
       }
-      
+
       // Check for network errors
-      if (error.message?.includes('Failed to fetch') || 
-          error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
-        return res.redirect('/auth/error?error=supabase_connection&message=' + 
+      if (error.message?.includes('Failed to fetch') ||
+        error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+        return res.redirect(`${siteUrl}/auth/error?error=supabase_connection&message=` +
           encodeURIComponent('Cannot connect to Supabase. Please check your Supabase URL configuration.'))
       }
-      
-      return res.redirect(`/auth/error?error=${encodeURIComponent(error.message)}`)
+
+      return res.redirect(`${siteUrl}/auth/error?error=${encodeURIComponent(error.message)}`)
     }
 
     if (!data?.user || !data?.session) {
-      return res.redirect('/auth/error?error=no_session&message=Failed to create session')
+      return res.redirect(`${siteUrl}/auth/error?error=no_session&message=Failed to create session`)
     }
 
     const oauthEmail = data.user.email
@@ -119,7 +120,7 @@ export async function callbackHandler(req: Request, res: Response) {
 
         // List all users to find duplicates
         const { data: users, error: listError } = await adminClient.auth.admin.listUsers()
-        
+
         if (!listError && users?.users) {
           // Find users with the same email but different ID
           const existingUsers = users.users.filter(
@@ -132,14 +133,14 @@ export async function callbackHandler(req: Request, res: Response) {
             console.log('[api/auth/callback] Existing user ID:', existingUser.id)
             console.log('[api/auth/callback] OAuth user ID:', oauthUserId)
             console.log('[api/auth/callback] Email:', oauthEmail)
-            
+
             // Check if existing account is email/password or OAuth
             const hasEmailPassword = existingUser.identities?.some((id: any) => id.provider === 'email')
             const hasOAuth = existingUser.identities?.some((id: any) => id.provider !== 'email')
-            
+
             // Sign out the current OAuth session
             await supabase.auth.signOut()
-            
+
             // Delete the duplicate OAuth account
             try {
               await adminClient.auth.admin.deleteUser(oauthUserId)
@@ -147,12 +148,12 @@ export async function callbackHandler(req: Request, res: Response) {
             } catch (deleteError: any) {
               console.error('[api/auth/callback] Error deleting duplicate account:', deleteError)
             }
-            
+
             // Redirect with appropriate message
             if (hasEmailPassword && !hasOAuth) {
               // Existing account is email/password only
               return res.redirect(
-                '/signin?error=account_exists&message=' + 
+                `${siteUrl}/signin?error=account_exists&message=` +
                 encodeURIComponent(
                   'An account with this email already exists. Please sign in with your email and password instead of Google.'
                 )
@@ -160,7 +161,7 @@ export async function callbackHandler(req: Request, res: Response) {
             } else if (hasOAuth) {
               // Existing account already has OAuth
               return res.redirect(
-                '/signin?error=account_exists&message=' + 
+                `${siteUrl}/signin?error=account_exists&message=` +
                 encodeURIComponent(
                   'An account with this email already exists. Please use the correct sign-in method.'
                 )
@@ -168,7 +169,7 @@ export async function callbackHandler(req: Request, res: Response) {
             } else {
               // Generic message
               return res.redirect(
-                '/signin?error=account_exists&message=' + 
+                `${siteUrl}/signin?error=account_exists&message=` +
                 encodeURIComponent(
                   'An account with this email already exists. Please sign in instead.'
                 )
@@ -214,15 +215,40 @@ export async function callbackHandler(req: Request, res: Response) {
       console.error('[api/auth/callback] Profile handling error:', profileErr)
     }
 
-    // If we have a session, the user is now authenticated
-    if (data?.session) {
-      return res.redirect('/?oauth=success')
+    // Store session in database for persistence
+    if (data?.session && data?.user && supabaseServiceKey) {
+      console.log('[api/auth/callback] Storing session in database...')
+      try {
+        const adminClient = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { persistSession: false, autoRefreshToken: false }
+        })
+
+        const expiresAt = data.session.expires_at
+          ? new Date(data.session.expires_at * 1000).toISOString()
+          : new Date(Date.now() + 3600000).toISOString()
+
+        await adminClient.from('user_sessions').upsert({
+          user_id: data.user.id,
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: expiresAt,
+        }, { onConflict: 'user_id' })
+        console.log('[api/auth/callback] ✅ Session stored in DB')
+      } catch (err) {
+        console.error('[api/auth/callback] Error storing session:', err)
+      }
     }
 
-    return res.redirect('/')
+    // If we have a session, the user is now authenticated
+    if (data?.session) {
+      return res.redirect(`${siteUrl}/?oauth=success`)
+    }
+
+    return res.redirect(`${siteUrl}/`)
   } catch (e: any) {
     console.error('[api/auth/callback] Unexpected error:', e)
-    return res.redirect(`/auth/error?error=${encodeURIComponent(e?.message || 'Unexpected error')}`)
+    const fallbackSiteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || 'https://imobileservicecenter.lk'
+    return res.redirect(`${fallbackSiteUrl}/auth/error?error=${encodeURIComponent(e?.message || 'Unexpected error')}`)
   }
 }
 

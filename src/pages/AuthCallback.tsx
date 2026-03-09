@@ -11,24 +11,24 @@ export default function AuthCallback() {
 
         const processAuth = async () => {
             try {
-                const supabase = createClient()
+                // Determine if there is a code in the URL (PKCE flow)
+                // If there is, redirect the browser entirely to the backend Express route
+                // so the backend can set the secure HTTP-only cookies and database session
+                if (window.location.search.includes('code=')) {
+                    const { getApiUrl } = await import('../lib/utils/api')
+                    window.location.href = getApiUrl('/api/auth/callback' + window.location.search)
+                    return
+                }
 
-                // When detectSessionInUrl is true, Supabase automatically handles the hash
-                // We just need to wait for the session to be established
+                const supabase = createClient()
                 const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
                 if (sessionError) throw sessionError
 
                 if (session && mounted) {
-                    // Successfully logged in via OAuth
-                    // Store token explicitly since some older parts of the app check this
                     localStorage.setItem('supabase_session_token', session.access_token)
-
-                    // Redirect to home page
                     navigate('/?oauth=success', { replace: true })
                 } else if (mounted) {
-                    // If no session is found after a short delay, the OAuth flow might have failed
-                    // But wait a second just in case Supabase is still parsing it
                     setTimeout(async () => {
                         const { data: retrySession } = await supabase.auth.getSession()
                         if (retrySession?.session && mounted) {

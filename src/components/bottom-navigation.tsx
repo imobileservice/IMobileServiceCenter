@@ -19,9 +19,14 @@ export default function BottomNavigation() {
   ].filter(item => !item.requiresAuth || user)
 
   const isActive = (item: typeof navItems[0]) => {
-    if (pathname.startsWith("/shop")) return item.href === "/shop"
-    if (pathname === "/") return item.href === "/"
-    return pathname.startsWith(item.href.split("?")[0])
+    const itemPath = item.href.split("?")[0];
+    if (itemPath === "/") {
+      return pathname === "/";
+    }
+    if (itemPath === "/shop") {
+      return pathname === "/shop" || pathname.startsWith("/shop/") || pathname.startsWith("/product/");
+    }
+    return pathname.startsWith(itemPath);
   }
 
   return (
@@ -58,8 +63,8 @@ export default function BottomNavigation() {
                   >
                     <Icon
                       className={`w-[22px] h-[22px] transition-colors ${active
-                          ? "text-primary"
-                          : "text-muted-foreground group-hover:text-foreground"
+                        ? "text-primary"
+                        : "text-muted-foreground group-hover:text-foreground"
                         }`}
                       strokeWidth={active ? 2.5 : 1.75}
                     />
@@ -82,8 +87,8 @@ export default function BottomNavigation() {
 
                 <span
                   className={`text-[10px] mt-0.5 font-medium transition-colors leading-tight ${active
-                      ? "text-primary"
-                      : "text-muted-foreground group-hover:text-foreground"
+                    ? "text-primary"
+                    : "text-muted-foreground group-hover:text-foreground"
                     }`}
                 >
                   {item.label}
