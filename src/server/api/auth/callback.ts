@@ -240,8 +240,12 @@ export async function callbackHandler(req: Request, res: Response) {
     }
 
     // If we have a session, the user is now authenticated
+    // CRITICAL: Pass the access_token to the frontend so it can store it in localStorage
+    // Without this, store.ts has no token to send to /api/auth/session
     if (data?.session) {
-      return res.redirect(`${siteUrl}/?oauth=success`)
+      const tokenParam = encodeURIComponent(data.session.access_token)
+      const refreshParam = encodeURIComponent(data.session.refresh_token)
+      return res.redirect(`${siteUrl}/?oauth=success&session_token=${tokenParam}&refresh_token=${refreshParam}`)
     }
 
     return res.redirect(`${siteUrl}/`)

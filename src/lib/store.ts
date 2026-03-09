@@ -117,6 +117,34 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       console.log('[AuthStore] Checking backend database for session...')
       try {
+        // CRITICAL: Check if we just got redirected from OAuth callback with tokens in URL
+        if (typeof window !== 'undefined') {
+          const urlParams = new URLSearchParams(window.location.search)
+          const oauthToken = urlParams.get('session_token')
+          const oauthRefresh = urlParams.get('refresh_token')
+          if (oauthToken) {
+            console.log('[AuthStore] 🔑 Found OAuth token in URL, storing in localStorage...')
+            localStorage.setItem('supabase_session_token', oauthToken)
+
+            // Also set the session in Supabase client for full compatibility
+            if (oauthRefresh) {
+              try {
+                await supabase.auth.setSession({
+                  access_token: oauthToken,
+                  refresh_token: oauthRefresh,
+                })
+                console.log('[AuthStore] ✅ Supabase client session set from OAuth tokens')
+              } catch (setErr: any) {
+                console.warn('[AuthStore] ⚠️ Failed to set Supabase session (non-fatal):', setErr.message)
+              }
+            }
+
+            // Clean up URL (remove tokens from address bar for security)
+            const cleanUrl = window.location.pathname + '?oauth=success'
+            window.history.replaceState({}, '', cleanUrl)
+          }
+        }
+
         // Get stored session token from localStorage
         const storedToken = typeof window !== 'undefined'
           ? localStorage.getItem('supabase_session_token')
