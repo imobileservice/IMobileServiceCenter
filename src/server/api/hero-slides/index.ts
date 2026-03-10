@@ -34,19 +34,14 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   const { data, error } = await supabase
     .from('hero_slides')
-    .select(`
-      *,
-      products (
-        id,
-        name,
-        image
-      )
-    `)
+    .select('*')
     .eq('is_active', true)
     .order('display_order', { ascending: true })
 
   if (error) {
-    return res.status(500).json({ error: error.message })
+    console.error('❌ hero-slides error:', error.message, error.details)
+    // Return empty array instead of 500 to avoid breaking the homepage
+    return res.json({ data: [] })
   }
 
   return res.json({ data: data || [] })
