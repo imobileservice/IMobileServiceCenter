@@ -139,9 +139,13 @@ export const ordersService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const storedToken = await getAuthTokenFast(false)
+        const headers: HeadersInit = { 'Content-Type': 'application/json' }
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/orders'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           credentials: 'include',
           body: JSON.stringify({ order, items }),
           signal: AbortSignal.timeout(30000), // 30 second timeout
@@ -163,7 +167,7 @@ export const ordersService = {
 
         throw new Error(errorData.error || errorData.message || 'Failed to create order')
       } catch (e: any) {
-        if (e.message?.includes('After 3 attempts')) throw e // Don't catch our own retry error
+        if (e.message?.includes('After 3 attempts') || e.message?.includes('Failed to create order after')) throw e
 
         // If it's a duplicate key error from the initial API call
         if (e.message?.includes('unique constraint') || e.code === '23505') {
@@ -173,93 +177,12 @@ export const ordersService = {
         if (e.message?.includes('timeout') || e.name === 'AbortError') {
           throw new Error('Order creation timeout. Please try again.')
         }
-        console.warn('[ordersService] API call failed, using direct Supabase connection:', e.message)
+
+        // Re-throw all other errors - don't silently fall through to broken Supabase direct call
+        throw new Error(e.message || 'Failed to create order. Please try again.')
       }
     }
 
-    // Fallback to direct Supabase call
-    const supabase = createClient()
-
-    // Create order with timeout
-    const createOrderPromise = supabase
-      .from('orders')
-      .insert(order)
-      .select()
-      .single()
-
-    const createOrderTimeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Order insert timeout')), 25000)
-    )
-
-    let orderData
-    try {
-      const result = await Promise.race([createOrderPromise, createOrderTimeout])
-      orderData = result.data
-      const orderError = result.error
-
-      if (orderError) {
-        // Retry if duplicate key
-        if (orderError.code === '23505' || orderError.message?.includes('unique constraint')) {
-          console.warn('[ordersService] Duplicate order number detected (Supabase), retrying...')
-          return retryWithNewNumber()
-        }
-
-        console.error('[ordersService] Order insert error:', orderError)
-        throw orderError
-      }
-      console.log('[ordersService] Order created:', orderData.id)
-    } catch (error: any) {
-      if (error.message?.includes('attempts')) throw error
-
-      if (error.code === '23505' || error.message?.includes('unique constraint')) {
-        return retryWithNewNumber()
-      }
-
-      console.error('[ordersService] Order creation failed:', error)
-      throw error
-    }
-
-    // Create order items with timeout
-    if (items.length > 0) {
-      console.log('[ordersService] Creating order items...', items.length)
-      const orderItems = items.map(item => ({
-        order_id: orderData.id,
-        ...item,
-      }))
-
-      const insertItemsPromise = supabase
-        .from('order_items')
-        .insert(orderItems)
-
-      const insertItemsTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Order items insert timeout')), 20000)
-      )
-
-      try {
-        const result = await Promise.race([insertItemsPromise, insertItemsTimeout])
-        const itemsError = result.error
-
-        if (itemsError) {
-          console.error('[ordersService] Order items insert error:', itemsError)
-          console.warn('[ordersService] Order created but items failed - order ID:', orderData.id)
-
-          // Attempt cleanup
-          await supabase.from('orders').delete().eq('id', orderData.id)
-          throw new Error('Failed to save order items. Please try again.')
-        } else {
-          console.log('[ordersService] Order items created successfully')
-        }
-      } catch (error: any) {
-        console.error('[ordersService] Order items creation failed:', error.message || error)
-        // Attempt cleanup
-        if (orderData?.id) {
-          await supabase.from('orders').delete().eq('id', orderData.id)
-        }
-        throw new Error('Failed to save order items: ' + (error.message || 'Unknown error'))
-      }
-    }
-
-    return orderData
   },
 
   // Update order status - uses backend API with service role
