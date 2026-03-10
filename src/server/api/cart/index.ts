@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { Request, Response } from 'express'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
 
 const router = Router()
@@ -16,21 +16,15 @@ const getSupabase = (req: Request) => {
 
   const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
 
-  return createServerClient(supabaseUrl, supabaseKey, {
+  return createClient(supabaseUrl, supabaseKey, {
     global: {
       headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
     },
-    cookies: {
-      get(name: string) {
-        return req.cookies?.[name]
-      },
-      set(name: string, value: string, options: any) {
-        // No-op for read-only operations
-      },
-      remove(name: string, options: any) {
-        // No-op for read-only operations
-      },
-    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
   })
 }
 

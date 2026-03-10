@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
 import { generateInvoicePDF } from '../utils/invoice-generator'
 import { sendEmail } from '../utils/email'
@@ -22,22 +22,16 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
   // Get user from session
   const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
 
-  // We need to use createServerClient with cookie handling to verify the user
-  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+  // We need to use createClient with authorization headers to verify the user
+  const supabase = createClient(supabaseUrl, supabaseKey, {
     global: {
       headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
     },
-    cookies: {
-      get(name: string) {
-        return req.cookies?.[name]
-      },
-      set(name: string, value: string, options: any) {
-        // No-op for read-only operations
-      },
-      remove(name: string, options: any) {
-        // No-op for read-only operations
-      },
-    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
   })
   const { data: { user }, error: userError } = sessionToken
     ? await supabase.auth.getUser(sessionToken)
@@ -60,8 +54,7 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
     return res.status(500).json({ error: 'Server configuration error: Missing service key' })
   }
 
-  // Dynamic import to avoid issues if @supabase/supabase-js isn't used elsewhere in this file
-  const { createClient } = await import('@supabase/supabase-js')
+  // Use admin client for DB operations to bypass RLS policies
   const adminClient = createClient(supabaseUrl, secretKey)
 
   // Create order

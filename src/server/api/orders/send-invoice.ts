@@ -1,7 +1,7 @@
 import { Request, Response } from 'express'
 import { asyncHandler } from '../utils/async-handler'
 import { invoiceService } from '../services/invoice-service'
-import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 export const sendInvoiceHandler = asyncHandler(async (req: Request, res: Response) => {
     const { id } = req.params
@@ -16,15 +16,15 @@ export const sendInvoiceHandler = asyncHandler(async (req: Request, res: Respons
     const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
 
     // 1. Verify User
-    const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    const supabase = createClient(supabaseUrl, supabaseKey, {
         global: {
             headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
         },
-        cookies: {
-            get(name: string) { return req.cookies?.[name] },
-            set(name: string, value: string, options: any) { },
-            remove(name: string, options: any) { },
-        },
+        auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        }
     })
     const { data: { user }, error: userError } = sessionToken
         ? await supabase.auth.getUser(sessionToken)
@@ -37,7 +37,6 @@ export const sendInvoiceHandler = asyncHandler(async (req: Request, res: Respons
     const secretKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (!secretKey) return res.status(500).json({ error: 'Server config error' })
 
-    const { createClient } = await import('@supabase/supabase-js')
     const adminClient = createClient(supabaseUrl, secretKey)
 
     // 2. Fetch Order & Items
