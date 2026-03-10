@@ -19,12 +19,12 @@ export const cartService = {
             credentials: 'include',
             signal: AbortSignal.timeout(8000), // 8 second timeout
           })
-          
+
           if (response.ok) {
             const payload = await response.json()
             return payload.data || []
           }
-          
+
           // If API fails, fall through to direct Supabase call
           if (response.status !== 503) {
             console.warn('[cartService] API call failed, using direct Supabase connection')
@@ -39,7 +39,7 @@ export const cartService = {
 
       // Direct Supabase call (fallback)
       const supabase = createClient()
-      
+
       // Try with variant_selected first, fallback if column doesn't exist
       let data, error
       try {
@@ -63,7 +63,7 @@ export const cartService = {
           `)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
-        
+
         data = result.data
         error = result.error
       } catch (e: any) {
@@ -89,7 +89,7 @@ export const cartService = {
             `)
             .eq('user_id', userId)
             .order('created_at', { ascending: false })
-          
+
           data = result.data
           error = result.error
         } else {
@@ -108,7 +108,7 @@ export const cartService = {
       // Load images from product_images table for each product
       if (data && Array.isArray(data)) {
         const productIds = [...new Set(data.map((item: any) => item.product_id).filter(Boolean))]
-        
+
         if (productIds.length > 0) {
           const { data: imagesData } = await supabase
             .from('product_images')
@@ -142,7 +142,7 @@ export const cartService = {
   // Add item to cart
   async addItem(userId: string, productId: string, quantity: number = 1, variantSelected?: any) {
     console.log('[cartService] addItem called', { userId, productId, quantity, variantSelected })
-    
+
     return withRetry(async () => {
       // Try backend API first
       if (typeof window !== 'undefined') {
@@ -150,7 +150,7 @@ export const cartService = {
           const { getApiUrl } = await import('../../utils/api')
           const apiUrl = getApiUrl('/api/cart')
           console.log('[cartService] Attempting backend API:', apiUrl)
-          
+
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -158,24 +158,24 @@ export const cartService = {
             body: JSON.stringify({ productId, quantity, variantSelected }),
             signal: AbortSignal.timeout(10000), // 10 second timeout
           })
-          
+
           console.log('[cartService] Backend API response:', { status: response.status, ok: response.ok })
-          
+
           if (response.ok) {
             const payload = await response.json()
             console.log('[cartService] Backend API success:', payload)
             return payload.data
           }
-          
+
           // Handle error response
           const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: Failed to add to cart` }))
           console.error('[cartService] Backend API error:', errorData)
-          
+
           // If unauthorized, throw immediately (don't retry)
           if (response.status === 401) {
             throw new Error('Unauthorized: Please sign in to add items to cart')
           }
-          
+
           throw new Error(errorData.error || `Failed to add to cart (${response.status})`)
         } catch (e: any) {
           // If it's a network error or timeout, try direct Supabase
@@ -183,12 +183,12 @@ export const cartService = {
             console.warn('[cartService] Backend API timeout/aborted, trying direct Supabase')
             throw e // Re-throw timeout errors immediately
           }
-          
+
           // If it's an auth error, don't retry
           if (e.message?.includes('Unauthorized')) {
             throw e
           }
-          
+
           // For other errors, fall through to direct Supabase call
           console.warn('[cartService] Backend API call failed, using direct Supabase connection:', e.message)
         }
@@ -197,7 +197,7 @@ export const cartService = {
       // Direct Supabase call (fallback)
       console.log('[cartService] Using direct Supabase connection')
       const supabase = createClient()
-      
+
 
       // Check if item exists with same variant (for variant matching)
       // Get all items for this product and match variants in memory (JSONB comparison is complex)
@@ -218,13 +218,13 @@ export const cartService = {
         const variantStr = JSON.stringify(variantSelected)
         existingWithVariant = allProductItems.find((item: any) => {
           if (!item.variant_selected) return false
-          const itemVariant = typeof item.variant_selected === 'string' 
-            ? item.variant_selected 
+          const itemVariant = typeof item.variant_selected === 'string'
+            ? item.variant_selected
             : JSON.stringify(item.variant_selected)
           return itemVariant === variantStr
         }) || null
       }
-      
+
       // Also check for existing item without variant (for backward compatibility)
       const existing = allProductItems?.find((item: any) => !item.variant_selected) || null
 
@@ -303,13 +303,13 @@ export const cartService = {
             body: JSON.stringify({ quantity }),
             signal: AbortSignal.timeout(10000),
           })
-          
+
           if (response.ok) {
             if (response.status === 204) return null // Item was removed
             const payload = await response.json()
             return payload.data
           }
-          
+
           const error = await response.json().catch(() => ({ error: 'Failed to update cart' }))
           throw new Error(error.error || 'Failed to update cart')
         } catch (e: any) {
@@ -347,11 +347,11 @@ export const cartService = {
             credentials: 'include',
             signal: AbortSignal.timeout(10000),
           })
-          
+
           if (response.ok) {
             return
           }
-          
+
           const error = await response.json().catch(() => ({ error: 'Failed to remove item' }))
           throw new Error(error.error || 'Failed to remove item')
         } catch (e: any) {
@@ -386,11 +386,11 @@ export const cartService = {
             credentials: 'include',
             signal: AbortSignal.timeout(10000),
           })
-          
+
           if (response.ok) {
             return
           }
-          
+
           const error = await response.json().catch(() => ({ error: 'Failed to clear cart' }))
           throw new Error(error.error || 'Failed to clear cart')
         } catch (e: any) {
