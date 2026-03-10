@@ -1,4 +1,6 @@
 import { createClient } from '../client'
+import { withRetry } from '../utils/error-handler'
+import { getAuthTokenFast } from '../utils/auth-helpers'
 
 export const accountService = {
   // Addresses
@@ -27,9 +29,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false)
         const headers: HeadersInit = { 'Content-Type': 'application/json' }
         if (storedToken) headers['x-session-token'] = storedToken
 
@@ -67,29 +67,24 @@ export const accountService = {
     let user: any = null
     try {
       const { useAuthStore } = await import('../../store')
-      const authState = useAuthStore.getState()
-      user = authState.user
+      user = useAuthStore.getState().user
       console.log('[accountService] Got user from auth store:', user?.id)
     } catch (storeError) {
       console.warn('[accountService] Could not get user from store, trying Supabase:', storeError)
     }
 
-    // If not in store, try Supabase (with shorter timeout)
+    // If not in store, try Supabase (with strict timeout)
     if (!user) {
       try {
         const getUserPromise = supabase.auth.getUser()
         const getUserTimeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Get user timeout')), 3000)
+          setTimeout(() => reject(new Error('Timeout')), 100)
         )
 
-        const result = await Promise.race([getUserPromise, getUserTimeout])
-        user = result.data?.user
-        if (result.error) {
-          console.error('[accountService] Supabase getUser error:', result.error.message)
-        }
+        const result = await Promise.race([getUserPromise, getUserTimeout]) as any
+        user = result?.data?.user
       } catch (getUserError: any) {
-        console.error('[accountService] Failed to get user:', getUserError.message)
-        throw new Error('Not authenticated. Please sign in again.')
+        // Silently fail here, we check for !user below
       }
     }
 
@@ -176,9 +171,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false)
         const headers: HeadersInit = {}
         if (storedToken) headers['x-session-token'] = storedToken
 
@@ -218,9 +211,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false);
         const headers: HeadersInit = {}
         if (storedToken) headers['x-session-token'] = storedToken
 
@@ -255,9 +246,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false);
         const headers: HeadersInit = { 'Content-Type': 'application/json' }
         if (storedToken) headers['x-session-token'] = storedToken
 
@@ -301,9 +290,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false);
         const headers: HeadersInit = {}
         if (storedToken) headers['x-session-token'] = storedToken
 
@@ -343,9 +330,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false);
         const headers: HeadersInit = {}
         if (storedToken) headers['x-session-token'] = storedToken
 
@@ -383,9 +368,7 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false);
         const headers: HeadersInit = {}
         if (storedToken) headers['x-session-token'] = storedToken
 

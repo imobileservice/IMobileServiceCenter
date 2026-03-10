@@ -1,5 +1,6 @@
 import { createClient } from '../client'
 import { withRetry, handleSupabaseError } from '../utils/error-handler'
+import { getAuthTokenFast } from '../utils/auth-helpers'
 import type { Database } from '../types'
 
 type Order = Database['public']['Tables']['orders']['Row']
@@ -46,9 +47,7 @@ export const ordersService = {
         const { getApiUrl } = await import('@/lib/utils/api')
         const apiUrl = getApiUrl('/api/orders')
 
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(false)
 
         const headers: HeadersInit = {
           'Content-Type': 'application/json',

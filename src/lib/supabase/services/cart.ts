@@ -1,33 +1,11 @@
 import { createClient } from '../client'
 import { withRetry, handleSupabaseError } from '../utils/error-handler'
 import type { Database } from '../types'
+import { getAuthTokenFast } from '../utils/auth-helpers'
 
 type CartItem = Database['public']['Tables']['cart_items']['Row']
 type CartItemInsert = Database['public']['Tables']['cart_items']['Insert']
 type CartItemUpdate = Database['public']['Tables']['cart_items']['Update']
-
-// Fast Auth Helper (<50ms) to prevent slow network hanging
-async function getAuthTokenFast(silent: boolean = false) {
-  if (typeof window === 'undefined') return null;
-  const { useAuthStore } = await import('../../store');
-  const authState = useAuthStore.getState();
-
-  if (!authState.isAuthenticated || !authState.user) {
-    if (silent) return null;
-    throw new Error('Not authenticated: Please sign in to continue');
-  }
-
-  const supabase = createClient();
-  const getSessionPromise = supabase.auth.getSession();
-  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 50));
-
-  try {
-    const { data } = await Promise.race([getSessionPromise, timeoutPromise]) as any;
-    return data?.session?.access_token || localStorage.getItem('supabase_session_token');
-  } catch (e) {
-    return localStorage.getItem('supabase_session_token');
-  }
-}
 
 export const cartService = {
   // Get user's cart items with product details

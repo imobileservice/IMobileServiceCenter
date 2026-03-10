@@ -1,5 +1,6 @@
 import { createClient, clearSupabaseCache } from '../client'
 import { getApiUrl } from '../../utils/api'
+import { getAuthTokenFast } from '../utils/auth-helpers'
 
 export const authService = {
   // Sign up
@@ -363,9 +364,7 @@ export const authService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        const storedToken = session?.access_token
+        const storedToken = await getAuthTokenFast(true)
         const headers: HeadersInit = {}
         if (storedToken) headers['x-session-token'] = storedToken
 

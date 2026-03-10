@@ -1,4 +1,5 @@
 import { createClient } from '../client'
+import { getAuthTokenFast } from '../utils/auth-helpers'
 
 export const userService = {
     /**
@@ -8,10 +9,10 @@ export const userService = {
         try {
             const supabase = createClient()
 
-            // Get current session for token
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+            // Get current session for token (real-time check)
+            const accessToken = await getAuthTokenFast(false)
 
-            if (sessionError || !session) {
+            if (!accessToken) {
                 throw new Error('Not authenticated')
             }
 
@@ -20,7 +21,7 @@ export const userService = {
             const response = await fetch(`${siteUrl}/api/user/delete-account`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${session.access_token}`,
+                    'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json'
                 }
             })
