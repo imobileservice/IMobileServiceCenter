@@ -6,6 +6,29 @@ type CartItem = Database['public']['Tables']['cart_items']['Row']
 type CartItemInsert = Database['public']['Tables']['cart_items']['Insert']
 type CartItemUpdate = Database['public']['Tables']['cart_items']['Update']
 
+// Fast Auth Helper (<50ms) to prevent slow network hanging
+async function getAuthTokenFast(silent: boolean = false) {
+  if (typeof window === 'undefined') return null;
+  const { useAuthStore } = await import('../../store');
+  const authState = useAuthStore.getState();
+
+  if (!authState.isAuthenticated || !authState.user) {
+    if (silent) return null;
+    throw new Error('Not authenticated: Please sign in to continue');
+  }
+
+  const supabase = createClient();
+  const getSessionPromise = supabase.auth.getSession();
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 50));
+
+  try {
+    const { data } = await Promise.race([getSessionPromise, timeoutPromise]) as any;
+    return data?.session?.access_token || localStorage.getItem('supabase_session_token');
+  } catch (e) {
+    return localStorage.getItem('supabase_session_token');
+  }
+}
+
 export const cartService = {
   // Get user's cart items with product details
   async getCartItems(userId: string) {
@@ -14,11 +37,11 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const supabase = createClient()
-          const { data: { session } } = await supabase.auth.getSession()
-          const storedToken = session?.access_token
+          const storedToken = await getAuthTokenFast(true)
+          if (!storedToken) return [] // Instantly return empty if unauthenticated
+
           const headers: HeadersInit = {}
-          if (storedToken) headers['x-session-token'] = storedToken
+          headers['x-session-token'] = storedToken
 
           const response = await fetch(getApiUrl('/api/cart'), {
             headers,
@@ -161,9 +184,7 @@ export const cartService = {
           const apiUrl = getApiUrl('/api/cart')
           console.log('[cartService] Attempting backend API:', apiUrl)
 
-          const supabase = createClient()
-          const { data: { session } } = await supabase.auth.getSession()
-          const storedToken = session?.access_token
+          const storedToken = await getAuthTokenFast(false)
           const headers: HeadersInit = { 'Content-Type': 'application/json' }
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -312,9 +333,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const supabase = createClient()
-          const { data: { session } } = await supabase.auth.getSession()
-          const storedToken = session?.access_token
+          const apiUrl = getApiUrl('/api/cart')
+
+          const storedToken = await getAuthTokenFast(false)
           const headers: HeadersInit = { 'Content-Type': 'application/json' }
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -364,9 +385,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const supabase = createClient()
-          const { data: { session } } = await supabase.auth.getSession()
-          const storedToken = session?.access_token
+          const apiUrl = getApiUrl(`/api/cart/${itemId}`)
+
+          const storedToken = await getAuthTokenFast(false)
           const headers: HeadersInit = {}
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -410,9 +431,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const supabase = createClient()
-          const { data: { session } } = await supabase.auth.getSession()
-          const storedToken = session?.access_token
+          const apiUrl = getApiUrl('/api/cart')
+
+          const storedToken = await getAuthTokenFast(false)
           const headers: HeadersInit = {}
           if (storedToken) headers['x-session-token'] = storedToken
 
