@@ -137,7 +137,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'x-session-token', 'x-requested-with', 'Cache-Control', 'Pragma', 'Expires'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'x-session-token', 'X-Session-Token', 'x-requested-with', 'X-Requested-With', 'Cache-Control', 'Pragma', 'Expires'],
 }))
 app.use(express.json())
 app.use(cookieParser())

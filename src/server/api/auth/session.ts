@@ -19,63 +19,49 @@ export async function sessionHandler(req: Request, res: Response) {
 
     // Strategy: Check database first, then fallback to cookies
     console.log('[api/auth/session] Checking database for session...')
-    
+
     // Try to get session from database using a token in request
     // First, check if we have a session token in headers or query
     const sessionToken = req.headers['x-session-token'] as string || req.query.token as string
-    
+
     if (sessionToken) {
       try {
-        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
-        if (serviceRoleKey) {
-          const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
-          const adminClient = createSupabaseClient(supabaseUrl, serviceRoleKey, {
-            auth: { persistSession: false, autoRefreshToken: false }
-          })
-          
-          // Find session by access_token
-          const { data: dbSession, error: dbError } = await adminClient
-            .from('user_sessions')
-            .select('*')
-            .eq('access_token', sessionToken)
-            .gt('expires_at', new Date().toISOString()) // Not expired
-            .single()
-          
-          if (!dbError && dbSession) {
-            console.log('[api/auth/session] ✅ Session found in database')
-            
-            // Get user info from Supabase auth
-            const { createClient: createSupabaseClient2 } = await import('@supabase/supabase-js')
-            const authClient = createSupabaseClient2(supabaseUrl, supabaseKey, {
-              auth: { persistSession: false, autoRefreshToken: false }
-            })
-            
-            // Verify token and get user
-            const { data: { user }, error: userError } = await authClient.auth.getUser(dbSession.access_token)
-            
-            if (!userError && user) {
-              return res.json({
-                user: user,
-                session: {
-                  access_token: dbSession.access_token,
-                  refresh_token: dbSession.refresh_token,
-                  expires_at: Math.floor(new Date(dbSession.expires_at).getTime() / 1000),
-                  expires_in: Math.floor((new Date(dbSession.expires_at).getTime() - Date.now()) / 1000),
-                  token_type: 'bearer',
-                }
-              })
+        console.log('[api/auth/session] Verifying token from header/query...')
+
+        // Create a standard client to verify the user token
+        const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
+        const authClient = createSupabaseClient(supabaseUrl, supabaseKey, {
+          auth: { persistSession: false, autoRefreshToken: false }
+        })
+
+        // Verify token and get user directly from Supabase Auth
+        const { data: { user }, error: userError } = await authClient.auth.getUser(sessionToken)
+
+        if (!userError && user) {
+          console.log('[api/auth/session] ✅ Token verified via getUser()')
+          return res.json({
+            user: user,
+            session: {
+              access_token: sessionToken,
+              // We don't have the refresh token or full session object here, 
+              // but for API authorization this is sufficient.
+              expires_at: Math.floor(Date.now() / 1000) + 3600,
+              expires_in: 3600,
+              token_type: 'bearer',
             }
-          }
+          })
+        } else {
+          console.warn('[api/auth/session] ❌ Token verification failed:', userError?.message)
         }
-      } catch (dbError: any) {
-        console.warn('[api/auth/session] Database check failed:', dbError.message)
+      } catch (tokenError: any) {
+        console.warn('[api/auth/session] Token verification exception:', tokenError.message)
       }
     }
-    
+
     // Fallback: Check cookies (original method)
     console.log('[api/auth/session] Checking cookies for session...')
     console.log('[api/auth/session] Cookie names:', req.cookies ? Object.keys(req.cookies) : 'no cookies')
-    
+
     // Create Supabase client with Express cookie handling
     const supabase = createServerClient(
       supabaseUrl,

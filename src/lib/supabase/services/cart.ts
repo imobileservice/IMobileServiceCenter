@@ -105,38 +105,41 @@ export const cartService = {
         throw handleSupabaseError(error)
       }
 
-      // Load images from product_images table for each product
-      if (data && Array.isArray(data)) {
-        const productIds = [...new Set(data.map((item: any) => item.product_id).filter(Boolean))]
+      // Skip redundant image loading if API was successful
+      if (data && Array.isArray(data) && data.length > 0) {
+        // Only attach if backend haven't already done it (API usually does)
+        const firstItem = data[0]
+        const hasImages = firstItem.products?.image || (firstItem.products?.images && firstItem.products.images.length > 0)
 
-        if (productIds.length > 0) {
-          const { data: imagesData } = await supabase
-            .from('product_images')
-            .select('product_id, url, is_primary')
-            .in('product_id', productIds)
-            .order('is_primary', { ascending: false })
-            .order('display_order', { ascending: true })
+        if (!hasImages) {
+          const productIds = [...new Set(data.map((item: any) => item.product_id).filter(Boolean))]
+          if (productIds.length > 0) {
+            const { data: imagesData } = await supabase
+              .from('product_images')
+              .select('product_id, url, is_primary')
+              .in('product_id', productIds)
+              .order('is_primary', { ascending: false })
+              .order('display_order', { ascending: true })
 
-          // Create a map of product_id -> primary image URL
-          const imageMap = new Map<string, string>()
-          imagesData?.forEach((img: any) => {
-            if (!imageMap.has(img.product_id) || img.is_primary) {
-              imageMap.set(img.product_id, img.url)
-            }
-          })
+            const imageMap = new Map<string, string>()
+            imagesData?.forEach((img: any) => {
+              if (!imageMap.has(img.product_id) || img.is_primary) {
+                imageMap.set(img.product_id, img.url)
+              }
+            })
 
-          // Attach images to products
-          data = data.map((item: any) => {
-            if (item.products) {
-              item.products.image = imageMap.get(item.product_id) || null
-            }
-            return item
-          })
+            data = data.map((item: any) => {
+              if (item.products) {
+                item.products.image = imageMap.get(item.product_id) || null
+              }
+              return item
+            })
+          }
         }
       }
 
       return data
-    }, 2, 500, 8000) // Reduced retries and timeout for cart operations
+    }, 2, 500, 5000) // Reduced timeout for faster failover
   },
 
   // Add item to cart
