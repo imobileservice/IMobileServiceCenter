@@ -44,7 +44,11 @@ export const ordersService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('@/lib/utils/api')
-        const storedToken = localStorage.getItem('supabase_session_token')
+        const apiUrl = getApiUrl('/api/orders')
+
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
 
         const headers: HeadersInit = {
           'Content-Type': 'application/json',

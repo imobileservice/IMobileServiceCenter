@@ -363,7 +363,14 @@ export const authService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/profile'), {
+          headers,
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })

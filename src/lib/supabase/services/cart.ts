@@ -14,7 +14,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const storedToken = localStorage.getItem('supabase_session_token')
+          const supabase = createClient()
+          const { data: { session } } = await supabase.auth.getSession()
+          const storedToken = session?.access_token
           const headers: HeadersInit = {}
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -159,7 +161,9 @@ export const cartService = {
           const apiUrl = getApiUrl('/api/cart')
           console.log('[cartService] Attempting backend API:', apiUrl)
 
-          const storedToken = localStorage.getItem('supabase_session_token')
+          const supabase = createClient()
+          const { data: { session } } = await supabase.auth.getSession()
+          const storedToken = session?.access_token
           const headers: HeadersInit = { 'Content-Type': 'application/json' }
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -308,7 +312,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const storedToken = localStorage.getItem('supabase_session_token')
+          const supabase = createClient()
+          const { data: { session } } = await supabase.auth.getSession()
+          const storedToken = session?.access_token
           const headers: HeadersInit = { 'Content-Type': 'application/json' }
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -358,7 +364,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const storedToken = localStorage.getItem('supabase_session_token')
+          const supabase = createClient()
+          const { data: { session } } = await supabase.auth.getSession()
+          const storedToken = session?.access_token
           const headers: HeadersInit = {}
           if (storedToken) headers['x-session-token'] = storedToken
 
@@ -402,7 +410,9 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
-          const storedToken = localStorage.getItem('supabase_session_token')
+          const supabase = createClient()
+          const { data: { session } } = await supabase.auth.getSession()
+          const storedToken = session?.access_token
           const headers: HeadersInit = {}
           if (storedToken) headers['x-session-token'] = storedToken
 

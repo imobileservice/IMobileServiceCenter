@@ -22,25 +22,31 @@ export const accountService = {
     is_default?: boolean
   }) {
     console.log('[accountService] upsertAddress called', { addressId: address.id, type: address.type })
-    
+
     // Try backend API first (more reliable)
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = { 'Content-Type': 'application/json' }
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/addresses'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           credentials: 'include',
           body: JSON.stringify(address),
           signal: AbortSignal.timeout(25000), // 25 second timeout
         })
-        
+
         if (response.ok) {
           const payload = await response.json()
           console.log('[accountService] Address saved via API:', payload.data?.id)
           return payload.data
         }
-        
+
         const error = await response.json().catch(() => ({ error: 'Failed to save address' }))
         throw new Error(error.error || 'Failed to save address')
       } catch (e: any) {
@@ -56,7 +62,7 @@ export const accountService = {
 
     // Fallback to direct Supabase call
     const supabase = createClient()
-    
+
     // Try to get user from auth store first (faster, no network call)
     let user: any = null
     try {
@@ -67,7 +73,7 @@ export const accountService = {
     } catch (storeError) {
       console.warn('[accountService] Could not get user from store, trying Supabase:', storeError)
     }
-    
+
     // If not in store, try Supabase (with shorter timeout)
     if (!user) {
       try {
@@ -75,7 +81,7 @@ export const accountService = {
         const getUserTimeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Get user timeout')), 3000)
         )
-        
+
         const result = await Promise.race([getUserPromise, getUserTimeout])
         user = result.data?.user
         if (result.error) {
@@ -86,18 +92,18 @@ export const accountService = {
         throw new Error('Not authenticated. Please sign in again.')
       }
     }
-    
+
     if (!user) {
       console.error('[accountService] No user found')
       throw new Error('Not authenticated. Please sign in again.')
     }
-    
-    const payload = { 
-      ...address, 
-      user_id: user.id, 
-      type: (address.type || 'billing').toLowerCase() as 'billing' | 'shipping' 
+
+    const payload = {
+      ...address,
+      user_id: user.id,
+      type: (address.type || 'billing').toLowerCase() as 'billing' | 'shipping'
     }
-    
+
     console.log('[accountService] Address payload prepared:', { ...payload, user_id: user.id })
 
     // If setting as default, unset other defaults of the same type (non-blocking)
@@ -109,12 +115,12 @@ export const accountService = {
         .eq('type', payload.type)
         .neq('id', address.id || '00000000-0000-0000-0000-000000000000')
         .then(() => console.log('[accountService] Unset other defaults'))
-        .catch((err) => console.warn('[accountService] Failed to unset defaults (non-critical):', err.message))
+        .catch((err: any) => console.warn('[accountService] Failed to unset defaults (non-critical):', err.message))
     }
 
     let data = null
     let error = null as any
-    
+
     try {
       if (address.id) {
         console.log('[accountService] Updating existing address:', address.id)
@@ -125,11 +131,11 @@ export const accountService = {
           .eq('user_id', user.id)
           .select()
           .single()
-        
+
         const updateTimeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Update address timeout')), 20000)
         )
-        
+
         const res = await Promise.race([updatePromise, updateTimeout])
         data = res.data
         error = res.error
@@ -140,21 +146,21 @@ export const accountService = {
           .insert(payload)
           .select()
           .single()
-        
+
         const insertTimeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Insert address timeout')), 20000)
         )
-        
+
         const res = await Promise.race([insertPromise, insertTimeout])
         data = res.data
         error = res.error
       }
-      
+
       if (error) {
         console.error('[accountService] Address operation error:', error)
         throw error
       }
-      
+
       console.log('[accountService] Address saved successfully:', data?.id)
       return data
     } catch (operationError: any) {
@@ -170,16 +176,23 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl(`/api/addresses/${id}`), {
           method: 'DELETE',
+          headers,
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           return
         }
-        
+
         const error = await response.json().catch(() => ({ error: 'Failed to delete address' }))
         throw new Error(error.error || 'Failed to delete address')
       } catch (e: any) {
@@ -205,17 +218,24 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/profile/wishlist'), {
+          headers,
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           const payload = await response.json()
           return payload.data || []
         }
       } catch (e: any) {
-        if (!e.message?.includes('timeout') && !e.name === 'AbortError') {
+        if (!e.message?.includes('timeout') && e.name !== 'AbortError') {
           console.warn('[accountService] Wishlist API failed, using direct Supabase:', e.message)
         }
       }
@@ -235,19 +255,25 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = { 'Content-Type': 'application/json' }
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/profile/wishlist'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           credentials: 'include',
           body: JSON.stringify({ productId }),
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           const payload = await response.json()
           return payload.data
         }
-        
+
         const error = await response.json().catch(() => ({ error: 'Failed to add to wishlist' }))
         throw new Error(error.error || 'Failed to add to wishlist')
       } catch (e: any) {
@@ -275,16 +301,23 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl(`/api/profile/wishlist/${productId}`), {
           method: 'DELETE',
+          headers,
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           return
         }
-        
+
         const error = await response.json().catch(() => ({ error: 'Failed to remove from wishlist' }))
         throw new Error(error.error || 'Failed to remove from wishlist')
       } catch (e: any) {
@@ -310,11 +343,18 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/profile/credits'), {
+          headers,
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           const payload = await response.json()
           return payload.data?.credits || 0
@@ -343,11 +383,18 @@ export const accountService = {
     if (typeof window !== 'undefined') {
       try {
         const { getApiUrl } = await import('../../utils/api')
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const storedToken = session?.access_token
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
         const response = await fetch(getApiUrl('/api/profile/downloads'), {
+          headers,
           credentials: 'include',
           signal: AbortSignal.timeout(10000),
         })
-        
+
         if (response.ok) {
           const payload = await response.json()
           return payload.data || []
