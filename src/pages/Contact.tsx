@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Mail, Phone, MapPin, MessageSquare, Send } from "lucide-react"
+import { Mail, Phone, MapPin, MessageSquare, Send, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import CombinedLocationMap from "@/components/combined-location-map"
@@ -151,14 +151,14 @@ Sent from I Mobile Contact Form`
             </motion.div>
 
             {/* WhatsApp */}
-            <motion.div variants={itemVariants} className="bg-card border border-border rounded-lg p-6">
-              <div className="p-3 bg-gradient-primary rounded-lg text-white w-fit mb-4">
+            <motion.div variants={itemVariants} className="bg-[#25D366] text-white border border-[#25D366] rounded-lg p-6">
+              <div className="p-3 bg-white/20 rounded-lg text-white w-fit mb-4">
                 <MessageSquare className="w-6 h-6" />
               </div>
               <h3 className="text-xl font-bold mb-2">WhatsApp</h3>
-              <p className="text-muted-foreground mb-4">Chat with us on WhatsApp</p>
-              <a href="https://wa.me/94705588789" className="text-primary font-semibold hover:underline">
-                Start Chat
+              <p className="text-white/90 mb-4">Chat with us on WhatsApp</p>
+              <a href="https://wa.me/94705588789" className="text-white font-bold hover:underline flex items-center gap-2">
+                Start Chat <ArrowRight className="w-4 h-4" />
               </a>
             </motion.div>
           </motion.div>

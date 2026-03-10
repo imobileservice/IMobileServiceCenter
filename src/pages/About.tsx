@@ -161,49 +161,25 @@ export default function AboutPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4 xl:gap-6">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.1 }}
-                  className="bg-background border border-border rounded-lg p-4 text-center"
-                >
+                <div className="bg-background border border-border rounded-lg p-4 text-center">
                   <p className="text-2xl font-bold text-primary mb-1">50K+</p>
                   <p className="text-sm text-muted-foreground">Happy Customers</p>
-                </motion.div>
+                </div>
 
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.2 }}
-                  className="bg-background border border-border rounded-lg p-4 text-center"
-                >
+                <div className="bg-background border border-border rounded-lg p-4 text-center">
                   <p className="text-2xl font-bold text-primary mb-1">100K+</p>
                   <p className="text-sm text-muted-foreground">Devices Sold</p>
-                </motion.div>
+                </div>
 
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.3 }}
-                  className="bg-background border border-border rounded-lg p-4 text-center"
-                >
-                  <p className="text-2xl font-bold text-primary mb-1">15+</p>
+                <div className="bg-background border border-border rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-primary mb-1">8+</p>
                   <p className="text-sm text-muted-foreground">Years Experience</p>
-                </motion.div>
+                </div>
 
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.4 }}
-                  className="bg-background border border-border rounded-lg p-4 text-center"
-                >
+                <div className="bg-background border border-border rounded-lg p-4 text-center">
                   <p className="text-2xl font-bold text-primary mb-1">98%</p>
                   <p className="text-sm text-muted-foreground">Satisfaction Rate</p>
-                </motion.div>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -323,10 +299,10 @@ export default function AboutPage() {
                 className="bg-background rounded-xl overflow-hidden border border-border hover:shadow-lg transition-shadow"
               >
                 <div className="relative h-48 bg-muted overflow-hidden">
-                  <img 
-                    src={member.image || "/placeholder.svg"} 
-                    alt={member.name} 
-                    className="object-cover w-full h-full" 
+                  <img
+                    src={member.image || "/placeholder.svg"}
+                    alt={member.name}
+                    className="object-cover w-full h-full"
                   />
                 </div>
                 <div className="p-4 text-center">
