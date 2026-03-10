@@ -2,7 +2,15 @@ import nodemailer from 'nodemailer'
 
 const getTransport = () => {
     const port = Number(process.env.SMTP_PORT) || 587
-    const secure = port === 465 // true for 465, false for other ports
+    const secure = port === 465 // true for SSL (465), false for STARTTLS (587)
+
+    console.log('[Email] Creating transport:', {
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port,
+        secure,
+        user: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 5)}...` : 'NOT SET',
+        passSet: !!process.env.SMTP_PASS
+    })
 
     return nodemailer.createTransport({
         host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -12,13 +20,14 @@ const getTransport = () => {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
         },
-        // Resilience settings for Gmail/serverless
         tls: {
-            rejectUnauthorized: false, // Fixes some self-signed cert issues
-            ciphers: 'SSLv3'
+            rejectUnauthorized: false,
+            // Removed 'ciphers: SSLv3' - was breaking TLS on modern servers
         },
-        connectionTimeout: 10000, // 10 seconds
-        family: 4 // Force IPv4 (fixes many Gmail resolution issues)
+        connectionTimeout: 15000, // 15 seconds
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
+        family: 4 // Force IPv4
     } as any)
 }
 
@@ -39,9 +48,25 @@ export const sendEmail = async ({
         contentType?: string
     }>
 }) => {
-    const from = process.env.SMTP_FROM || '"IMobile Service Center" <noreply@imobile.com>'
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        console.error('[Email] SMTP credentials not configured! SMTP_USER or SMTP_PASS env var is missing.')
+        throw new Error('Email service not configured: Missing SMTP credentials')
+    }
 
-    const info = await getTransport().sendMail({
+    const from = process.env.SMTP_FROM || `"IMobile Service Center" <${process.env.SMTP_USER}>`
+    const transport = getTransport()
+
+    // Verify connection before sending
+    try {
+        await transport.verify()
+        console.log('[Email] SMTP connection verified successfully')
+    } catch (verifyError: any) {
+        console.error('[Email] SMTP connection verification failed:', verifyError.message)
+        throw new Error(`Email service connection failed: ${verifyError.message}`)
+    }
+
+    console.log(`[Email] Sending email to: ${to}, subject: ${subject}`)
+    const info = await transport.sendMail({
         from,
         to,
         subject,
@@ -50,6 +75,7 @@ export const sendEmail = async ({
         attachments,
     })
 
-    console.log('[Email] Message sent: %s', info.messageId)
+    console.log('[Email] Message sent successfully! ID:', info.messageId, '| Response:', info.response)
     return info
 }
+

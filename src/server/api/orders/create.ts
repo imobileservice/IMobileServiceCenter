@@ -99,15 +99,16 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
   setImmediate(async () => {
     try {
       const { invoiceService } = await import('../services/invoice-service')
+      console.log('[Orders API] Starting background invoice email for order:', orderData.order_number)
       await invoiceService.sendInvoice(orderData, items)
-      console.log('[Orders API] Invoice email sent successfully (background)')
+      console.log('[Orders API] Background invoice email sent successfully for order:', orderData.order_number)
     } catch (emailError: any) {
-      console.error('[Orders API] Background invoice email failed:', emailError.message)
-      // Non-critical - order was created successfully, email can be resent manually
+      console.error('[Orders API] Background invoice email FAILED for order:', orderData.order_number, '| Error:', emailError.message, '| Stack:', emailError.stack)
     }
   })
 
   return res.status(201).json({ data: orderData })
+
 
 
   // Helper for currency formatting in email
