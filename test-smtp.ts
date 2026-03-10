@@ -37,21 +37,12 @@ async function testSMTP() {
         auth: { user, pass },
         tls: {
             rejectUnauthorized: false,
-            minVersion: 'TLSv1.2',
-            servername: host
+            minVersion: 'TLSv1.2'
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
-        family: 4,
-        lookup: (hostname: string, _options: any, callback: any) => {
-            console.log(`DNS lookup for: ${hostname}`);
-            dns.lookup(hostname, { family: 4 }, (err, address, family) => {
-                if (err) console.error('DNS Lookup Error:', err);
-                else console.log(`DNS Resolved: ${address} (v${family})`);
-                callback(err, address, family);
-            });
-        }
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 30000,
+        family: 4
     } as any);
 
     try {

@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer'
 import dns from 'dns'
 
 const getTransport = () => {
-    // Gmail usually works better on 587 with STARTTLS in cloud environments
+    // Port 587 with STARTTLS (secure: false) is the industry standard for cloud environments
     const port = Number(process.env.SMTP_PORT) || 587
     const secure = port === 465
 
@@ -22,21 +22,14 @@ const getTransport = () => {
             pass: process.env.SMTP_PASS,
         },
         tls: {
-            rejectUnauthorized: false, // Helps some handshake issues
-            minVersion: 'TLSv1.2',
-            // Some environments need this to correctly handle the handshake on IPv4
-            servername: process.env.SMTP_HOST || 'smtp.gmail.com'
+            rejectUnauthorized: false, // Essential for self-signed or internal certs
+            minVersion: 'TLSv1.2'
         },
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
         socketTimeout: 30000,
-        // CRITICAL: Explicitly force IPv4 to avoid ENETUNREACH errors on Railway
-        family: 4,
-        lookup: (hostname: string, _options: any, callback: (err: Error | null, address: string, family: number) => void) => {
-            dns.lookup(hostname, { family: 4 }, (err, address, family) => {
-                callback(err, address, family)
-            })
-        }
+        // family: 4 forces Node to use IPv4 directly, which fixes Railway's ENETUNREACH
+        family: 4
     } as any)
 }
 
