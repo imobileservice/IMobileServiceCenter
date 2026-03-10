@@ -37,7 +37,8 @@ export default function Navbar() {
     try {
       await logout()
       toast.success("Logged out successfully")
-      navigate("/")
+      // Use window.location for a hard redirect/reload to clear all state correctly on production
+      window.location.href = "/"
     } catch (error) {
       toast.error("Failed to log out")
     }
@@ -92,8 +93,8 @@ export default function Navbar() {
                   key={link.href}
                   to={link.href}
                   className={`text-sm font-medium transition-colors relative group ${isActive(link.href)
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                     }`}
                 >
                   {link.label}

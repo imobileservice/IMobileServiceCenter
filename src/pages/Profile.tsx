@@ -136,7 +136,7 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     try {
       await logout()
-      navigate("/")
+      window.location.href = "/"
     } catch (error) {
       console.error("Logout error:", error)
     }

@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import dns from 'dns'
 
 const getTransport = () => {
     // Gmail usually works better on 587 with STARTTLS in cloud environments
@@ -22,14 +23,20 @@ const getTransport = () => {
         },
         tls: {
             rejectUnauthorized: false, // Helps some handshake issues
-            minVersion: 'TLSv1.2'
+            minVersion: 'TLSv1.2',
+            // Some environments need this to correctly handle the handshake on IPv4
+            servername: process.env.SMTP_HOST || 'smtp.gmail.com'
         },
         connectionTimeout: 20000,
         greetingTimeout: 20000,
         socketTimeout: 30000,
-        // family: 4 forces DNS resolution to prioritize IPv4
-        // We also pass it in connection options for some environments
-        family: 4
+        // CRITICAL: Explicitly force IPv4 to avoid ENETUNREACH errors on Railway
+        family: 4,
+        lookup: (hostname: string, _options: any, callback: (err: Error | null, address: string, family: number) => void) => {
+            dns.lookup(hostname, { family: 4 }, (err, address, family) => {
+                callback(err, address, family)
+            })
+        }
     } as any)
 }
 

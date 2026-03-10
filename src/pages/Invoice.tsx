@@ -29,6 +29,7 @@ export default function InvoicePage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   useEffect(() => {
     if (!id) {
@@ -147,8 +148,6 @@ Thank you for your order!
       quantity: item.quantity || 1,
       price: item.price || item.product_price || 0,
     })) || []
-
-  const [sendingEmail, setSendingEmail] = useState(false)
 
   const handleSendEmail = async () => {
     if (!order) return
