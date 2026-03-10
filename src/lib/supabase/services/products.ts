@@ -246,8 +246,8 @@ export const productsService = {
         })
       }
 
-      // Load images for products
-      if (products && products.length > 0) {
+      // Load images for products only if we haven't already got them from the backend API
+      if (products && products.length > 0 && !apiSuccess) {
         return await this.attachImagesToProducts(products)
       }
 
