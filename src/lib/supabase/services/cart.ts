@@ -14,10 +14,15 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
+          const storedToken = localStorage.getItem('supabase_session_token')
+          const headers: HeadersInit = {}
+          if (storedToken) headers['x-session-token'] = storedToken
+
           const response = await fetch(getApiUrl('/api/cart'), {
+            headers,
             cache: 'no-store',
             credentials: 'include',
-            signal: AbortSignal.timeout(8000), // 8 second timeout
+            signal: AbortSignal.timeout(5000), // 8 second timeout
           })
 
           if (response.ok) {
@@ -154,9 +159,13 @@ export const cartService = {
           const apiUrl = getApiUrl('/api/cart')
           console.log('[cartService] Attempting backend API:', apiUrl)
 
+          const storedToken = localStorage.getItem('supabase_session_token')
+          const headers: HeadersInit = { 'Content-Type': 'application/json' }
+          if (storedToken) headers['x-session-token'] = storedToken
+
           const response = await fetch(apiUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             credentials: 'include',
             body: JSON.stringify({ productId, quantity, variantSelected }),
             signal: AbortSignal.timeout(10000), // 10 second timeout
@@ -299,9 +308,13 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
+          const storedToken = localStorage.getItem('supabase_session_token')
+          const headers: HeadersInit = { 'Content-Type': 'application/json' }
+          if (storedToken) headers['x-session-token'] = storedToken
+
           const response = await fetch(getApiUrl(`/api/cart/${itemId}`), {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             credentials: 'include',
             body: JSON.stringify({ quantity }),
             signal: AbortSignal.timeout(10000),
@@ -345,8 +358,13 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
+          const storedToken = localStorage.getItem('supabase_session_token')
+          const headers: HeadersInit = {}
+          if (storedToken) headers['x-session-token'] = storedToken
+
           const response = await fetch(getApiUrl(`/api/cart/${itemId}`), {
             method: 'DELETE',
+            headers,
             credentials: 'include',
             signal: AbortSignal.timeout(10000),
           })
@@ -384,8 +402,13 @@ export const cartService = {
       if (typeof window !== 'undefined') {
         try {
           const { getApiUrl } = await import('../../utils/api')
+          const storedToken = localStorage.getItem('supabase_session_token')
+          const headers: HeadersInit = {}
+          if (storedToken) headers['x-session-token'] = storedToken
+
           const response = await fetch(getApiUrl('/api/cart'), {
             method: 'DELETE',
+            headers,
             credentials: 'include',
             signal: AbortSignal.timeout(10000),
           })
