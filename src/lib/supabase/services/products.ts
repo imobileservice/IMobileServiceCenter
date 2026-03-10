@@ -121,11 +121,11 @@ export const productsService = {
 
           const queryString = params.toString()
           const cacheBuster = `_t=${Date.now()}`
-          const endpoint = queryString
+          const path = queryString
             ? `/api/products/list?${queryString}&${cacheBuster}`
             : `/api/products/list?${cacheBuster}`
 
-          const response = await fetch(endpoint, {
+          const response = await fetch(getApiUrl(path), {
             cache: 'no-store',
             headers: {
               'Cache-Control': 'no-cache, no-store, must-revalidate',
