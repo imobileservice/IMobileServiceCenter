@@ -95,23 +95,20 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
     }
   }
 
-  // Generate Invoice PDF and Send Email (Awaited to ensure execution)
-  try {
-    const { invoiceService } = await import('../services/invoice-service')
-    await invoiceService.sendInvoice(orderData, items)
-    console.log('[Orders API] Invoice email sent successfully (via service)')
-  } catch (emailError: any) {
-    console.error('[Orders API] Failed to send invoice email:', emailError)
-    // Return the error as a warning so the client knows
-    return res.status(201).json({
-      data: {
-        ...orderData,
-        warning: emailError.message || 'Failed to send email'
-      }
-    })
-  }
+  // Send Invoice Email in background (non-blocking - don't hold up the response)
+  setImmediate(async () => {
+    try {
+      const { invoiceService } = await import('../services/invoice-service')
+      await invoiceService.sendInvoice(orderData, items)
+      console.log('[Orders API] Invoice email sent successfully (background)')
+    } catch (emailError: any) {
+      console.error('[Orders API] Background invoice email failed:', emailError.message)
+      // Non-critical - order was created successfully, email can be resent manually
+    }
+  })
 
   return res.status(201).json({ data: orderData })
+
 
   // Helper for currency formatting in email
   function formatCurrency(amount: number) {
