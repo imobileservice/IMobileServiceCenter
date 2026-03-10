@@ -5,41 +5,48 @@ import { asyncHandler } from '../utils/async-handler'
 
 const router = Router()
 
-// Helper to get Supabase client
-const getSupabase = (req: Request) => {
+// Helper: verify the user from the request token, returns verified user or null
+const verifyUser = async (req: Request) => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabase not configured')
-  }
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase not configured')
 
   const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  if (!sessionToken) return { user: null, token: null }
 
-  return createClient(supabaseUrl, supabaseKey, {
-    global: {
-      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
-    },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false
-    }
+  // Use anon client just for verification (getUser validates the JWT with Supabase)
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  })
+  const { data: { user }, error } = await authClient.auth.getUser(sessionToken)
+  return { user: error ? null : user, token: sessionToken }
+}
+
+// Helper: get an authenticated DB client - uses service role key so RLS is bypassed
+// after we have already verified the user above. All queries are scoped to user.id manually.
+const getDbClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl) throw new Error('Supabase not configured')
+
+  // Use service role key if available (bypasses RLS, we scope queries by user.id)
+  const key = serviceRoleKey || anonKey
+  if (!key) throw new Error('Supabase key not configured')
+
+  return createClient(supabaseUrl, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   })
 }
 
 // GET /api/cart - Get user's cart items
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
-  const supabase = getSupabase(req)
+  const { user } = await verifyUser(req)
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-  // Get user from session
-  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
-  const { data: { user }, error: userError } = sessionToken
-    ? await supabase.auth.getUser(sessionToken)
-    : await supabase.auth.getUser()
-  if (userError || !user) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+  const supabase = getDbClient()
 
   // Try to select with variant_selected first, fallback if column doesn't exist
   let data, error
@@ -68,7 +75,6 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     data = result.data
     error = result.error
   } catch (e: any) {
-    // If variant_selected column doesn't exist, try without it
     if (e.message?.includes('variant_selected') || e.message?.includes('schema cache')) {
       console.warn('[Cart API] variant_selected column not found, using fallback query')
       const result = await supabase
@@ -90,7 +96,6 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-
       data = result.data
       error = result.error
     } else {
@@ -100,19 +105,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   if (error) {
     console.error('[Cart API] Error fetching cart items:', error)
-    // Provide helpful error message if variant_selected column is missing
-    if (error.message?.includes('variant_selected') || error.message?.includes('schema cache')) {
-      return res.status(500).json({
-        error: 'Database schema error: variant_selected column missing. Please run the migration: supabase/migrations/ensure_variant_selected_columns.sql'
-      })
-    }
     return res.status(500).json({ error: error.message })
   }
 
   // Load images from product_images table for each product
   if (data && Array.isArray(data)) {
     const productIds = [...new Set(data.map((item: any) => item.product_id).filter(Boolean))]
-
     if (productIds.length > 0) {
       const { data: imagesData } = await supabase
         .from('product_images')
@@ -121,7 +119,6 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
         .order('is_primary', { ascending: false })
         .order('display_order', { ascending: true })
 
-      // Create a map of product_id -> primary image URL
       const imageMap = new Map<string, string>()
       imagesData?.forEach((img: any) => {
         if (!imageMap.has(img.product_id) || img.is_primary) {
@@ -129,7 +126,6 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
         }
       })
 
-      // Attach images to products
       data = data.map((item: any) => {
         if (item.products) {
           item.products.image = imageMap.get(item.product_id) || null
@@ -144,33 +140,25 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
 // POST /api/cart - Add item to cart
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
-  console.log('[Cart API] POST /api/cart - Request received', { body: req.body, cookies: Object.keys(req.cookies || {}) })
+  console.log('[Cart API] POST /api/cart - Request received', { body: req.body })
 
-  const supabase = getSupabase(req)
   const { productId, quantity = 1, variantSelected } = req.body
-
   if (!productId) {
     console.error('[Cart API] Missing productId')
     return res.status(400).json({ error: 'Product ID is required' })
   }
 
-  // Get user from session
-  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
-  const { data: { user }, error: userError } = sessionToken
-    ? await supabase.auth.getUser(sessionToken)
-    : await supabase.auth.getUser()
-  console.log('[Cart API] User check:', { user: user?.id, error: userError?.message })
-
-  if (userError || !user) {
-    console.error('[Cart API] Unauthorized:', userError?.message)
+  const { user } = await verifyUser(req)
+  console.log('[Cart API] User check:', { userId: user?.id })
+  if (!user) {
+    console.error('[Cart API] Unauthorized')
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  // Check if item already exists with same variant
-  // Note: We can't use .eq() on JSONB columns with stringified JSON in Supabase/PostgreSQL
-  // Instead, fetch all items for this product and compare variants in memory
-  console.log('[Cart API] Checking for existing cart item', { userId: user.id, productId, variantSelected })
+  const supabase = getDbClient()
 
+  // Check if item already exists with same variant
+  console.log('[Cart API] Checking for existing cart item', { userId: user.id, productId })
   const { data: allProductItems, error: checkError } = await supabase
     .from('cart_items')
     .select('*')
@@ -182,13 +170,12 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     return res.status(500).json({ error: checkError.message })
   }
 
-  // Find item with matching variant (compare in JavaScript, not SQL)
+  // Find item with matching variant
   let existingWithVariant = null
   if (variantSelected && allProductItems) {
     const variantStr = JSON.stringify(variantSelected)
     existingWithVariant = allProductItems.find((item: any) => {
       if (!item.variant_selected) return false
-      // Handle both string and object formats
       const itemVariant = typeof item.variant_selected === 'string'
         ? item.variant_selected
         : JSON.stringify(item.variant_selected)
@@ -196,46 +183,30 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     }) || null
   }
 
-  // Also check for existing item without variant (for backward compatibility)
   const existing = allProductItems?.find((item: any) => !item.variant_selected) || null
 
   if (existingWithVariant) {
-    console.log('[Cart API] Item with same variant exists, updating quantity', { existingId: existingWithVariant.id, currentQuantity: existingWithVariant.quantity, newQuantity: existingWithVariant.quantity + quantity })
-    // Update quantity for same variant
     const { data, error } = await supabase
       .from('cart_items')
       .update({ quantity: existingWithVariant.quantity + quantity })
       .eq('id', existingWithVariant.id)
       .select()
       .single()
-
-    if (error) {
-      console.error('[Cart API] Update error:', error)
-      return res.status(500).json({ error: error.message })
-    }
-
+    if (error) { console.error('[Cart API] Update error:', error); return res.status(500).json({ error: error.message }) }
     console.log('[Cart API] Update success:', data)
     return res.json({ data })
   } else if (existing && !variantSelected) {
-    // If no variant and item exists, update quantity
-    console.log('[Cart API] Item exists (no variant), updating quantity', { existingId: existing.id, currentQuantity: existing.quantity, newQuantity: existing.quantity + quantity })
     const { data, error } = await supabase
       .from('cart_items')
       .update({ quantity: existing.quantity + quantity })
       .eq('id', existing.id)
       .select()
       .single()
-
-    if (error) {
-      console.error('[Cart API] Update error:', error)
-      return res.status(500).json({ error: error.message })
-    }
-
+    if (error) { console.error('[Cart API] Update error:', error); return res.status(500).json({ error: error.message }) }
     console.log('[Cart API] Update success:', data)
     return res.json({ data })
   } else {
-    console.log('[Cart API] Item does not exist, inserting new item', { userId: user.id, productId, quantity, variantSelected })
-    // Insert new item with variant
+    console.log('[Cart API] Inserting new item', { userId: user.id, productId, quantity })
     const { data, error } = await supabase
       .from('cart_items')
       .insert({
@@ -246,12 +217,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
       })
       .select()
       .single()
-
-    if (error) {
-      console.error('[Cart API] Insert error:', error)
-      return res.status(500).json({ error: error.message })
-    }
-
+    if (error) { console.error('[Cart API] Insert error:', error); return res.status(500).json({ error: error.message }) }
     console.log('[Cart API] Insert success:', data)
     return res.status(201).json({ data })
   }
@@ -259,39 +225,21 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
 
 // PUT /api/cart/:id - Update cart item quantity
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
-  const supabase = getSupabase(req)
+  const { user } = await verifyUser(req)
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const supabase = getDbClient()
   const { id } = req.params
   const { quantity } = req.body
 
-  if (quantity === undefined) {
-    return res.status(400).json({ error: 'Quantity is required' })
-  }
-
-  // Get user from session
-  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
-  const { data: { user }, error: userError } = sessionToken
-    ? await supabase.auth.getUser(sessionToken)
-    : await supabase.auth.getUser()
-  if (userError || !user) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+  if (quantity === undefined) return res.status(400).json({ error: 'Quantity is required' })
 
   if (quantity <= 0) {
-    // Remove item
-    const { error } = await supabase
-      .from('cart_items')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.id)
-
-    if (error) {
-      return res.status(500).json({ error: error.message })
-    }
-
+    const { error } = await supabase.from('cart_items').delete().eq('id', id).eq('user_id', user.id)
+    if (error) return res.status(500).json({ error: error.message })
     return res.status(204).send()
   }
 
-  // Update quantity
   const { data, error } = await supabase
     .from('cart_items')
     .update({ quantity })
@@ -300,64 +248,32 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
     .select()
     .single()
 
-  if (error) {
-    return res.status(500).json({ error: error.message })
-  }
-
+  if (error) return res.status(500).json({ error: error.message })
   return res.json({ data })
 }))
 
 // DELETE /api/cart/:id - Remove item from cart
 router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
-  const supabase = getSupabase(req)
+  const { user } = await verifyUser(req)
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  const supabase = getDbClient()
   const { id } = req.params
 
-  // Get user from session
-  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
-  const { data: { user }, error: userError } = sessionToken
-    ? await supabase.auth.getUser(sessionToken)
-    : await supabase.auth.getUser()
-  if (userError || !user) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
-  const { error } = await supabase
-    .from('cart_items')
-    .delete()
-    .eq('id', id)
-    .eq('user_id', user.id)
-
-  if (error) {
-    return res.status(500).json({ error: error.message })
-  }
-
+  const { error } = await supabase.from('cart_items').delete().eq('id', id).eq('user_id', user.id)
+  if (error) return res.status(500).json({ error: error.message })
   return res.status(204).send()
 }))
 
 // DELETE /api/cart - Clear cart
 router.delete('/', asyncHandler(async (req: Request, res: Response) => {
-  const supabase = getSupabase(req)
+  const { user } = await verifyUser(req)
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-  // Get user from session
-  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
-  const { data: { user }, error: userError } = sessionToken
-    ? await supabase.auth.getUser(sessionToken)
-    : await supabase.auth.getUser()
-  if (userError || !user) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
-  const { error } = await supabase
-    .from('cart_items')
-    .delete()
-    .eq('user_id', user.id)
-
-  if (error) {
-    return res.status(500).json({ error: error.message })
-  }
-
+  const supabase = getDbClient()
+  const { error } = await supabase.from('cart_items').delete().eq('user_id', user.id)
+  if (error) return res.status(500).json({ error: error.message })
   return res.status(204).send()
 }))
 
 export default router
-
