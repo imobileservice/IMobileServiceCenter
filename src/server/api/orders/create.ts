@@ -36,7 +36,10 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
   })
 
   // Get user from session
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }

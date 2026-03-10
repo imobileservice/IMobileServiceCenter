@@ -32,9 +32,12 @@ const getSupabase = (req: Request) => {
 // GET /api/cart - Get user's cart items
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
-  
+
   // Get user from session
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -62,7 +65,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       `)
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-    
+
     data = result.data
     error = result.error
   } catch (e: any) {
@@ -88,7 +91,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-      
+
       data = result.data
       error = result.error
     } else {
@@ -100,7 +103,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     console.error('[Cart API] Error fetching cart items:', error)
     // Provide helpful error message if variant_selected column is missing
     if (error.message?.includes('variant_selected') || error.message?.includes('schema cache')) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Database schema error: variant_selected column missing. Please run the migration: supabase/migrations/ensure_variant_selected_columns.sql'
       })
     }
@@ -110,7 +113,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   // Load images from product_images table for each product
   if (data && Array.isArray(data)) {
     const productIds = [...new Set(data.map((item: any) => item.product_id).filter(Boolean))]
-    
+
     if (productIds.length > 0) {
       const { data: imagesData } = await supabase
         .from('product_images')
@@ -143,7 +146,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // POST /api/cart - Add item to cart
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   console.log('[Cart API] POST /api/cart - Request received', { body: req.body, cookies: Object.keys(req.cookies || {}) })
-  
+
   const supabase = getSupabase(req)
   const { productId, quantity = 1, variantSelected } = req.body
 
@@ -153,9 +156,12 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Get user from session
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   console.log('[Cart API] User check:', { user: user?.id, error: userError?.message })
-  
+
   if (userError || !user) {
     console.error('[Cart API] Unauthorized:', userError?.message)
     return res.status(401).json({ error: 'Unauthorized' })
@@ -165,7 +171,7 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   // Note: We can't use .eq() on JSONB columns with stringified JSON in Supabase/PostgreSQL
   // Instead, fetch all items for this product and compare variants in memory
   console.log('[Cart API] Checking for existing cart item', { userId: user.id, productId, variantSelected })
-  
+
   const { data: allProductItems, error: checkError } = await supabase
     .from('cart_items')
     .select('*')
@@ -184,8 +190,8 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     existingWithVariant = allProductItems.find((item: any) => {
       if (!item.variant_selected) return false
       // Handle both string and object formats
-      const itemVariant = typeof item.variant_selected === 'string' 
-        ? item.variant_selected 
+      const itemVariant = typeof item.variant_selected === 'string'
+        ? item.variant_selected
         : JSON.stringify(item.variant_selected)
       return itemVariant === variantStr
     }) || null
@@ -263,7 +269,10 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Get user from session
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -305,7 +314,10 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params
 
   // Get user from session
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -328,7 +340,10 @@ router.delete('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
 
   // Get user from session
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }

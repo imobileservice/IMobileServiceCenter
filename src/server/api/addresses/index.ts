@@ -33,7 +33,10 @@ const getSupabase = (req: Request) => {
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -56,7 +59,10 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
   const address = req.body
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -127,7 +133,10 @@ router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
   const { id } = req.params
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }

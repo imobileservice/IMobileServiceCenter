@@ -32,8 +32,11 @@ const getSupabase = (req: Request) => {
 // GET /api/profile - Get user profile
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
-  
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -67,7 +70,10 @@ router.put('/', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
   const { name, whatsapp, avatar_url } = req.body
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -124,8 +130,11 @@ router.put('/', asyncHandler(async (req: Request, res: Response) => {
 // GET /api/profile/wishlist - Get user wishlist
 router.get('/wishlist', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
-  
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -163,7 +172,10 @@ router.post('/wishlist', asyncHandler(async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Product ID is required' })
   }
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -190,7 +202,10 @@ router.delete('/wishlist/:productId', asyncHandler(async (req: Request, res: Res
   const supabase = getSupabase(req)
   const { productId } = req.params
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -211,8 +226,11 @@ router.delete('/wishlist/:productId', asyncHandler(async (req: Request, res: Res
 // GET /api/profile/credits - Get user store credits
 router.get('/credits', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
-  
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -233,8 +251,11 @@ router.get('/credits', asyncHandler(async (req: Request, res: Response) => {
 // GET /api/profile/downloads - Get user downloads
 router.get('/downloads', asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabase(req)
-  
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+  const { data: { user }, error: userError } = sessionToken
+    ? await supabase.auth.getUser(sessionToken)
+    : await supabase.auth.getUser()
   if (userError || !user) {
     return res.status(401).json({ error: 'Unauthorized' })
   }

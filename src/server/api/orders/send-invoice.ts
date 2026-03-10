@@ -22,7 +22,10 @@ export const sendInvoiceHandler = asyncHandler(async (req: Request, res: Respons
     })
 
     // Get user from session
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+    const { data: { user }, error: userError } = sessionToken
+        ? await supabase.auth.getUser(sessionToken)
+        : await supabase.auth.getUser()
     // Allow if user is admin or owner? For now, let's just use Service Role to fetch data
     // checking ownership:
 
