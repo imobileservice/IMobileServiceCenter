@@ -64,6 +64,7 @@ export const sendEmail = async ({
     }
 
     const from = process.env.SMTP_FROM || `"IMobile Service Center" <${process.env.SMTP_USER}>`
+    console.log('[Email] Using From Address:', from)
     const transport = getTransport()
 
     // Verify connection before sending
