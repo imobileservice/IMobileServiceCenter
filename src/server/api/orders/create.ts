@@ -20,8 +20,13 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
   }
 
   // Get user from session
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+
   // We need to use createServerClient with cookie handling to verify the user
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    global: {
+      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
+    },
     cookies: {
       get(name: string) {
         return req.cookies?.[name]
@@ -34,9 +39,6 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
       },
     },
   })
-
-  // Get user from session
-  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
   const { data: { user }, error: userError } = sessionToken
     ? await supabase.auth.getUser(sessionToken)
     : await supabase.auth.getUser()

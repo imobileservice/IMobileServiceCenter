@@ -12,17 +12,20 @@ export const sendInvoiceHandler = asyncHandler(async (req: Request, res: Respons
 
     if (!supabaseUrl || !supabaseKey) return res.status(500).json({ error: 'Server config error' })
 
+    // Get user from session
+    const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+
     // 1. Verify User
     const supabase = createServerClient(supabaseUrl, supabaseKey, {
+        global: {
+            headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
+        },
         cookies: {
             get(name: string) { return req.cookies?.[name] },
             set(name: string, value: string, options: any) { },
             remove(name: string, options: any) { },
         },
     })
-
-    // Get user from session
-    const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
     const { data: { user }, error: userError } = sessionToken
         ? await supabase.auth.getUser(sessionToken)
         : await supabase.auth.getUser()

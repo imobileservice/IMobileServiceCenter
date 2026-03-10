@@ -14,7 +14,12 @@ const getSupabase = (req: Request) => {
     throw new Error('Supabase not configured')
   }
 
+  const sessionToken = req.headers['x-session-token'] as string || req.headers['authorization']?.replace('Bearer ', '')
+
   return createServerClient(supabaseUrl, supabaseKey, {
+    global: {
+      headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}
+    },
     cookies: {
       get(name: string) {
         return req.cookies?.[name]
