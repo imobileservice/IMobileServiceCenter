@@ -148,6 +148,23 @@ Thank you for your order!
       price: item.price || item.product_price || 0,
     })) || []
 
+  const [sendingEmail, setSendingEmail] = useState(false)
+
+  const handleSendEmail = async () => {
+    if (!order) return
+    try {
+      setSendingEmail(true)
+      const success = await sendInvoiceToEmail(order.id, user?.email || order.customer_email)
+      if (success) {
+        // Toast is handled inside sendInvoiceToEmail
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to trigger email send")
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -167,11 +184,16 @@ Thank you for your order!
               </Button>
             )}
             <Button
-              onClick={() => sendInvoiceToEmail(order.id, user?.email)}
-              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleSendEmail}
+              disabled={sendingEmail}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white min-w-[140px]"
             >
-              <Mail className="w-4 h-4" />
-              Send to Email
+              {sendingEmail ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                <Mail className="w-4 h-4" />
+              )}
+              {sendingEmail ? "Sending..." : "Send to Email"}
             </Button>
             <Button onClick={handleDownload} variant="outline" className="gap-2 flex-1 sm:flex-none">
               <Download className="w-4 h-4" />
@@ -183,6 +205,7 @@ Thank you for your order!
             </Button>
           </div>
         </div>
+
 
         {/* Invoice Content */}
         <motion.div

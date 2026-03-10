@@ -199,15 +199,9 @@ export default function CheckoutPage() {
             setOrderPlaced(true)
             toast.success("Order placed successfully!")
 
-            // Automatically send invoice via email is now handled by the server
-            // We just show a toast to inform the user
+            // Automatically send invoice via email is now handled by the server in the background
             if (formData.email) {
-                if (order.warning) {
-                    console.warn('Invoice email failed:', order.warning)
-                    toast.warning(`Order placed but email failed: ${order.warning}`)
-                } else {
-                    toast.info(`Invoice sent to ${formData.email}`)
-                }
+                toast.info(`An invoice will be sent to ${formData.email} shortly.`)
             }
         } catch (error: any) {
             console.error("Order creation failed:", error)
