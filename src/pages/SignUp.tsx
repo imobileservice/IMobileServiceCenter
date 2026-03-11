@@ -114,10 +114,11 @@ export default function SignUpPage() {
     setErrors({})
     setSuccessMessage("")
 
+    let timeoutId: NodeJS.Timeout | undefined
+
     try {
       // Sign up with Supabase with a timeout guard to avoid indefinite hangs
       const timeoutDuration = 20000
-      let timeoutId: NodeJS.Timeout | undefined
 
       const signUpPromise = authService.signUp(
         formData.email,
@@ -202,6 +203,7 @@ export default function SignUpPage() {
         }
       }
     } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId)
       console.error("Sign up error:", error)
       
       // Reset captcha on error
