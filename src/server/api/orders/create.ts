@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
 import { generateInvoicePDF } from '../utils/invoice-generator'
 import { sendEmail } from '../utils/email'
+import { invoiceService } from '../services/invoice-service'
 
 /**
  * POST /api/orders
@@ -98,7 +99,6 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
   // Send Invoice Email in background (non-blocking - don't hold up the response)
   setImmediate(async () => {
     try {
-      const { invoiceService } = await import('../services/invoice-service')
       console.log('[Orders API] Starting background invoice email for order:', orderData.order_number)
       await invoiceService.sendInvoice(orderData, items)
       console.log('[Orders API] Background invoice email sent successfully for order:', orderData.order_number)
