@@ -2,15 +2,16 @@ import nodemailer from 'nodemailer'
 import dns from 'dns'
 
 const getTransport = async () => {
-    // Port 587 with STARTTLS (secure: false) is the industry standard for cloud environments
-    const port = Number(process.env.SMTP_PORT) || 587
-    const secure = port === 465
-    const host = process.env.SMTP_HOST || 'smtp.gmail.com'
+    // Resend SMTP Settings
+    const host = 'smtp.resend.com'
+    const port = 465 // Use 465 for SSL/TLS
+    const secure = true
+    const user = 'resend' // Resend literal username
+    const pass = process.env.SMTP_PASS || 're_3xuwxa4h_NfsCkF8p26UdRvigiMk2eW4Y'
 
-    console.log('[Email] Configuring transport for host:', host)
+    console.log('[Email] Configuring Resend Transport (IPv4 Forced)')
 
     // FORCE IPv4: Manually resolve hostname to an IPv4 address
-    // This is the "Nuclear Option" to fix Railway's IPv6 ENETUNREACH error
     let resolvedHost = host
     try {
         const addresses = await new Promise<string[]>((resolve, reject) => {
@@ -20,9 +21,9 @@ const getTransport = async () => {
             })
         })
         resolvedHost = addresses[0]
-        console.log(`[Email] Host ${host} resolved to IPv4: ${resolvedHost}`)
+        console.log(`[Email] Resend Host ${host} resolved to IPv4: ${resolvedHost}`)
     } catch (dnsError: any) {
-        console.warn(`[Email] DNS Resolve failed for ${host}: ${dnsError.message}. Falling back to hostname.`)
+        console.warn(`[Email] DNS Resolve failed for ${host}: ${dnsError.message}.`)
     }
 
     return nodemailer.createTransport({
@@ -30,19 +31,18 @@ const getTransport = async () => {
         port,
         secure,
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
+            user,
+            pass,
         },
         tls: {
             rejectUnauthorized: false,
             minVersion: 'TLSv1.2',
-            servername: host // Essential when connecting via IP address
+            servername: host
         },
-        connectionTimeout: 30000,
-        greetingTimeout: 30000,
-        socketTimeout: 60000,
+        connectionTimeout: 20000,
+        greetingTimeout: 20000,
+        socketTimeout: 45000,
         family: 4,
-        // Override lookup again just to be safe
         lookup: (hostname: string, options: any, callback: any) => {
             dns.lookup(hostname, { family: 4 }, callback);
         },
@@ -50,7 +50,6 @@ const getTransport = async () => {
         logger: true
     } as any)
 }
-
 
 export const sendEmail = async ({
     to,
@@ -69,13 +68,10 @@ export const sendEmail = async ({
         contentType?: string
     }>
 }) => {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-        console.error('[Email] SMTP credentials not configured! SMTP_USER or SMTP_PASS env var is missing.')
-        throw new Error('Email service not configured: Missing SMTP credentials')
-    }
-
     const transport = await getTransport()
-    const from = process.env.SMTP_FROM || `"IMobile Service Center" <${process.env.SMTP_USER}>`
+    
+    // Default to onboarding@resend.dev if no custom domain is verified yet
+    const from = process.env.SMTP_FROM || 'IMobile <onboarding@resend.dev>'
     console.log('[Email] Using From Address:', from)
     const info = await transport.sendMail({
         from,
