@@ -80,13 +80,18 @@ export const generateInvoicePDF = (order: Order, items: OrderItem[]): Promise<Bu
 
         // Table Header
         const tableTop = 300
+        const itemX = 50
+        const qtyX = 300
+        const priceX = 380
+        const totalX = 480
+        
         doc
             .font('Helvetica-Bold')
             .fontSize(10)
-            .text('Item', 50, tableTop)
-            .text('Quantity', 300, tableTop, { width: 90, align: 'right' })
-            .text('Price', 400, tableTop, { width: 90, align: 'right' })
-            .text('Total', 500, tableTop, { width: 50, align: 'right' })
+            .text('Item', itemX, tableTop)
+            .text('Qty', qtyX, tableTop, { width: 40, align: 'center' })
+            .text('Price', priceX, tableTop, { width: 90, align: 'right' })
+            .text('Total', totalX, tableTop, { width: 70, align: 'right' })
             .moveDown()
             .font('Helvetica')
 
@@ -94,50 +99,66 @@ export const generateInvoicePDF = (order: Order, items: OrderItem[]): Promise<Bu
         let y = tableTop + 25
         items.forEach((item) => {
             const itemTotal = Number(item.price) * item.quantity
-
+            
+            // Calculate how many lines the product name will take to adjust Y for the next item
+            const nameWidth = qtyX - itemX - 10
+            const nameHeight = doc.heightOfString(item.product_name, { width: nameWidth })
+            
             doc
-                .text(item.product_name, 50, y, { width: 250 })
-                .text(item.quantity.toString(), 300, y, { width: 90, align: 'right' })
-                .text(formatCurrency(Number(item.price)), 400, y, { width: 90, align: 'right' })
-                .text(formatCurrency(itemTotal), 500, y, { width: 50, align: 'right' })
+                .fontSize(9)
+                .text(item.product_name, itemX, y, { width: nameWidth })
+                .text(item.quantity.toString(), qtyX, y, { width: 40, align: 'center' })
+                .text(formatCurrency(Number(item.price)), priceX, y, { width: 90, align: 'right' })
+                .text(formatCurrency(itemTotal), totalX, y, { width: 70, align: 'right' })
 
-            y += 20
+            y += Math.max(nameHeight + 10, 25)
+            
+            // Add a very subtle line between items if there's enough space
+            if (y < 650) {
+                doc
+                    .moveTo(50, y - 5)
+                    .lineTo(550, y - 5)
+                    .strokeColor('#eeeeee')
+                    .lineWidth(0.5)
+                    .stroke()
+            }
         })
 
-        // Divider
-        doc
-            .moveDown()
-            .moveTo(50, y + 10)
-            .lineTo(550, y + 10)
-            .strokeColor('#aaaaaa')
-            .stroke()
-
         // Summary
-        y += 30
-        const summaryX = 400
+        y += 20
+        const summaryWidth = 150
+        const labelX = 350
+        const valueX = 450
+        const valueWidth = 100
 
-        doc
-            .text('Subtotal:', summaryX, y)
-            .text(formatCurrency(Number(order.subtotal)), 500, y, { width: 50, align: 'right' })
-
-        y += 15
-        doc
-            .text('Shipping:', summaryX, y)
-            .text(formatCurrency(Number(order.shipping)), 500, y, { width: 50, align: 'right' })
-
-        y += 15
-        doc
-            .font('Helvetica-Bold')
-            .fontSize(12)
-            .text('Total:', summaryX, y)
-            .text(formatCurrency(Number(order.total)), 500, y, { width: 50, align: 'right' })
-
-        // Footer
         doc
             .fontSize(10)
             .font('Helvetica')
-            .text('Thank you for your order!', 50, 700, { align: 'center', width: 500 })
-            .text('If you have any questions, please contact us at support@imobile.com', 50, 715, { align: 'center', width: 500 })
+            .text('Subtotal:', labelX, y)
+            .text(formatCurrency(Number(order.subtotal)), valueX, y, { width: valueWidth, align: 'right' })
+
+        y += 20
+        doc
+            .text('Shipping:', labelX, y)
+            .text(formatCurrency(Number(order.shipping)), valueX, y, { width: valueWidth, align: 'right' })
+
+        y += 25
+        doc
+            .font('Helvetica-Bold')
+            .fontSize(12)
+            .text('Total:', labelX, y)
+            .fillColor('#000000')
+            .text(formatCurrency(Number(order.total)), valueX, y, { width: valueWidth, align: 'right' })
+
+        // Footer
+        doc
+            .fillColor('#444444')
+            .fontSize(10)
+            .font('Helvetica')
+            .text('Thank you for your business!', 50, 700, { align: 'center', width: 500 })
+            .fontSize(8)
+            .text('IMobile Service Center - Your trusted partner for mobile services', 50, 715, { align: 'center', width: 500 })
+            .text('If you have any questions about this invoice, please contact us.', 50, 728, { align: 'center', width: 500 })
 
         doc.end()
     })
