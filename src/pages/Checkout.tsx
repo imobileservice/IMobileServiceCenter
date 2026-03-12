@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
-import { Check, Mail } from "lucide-react"
+import { Check, Mail, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuthStore } from "@/lib/store"
 import { cartService } from "@/lib/supabase/services/cart"
@@ -283,11 +283,47 @@ export default function CheckoutPage() {
 
                     <div className="space-y-3">
                         {orderId && (
-                            <Link to={`/invoice/${orderId}`} className="block">
-                                <Button variant="outline" className="w-full">
-                                    View Invoice
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <Link to={`/invoice/${orderId}`} className="flex-1">
+                                    <Button variant="outline" className="w-full">
+                                        View Invoice
+                                    </Button>
+                                </Link>
+                                <Button 
+                                    variant="default" 
+                                    className="flex-1 gap-2 bg-primary text-primary-foreground"
+                                    onClick={async () => {
+                                        try {
+                                            const { getAuthTokenFast } = await import('@/lib/supabase/utils/auth-helpers')
+                                            const token = await getAuthTokenFast(true)
+                                            const headers: HeadersInit = {}
+                                            if (token) headers['x-session-token'] = token
+
+                                            const response = await fetch(getApiUrl(`/api/orders/${orderId}/download`), {
+                                                headers
+                                            })
+                                            
+                                            if (!response.ok) throw new Error('Failed to download invoice')
+                                            
+                                            const blob = await response.blob()
+                                            const url = window.URL.createObjectURL(blob)
+                                            const a = document.createElement('a')
+                                            a.href = url
+                                            a.download = `invoice-${orderNumber}.pdf`
+                                            document.body.appendChild(a)
+                                            a.click()
+                                            window.URL.revokeObjectURL(url)
+                                            document.body.removeChild(a)
+                                        } catch (err) {
+                                            console.error('Download error:', err)
+                                            toast.error('Failed to download PDF invoice')
+                                        }
+                                    }}
+                                >
+                                    <Download className="w-4 h-4" />
+                                    Download PDF
                                 </Button>
-                            </Link>
+                            </div>
                         )}
                         <Link to="/profile" className="block">
                             <Button variant="outline" className="w-full bg-transparent">

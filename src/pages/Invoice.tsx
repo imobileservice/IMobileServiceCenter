@@ -69,48 +69,46 @@ export default function InvoicePage() {
     window.print()
   }
 
-  const handleDownload = () => {
-    // Create a simple text invoice for download
+  const handleDownload = async () => {
     if (!order) return
 
-    const invoiceText = `
-INVOICE
+    try {
+      const { getAuthTokenFast } = await import('@/lib/supabase/utils/auth-helpers')
+      const token = await getAuthTokenFast(true)
+      const { getApiUrl } = await import('@/lib/utils/api')
+      
+      const headers: HeadersInit = {}
+      if (token) headers['x-session-token'] = token
 
-Order Number: ${order.order_number}
-Date: ${new Date(order.created_at).toLocaleDateString()}
+      const response = await fetch(getApiUrl(`/api/orders/${order.id}/download`), {
+        headers
+      })
 
-Customer Details:
-Name: ${order.customer_name}
-Email: ${order.customer_email}
-Phone: ${order.customer_phone || 'N/A'}
-Address: ${order.shipping_address}
+      if (!response.ok) throw new Error('Failed to download invoice')
 
-Items:
-${(order.items as any)?.map((item: any, index: number) =>
-      `${index + 1}. ${item.product_name || item.name} x ${item.quantity} - ${formatCurrency(Number(item.price || item.product_price) * item.quantity)}`
-    ).join('\n') || order.order_items?.map((item, index) =>
-      `${index + 1}. ${item.product_name} x ${item.quantity} - ${formatCurrency(Number(item.price) * item.quantity)}`
-    ).join('\n') || 'No items'}
-
-Subtotal: ${formatCurrency(Number(order.subtotal))}
-Shipping: ${formatCurrency(Number(order.shipping))}
-Total: ${formatCurrency(Number(order.total))}
-
-Payment Method: ${order.payment_method === 'cash_on_delivery' ? 'Cash on Delivery' : order.payment_method || 'N/A'}
-Status: ${order.status?.toUpperCase() || 'PENDING'}
-
-Thank you for your order!
-    `.trim()
-
-    const blob = new Blob([invoiceText], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `invoice-${order.order_number}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `invoice-${order.order_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success("Download started")
+    } catch (err: any) {
+      console.error('Download error:', err)
+      toast.error('Failed to download PDF invoice')
+      
+      // Fallback to text file if PDF fails
+      const invoiceText = `Order Number: ${order.order_number}\nTotal: ${formatCurrency(Number(order.total))}`
+      const blob = new Blob([invoiceText], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `invoice-${order.order_number}.txt`
+      a.click()
+    }
   }
 
   if (loading) {
