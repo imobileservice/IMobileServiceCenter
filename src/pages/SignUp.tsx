@@ -242,9 +242,13 @@ export default function SignUpPage() {
         setErrors({ general: message })
         toast.error("Captcha verification failed", { description: message })
       } else if (error.message?.includes("timed out") || error.message?.includes("timeout")) {
-        const message = error.message || "Signup timed out. Please try again."
+        // Account may have been created on the server but response didn't return in time
+        const message = "The request timed out, but your account may have been created. Please try signing in with your email and password."
         setErrors({ general: message })
-        toast.error("Request timed out", { description: message })
+        toast.error("Request timed out", { 
+          description: "Try signing in — your account may already exist!",
+          duration: 8000
+        })
       } else {
         setErrors({ general: error.message || "Failed to create account. Please try again." })
         toast.error(error.message || "Failed to create account")
