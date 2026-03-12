@@ -1,20 +1,32 @@
 import nodemailer from 'nodemailer'
 import dns from 'dns'
 
-const getTransport = () => {
+const getTransport = async () => {
     // Port 587 with STARTTLS (secure: false) is the industry standard for cloud environments
     const port = Number(process.env.SMTP_PORT) || 587
     const secure = port === 465
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com'
 
-    console.log('[Email] Configuring transport:', {
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port,
-        secure,
-        user: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 5)}...` : 'NOT SET'
-    })
+    console.log('[Email] Configuring transport for host:', host)
+
+    // FORCE IPv4: Manually resolve hostname to an IPv4 address
+    // This is the "Nuclear Option" to fix Railway's IPv6 ENETUNREACH error
+    let resolvedHost = host
+    try {
+        const addresses = await new Promise<string[]>((resolve, reject) => {
+            dns.resolve4(host, (err, addresses) => {
+                if (err || !addresses.length) reject(err || new Error('No IPv4 addresses found'))
+                else resolve(addresses)
+            })
+        })
+        resolvedHost = addresses[0]
+        console.log(`[Email] Host ${host} resolved to IPv4: ${resolvedHost}`)
+    } catch (dnsError: any) {
+        console.warn(`[Email] DNS Resolve failed for ${host}: ${dnsError.message}. Falling back to hostname.`)
+    }
 
     return nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        host: resolvedHost,
         port,
         secure,
         auth: {
@@ -23,13 +35,14 @@ const getTransport = () => {
         },
         tls: {
             rejectUnauthorized: false,
-            minVersion: 'TLSv1.2'
+            minVersion: 'TLSv1.2',
+            servername: host // Essential when connecting via IP address
         },
-        connectionTimeout: 30000, // 30s
-        greetingTimeout: 30000,   // 30s
-        socketTimeout: 60000,     // 60s
-        family: 4,                // IPv4 only
-        // Definitive fix for ENETUNREACH: force dns.lookup to use IPv4
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000,
+        family: 4,
+        // Override lookup again just to be safe
         lookup: (hostname: string, options: any, callback: any) => {
             dns.lookup(hostname, { family: 4 }, callback);
         },
