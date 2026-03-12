@@ -13,40 +13,58 @@ export const cartService = {
     return withRetry(async () => {
       // Try backend API first (faster and more reliable)
       if (typeof window !== 'undefined') {
+        const fetchWithAuth = async (isRetry = false): Promise<any> => {
+          try {
+            const { getApiUrl } = await import('../../utils/api')
+            const storedToken = await getAuthTokenFast(true)
+            if (!storedToken) return []
+
+            const headers: HeadersInit = {}
+            headers['x-session-token'] = storedToken
+
+            const response = await fetch(getApiUrl('/api/cart'), {
+              headers,
+              cache: 'no-store',
+              credentials: 'include',
+              signal: AbortSignal.timeout(5000),
+            })
+
+            if (response.ok) {
+              const payload = await response.json()
+              return payload.data || []
+            }
+
+            // If 401 and not already retried, try refreshing and retrying once
+            if (response.status === 401 && !isRetry) {
+              console.warn('[cartService] 401 during getCartItems, attempting retry...')
+              // Force a refresh check in useAuthStore if possible
+              try {
+                const { useAuthStore } = await import('../../store')
+                await useAuthStore.getState().initialize()
+              } catch (e) {
+                // Ignore initialization errors
+              }
+              return fetchWithAuth(true) // Retry once
+            }
+
+            throw new Error(`API returned ${response.status}`)
+          } catch (e: any) {
+            if (isRetry) throw e // If retry fails, throw move to fallback
+            throw e
+          }
+        }
+
         try {
-          const { getApiUrl } = await import('../../utils/api')
-          const storedToken = await getAuthTokenFast(true)
-          if (!storedToken) return [] // Instantly return empty if unauthenticated
-
-          const headers: HeadersInit = {}
-          headers['x-session-token'] = storedToken
-
-          const response = await fetch(getApiUrl('/api/cart'), {
-            headers,
-            cache: 'no-store',
-            credentials: 'include',
-            signal: AbortSignal.timeout(5000), // 8 second timeout
-          })
-
-          if (response.ok) {
-            const payload = await response.json()
-            return payload.data || []
-          }
-
-          // If API fails, fall through to direct Supabase call
-          if (response.status !== 503) {
-            console.warn('[cartService] API call failed, using direct Supabase connection')
-          }
+          return await fetchWithAuth()
         } catch (e: any) {
-          // Network error or timeout - fall through to direct Supabase call
-          if (!e.message?.includes('timeout') && !e.message?.includes('aborted')) {
-            console.warn('[cartService] API unavailable, using direct Supabase connection')
-          }
+          // If API fails, fall through to direct Supabase call
+          console.warn('[cartService] API call failed, using direct Supabase connection:', e.message)
         }
       }
 
       // Direct Supabase call (fallback)
       const supabase = createClient()
+      // ... (rest of the direct Supabase call logic)
 
       // Try with variant_selected first, fallback if column doesn't exist
       let data, error
@@ -157,55 +175,66 @@ export const cartService = {
     return withRetry(async () => {
       // Try backend API first
       if (typeof window !== 'undefined') {
+        const fetchWithAuth = async (isRetry = false): Promise<any> => {
+          try {
+            const { getApiUrl } = await import('../../utils/api')
+            const apiUrl = getApiUrl('/api/cart')
+            
+            const storedToken = await getAuthTokenFast(false)
+            const headers: HeadersInit = { 'Content-Type': 'application/json' }
+            if (storedToken) headers['x-session-token'] = storedToken
+
+            const response = await fetch(apiUrl, {
+              method: 'POST',
+              headers,
+              credentials: 'include',
+              body: JSON.stringify({ productId, quantity, variantSelected }),
+              signal: AbortSignal.timeout(10000),
+            })
+
+            console.log('[cartService] Backend API response:', { status: response.status, ok: response.ok })
+
+            if (response.ok) {
+              const payload = await response.json()
+              return payload.data
+            }
+
+            // If 401 Unauthorized and not already retried
+            if (response.status === 401) {
+              if (!isRetry) {
+                console.warn('[cartService] 401 during addItem, attempting session refresh and retry...')
+                try {
+                  const { useAuthStore } = await import('../../store')
+                  await useAuthStore.getState().initialize()
+                } catch (e) {
+                  // Ignore initialization errors
+                }
+                return fetchWithAuth(true) // Retry once
+              }
+              throw new Error('Unauthorized: Please sign in to add items to cart')
+            }
+
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: Failed to add to cart` }))
+            throw new Error(errorData.error || `Failed to add to cart (${response.status})`)
+          } catch (e: any) {
+            if (e.message?.includes('Unauthorized')) throw e
+            if (isRetry) throw e
+            throw e
+          }
+        }
+
         try {
-          const { getApiUrl } = await import('../../utils/api')
-          const apiUrl = getApiUrl('/api/cart')
-          console.log('[cartService] Attempting backend API:', apiUrl)
-
-          const storedToken = await getAuthTokenFast(false)
-          const headers: HeadersInit = { 'Content-Type': 'application/json' }
-          if (storedToken) headers['x-session-token'] = storedToken
-
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers,
-            credentials: 'include',
-            body: JSON.stringify({ productId, quantity, variantSelected }),
-            signal: AbortSignal.timeout(10000), // 10 second timeout
-          })
-
-          console.log('[cartService] Backend API response:', { status: response.status, ok: response.ok })
-
-          if (response.ok) {
-            const payload = await response.json()
-            console.log('[cartService] Backend API success:', payload)
-            return payload.data
-          }
-
-          // Handle error response
-          const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: Failed to add to cart` }))
-          console.error('[cartService] Backend API error:', errorData)
-
-          // If unauthorized, throw immediately (don't retry)
-          if (response.status === 401) {
-            throw new Error('Unauthorized: Please sign in to add items to cart')
-          }
-
-          throw new Error(errorData.error || `Failed to add to cart (${response.status})`)
+          return await fetchWithAuth()
         } catch (e: any) {
-          // If it's a network error or timeout, try direct Supabase
+          // If it's a timeout or abortion, throw immediately
           if (e.message?.includes('timeout') || e.message?.includes('aborted') || e.name === 'AbortError') {
-            console.warn('[cartService] Backend API timeout/aborted, trying direct Supabase')
-            throw e // Re-throw timeout errors immediately
+            throw e
           }
-
-          // If it's an auth error, don't retry
+          // If it's an auth error, throw immediately
           if (e.message?.includes('Unauthorized')) {
             throw e
           }
-
-          // For other errors, fall through to direct Supabase call
-          console.warn('[cartService] Backend API call failed, using direct Supabase connection:', e.message)
+          console.warn('[cartService] Backend API call failed, trying direct Supabase:', e.message)
         }
       }
 
