@@ -6,11 +6,28 @@ export const authService = {
   // Sign up
   async signUp(email: string, password: string, name?: string, whatsapp?: string, captchaToken?: string) {
     // Route through our server API to avoid client-side network issues
-    const res = await fetch(getApiUrl('/api/auth/signup'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name, whatsapp }),
-    })
+    const controller = new AbortController()
+    const networkTimeout = setTimeout(() => controller.abort(), 25000) // 25s network timeout
+
+    let res: Response
+    try {
+      res = await fetch(getApiUrl('/api/auth/signup'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        cache: 'no-store',
+        signal: controller.signal,
+        body: JSON.stringify({ email, password, name, whatsapp }),
+      })
+    } catch (fetchErr: any) {
+      clearTimeout(networkTimeout)
+      if (fetchErr?.name === 'AbortError') {
+        throw new Error('Signup network request timed out. Please check your connection and try again.')
+      }
+      throw new Error(`Network error during signup: ${fetchErr?.message || 'Unknown error'}`)
+    } finally {
+      clearTimeout(networkTimeout)
+    }
 
     // Check content type before parsing JSON
     const contentType = res.headers.get('content-type')
