@@ -25,11 +25,13 @@ const getTransport = () => {
             rejectUnauthorized: false, // Essential for self-signed or internal certs
             minVersion: 'TLSv1.2'
         },
-        connectionTimeout: 15000,
-        greetingTimeout: 15000,
-        socketTimeout: 30000,
+        connectionTimeout: 20000, // Increased to 20s
+        greetingTimeout: 20000,   // Increased to 20s
+        socketTimeout: 45000,     // Increased to 45s
         // family: 4 forces Node to use IPv4 directly, which fixes Railway's ENETUNREACH
-        family: 4
+        family: 4,
+        debug: true, // Enable debug logging
+        logger: true // Log to console
     } as any)
 }
 
