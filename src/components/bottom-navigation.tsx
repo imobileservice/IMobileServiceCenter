@@ -44,7 +44,11 @@ export default function BottomNavigation() {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setMobileMenuOpen(true)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setMobileMenuOpen(true)
+                    }}
                     className="flex flex-col items-center justify-center px-3 py-2 relative min-w-[56px] group"
                   >
                     <div className="relative mt-1.5">

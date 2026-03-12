@@ -24,22 +24,25 @@ export default function MobileShopHeader({
     <div className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-card border-b border-gray-200 dark:border-border shadow-sm">
       {/* Top Row */}
       <div className="flex items-center justify-between px-4 py-3">
-        {/* Left: Logo */}
-        <Link to="/" className="flex items-center gap-2">
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            className="flex items-center gap-2"
-          >
-            <img 
-              src="/imobile-logo.png" 
-              alt="IMobile" 
-              className="w-8 h-8 rounded-lg object-contain bg-white"
-            />
-          </motion.div>
-        </Link>
+        {/* Left: Empty (as cart/logo moved to right) */}
+        <div className="flex-1"></div>
 
-        {/* Right: Cart and Filter Menu */}
+        {/* Right: Logo, Cart and Filter Menu */}
         <div className="flex items-center gap-4">
+          {/* Logo in right side corner group as requested */}
+          <Link to="/" className="flex items-center">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="flex items-center"
+            >
+              <img 
+                src="/imobile-logo.png" 
+                alt="IMobile" 
+                className="w-8 h-8 rounded-lg object-contain bg-white shadow-sm border border-gray-100 dark:border-gray-800"
+              />
+            </motion.div>
+          </Link>
+
           <Link to="/cart" className="relative">
             <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
               <ShoppingCart className="w-6 h-6 text-gray-700 dark:text-gray-300" />
