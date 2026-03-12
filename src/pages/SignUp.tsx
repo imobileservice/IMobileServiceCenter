@@ -118,7 +118,8 @@ export default function SignUpPage() {
 
     try {
       // Sign up with Supabase with a timeout guard to avoid indefinite hangs
-      const timeoutDuration = 30000
+      // We increased this to 60s to be extra safe during cloud deployments
+      const timeoutDuration = 60000
 
       const signUpPromise = authService.signUp(
         formData.email,
