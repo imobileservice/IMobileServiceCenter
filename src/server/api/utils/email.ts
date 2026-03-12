@@ -70,8 +70,8 @@ export const sendEmail = async ({
 }) => {
     const transport = await getTransport()
     
-    // Default to onboarding@resend.dev if no custom domain is verified yet
-    const from = process.env.SMTP_FROM || 'IMobile <onboarding@resend.dev>'
+    // Domain is now verified on Resend!
+    const from = process.env.SMTP_FROM || 'IMobile Service Center <info@imobileservicecenter.lk>'
     console.log('[Email] Using From Address:', from)
     const info = await transport.sendMail({
         from,
