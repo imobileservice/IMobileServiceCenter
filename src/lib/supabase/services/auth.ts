@@ -66,16 +66,21 @@ export const authService = {
     const data = apiData
 
     // If signup returned a session (email confirmations disabled), set client session
-    try {
-      if (data?.session?.access_token && data?.session?.refresh_token) {
-        const supabase = createClient()
-        await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        })
-      }
-    } catch (setErr) {
-      console.warn('Failed to set client session after signup:', setErr)
+    // CRITICAL: We do NOT await this. Setting the session on the client is for persistence,
+    // but it should not block the signup flow from resolving.
+    if (data?.session?.access_token && data?.session?.refresh_token) {
+      setTimeout(async () => {
+        try {
+          const supabase = createClient()
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+          console.log('[authService] ✅ Client session set in background')
+        } catch (setErr) {
+          console.warn('[authService] ⚠️ Background setSession failed:', setErr)
+        }
+      }, 0)
     }
 
     // Ensure profile is created immediately if user exists
