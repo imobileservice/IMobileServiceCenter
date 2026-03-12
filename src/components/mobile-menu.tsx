@@ -25,8 +25,11 @@ export default function MobileMenu({ isOpen, onClose }: MobileMenuProps) {
 
   // Close menu when route changes
   useEffect(() => {
-    onClose()
-  }, [location.pathname, onClose])
+    if (isOpen) {
+      onClose()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
 
   const menuItems = [
     { href: "/", icon: Home, label: "Home", desc: "Go to storefront" },
