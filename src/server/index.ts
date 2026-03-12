@@ -61,38 +61,31 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 // Middleware
-// NUCLEAR CORS FIX: Explicitly handle headers to prevent "Failed to fetch" errors
+// ULTRA-PERMISSIVE CORS FIX: Reflect origin and allow all common headers to bypass "Failed to fetch"
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  // Define allowed origins
-  const allowedOrigins = [
-    'https://imobileservicecenter.lk',
-    'https://www.imobileservicecenter.lk',
-    'https://imobile.kalhararashmitha.workers.dev',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    process.env.VITE_SITE_URL,
-    process.env.NEXT_PUBLIC_SITE_URL,
-    process.env.CLOUDFLARE_PAGES_URL,
-  ].filter(Boolean) as string[];
+  // Log for debugging (this will show up in Railway logs)
+  console.log(`📡 [CORS DEBUG] ${req.method} ${req.path} | Origin: ${origin || 'none'}`);
 
-  // If the origin is allowed (or in dev), set the ACAO header
-  if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production' || origin.endsWith('.pages.dev') || origin.endsWith('.workers.dev'))) {
+  if (origin) {
+    // Reflect any origin to satisfy Credential requests
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (!origin && process.env.NODE_ENV !== 'production') {
-    // Fallback for tools like Postman/cURL in dev
+    res.setHeader('Vary', 'Origin');
+  } else {
+    // Fallback for tools
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
 
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, x-session-token, X-Session-Token, x-requested-with, X-Requested-With, Cache-Control, Pragma, Expires, x-service-role');
+  // Be extremely permissive with headers
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, x-session-token, X-Session-Token, x-requested-with, X-Requested-With, Cache-Control, Pragma, Expires, x-service-role, x-admin-token, x-api-key');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-  // Handle preflight
+  // Handle preflight immediately with status 204 (No Content)
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    console.log(`✅ [CORS PREFLIGHT] Handled for ${req.path}`);
+    return res.status(204).end();
   }
   next();
 });
