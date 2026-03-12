@@ -198,7 +198,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             try {
               const profilePromise = authService.getProfile(sessionData.user.id)
               const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+                setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
               )
 
               const profile = await Promise.race([profilePromise, timeoutPromise]) as any
@@ -283,7 +283,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       try {
         const getSessionPromise = supabase.auth.getSession()
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 5000)
+          setTimeout(() => reject(new Error('Timeout')), 15000)
         )
 
         const { data: { session }, error: sessionError } = await Promise.race([

@@ -149,7 +149,7 @@ export default function SignInPage() {
 
     try {
       // Abort controller to cancel sign-in if it takes too long
-      const timeoutDuration = 15000 // Reduced to 15 seconds
+      const timeoutDuration = 30000 // Increased to 30 seconds for reliability
       const controller = new AbortController()
       const timeoutId = setTimeout(() => {
         controller.abort()

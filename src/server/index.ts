@@ -61,76 +61,41 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 // Middleware
-// CORS configuration - allow multiple origins in development
-// Add your Cloudflare Pages URL here when deploying
-const allowedOrigins = [
-  // Primary frontend URL
-  process.env.VITE_SITE_URL,
-  process.env.NEXT_PUBLIC_SITE_URL,
-  'https://imobileservicecenter.lk',
-  'https://www.imobileservicecenter.lk',
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:3001',
-  'http://localhost:3002',
-  process.env.CLOUDFLARE_PAGES_URL,
-  'https://imobile.kalhararashmitha.workers.dev',
-].filter(Boolean) as string[]
+// NUCLEAR CORS FIX: Explicitly handle headers to prevent "Failed to fetch" errors
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Define allowed origins
+  const allowedOrigins = [
+    'https://imobileservicecenter.lk',
+    'https://www.imobileservicecenter.lk',
+    'https://imobile.kalhararashmitha.workers.dev',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    process.env.VITE_SITE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.CLOUDFLARE_PAGES_URL,
+  ].filter(Boolean) as string[];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, Postman, or same-origin requests)
-    if (!origin) {
-      callback(null, true)
-      return
-    }
+  // If the origin is allowed (or in dev), set the ACAO header
+  if (origin && (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production' || origin.endsWith('.pages.dev') || origin.endsWith('.workers.dev'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (!origin && process.env.NODE_ENV !== 'production') {
+    // Fallback for tools like Postman/cURL in dev
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
 
-    // Check exact matches
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true)
-      return
-    }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, x-session-token, X-Session-Token, x-requested-with, X-Requested-With, Cache-Control, Pragma, Expires, x-service-role');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-    // Check wildcard patterns for .lk and Cloudflare domains
-    const isAllowedWildcard =
-      origin.endsWith('.imobileservicecenter.lk') ||
-      origin.endsWith('.workers.dev') ||
-      origin.endsWith('.pages.dev') ||
-      origin.endsWith('.trycloudflare.com')
-
-    if (isAllowedWildcard) {
-      callback(null, true)
-      return
-    }
-
-    // In development, allow all origins for easier debugging
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`📡 [CORS] Allowing non-production origin: ${origin}`)
-      callback(null, true)
-    } else {
-      console.warn(`⚠️  [CORS] Blocked origin in production: ${origin}`)
-      // Instead of failing the request here, allow it and let it fail elsewhere if needed
-      // OR return the origin to avoid the browser error "No ACAO header present"
-      callback(null, true) // TEMPORARY: Be permissive to fix admin login block
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'Cookie',
-    'x-session-token',
-    'X-Session-Token',
-    'x-requested-with',
-    'X-Requested-With',
-    'Cache-Control',
-    'Pragma',
-    'Expires',
-    'x-service-role'
-  ],
-}))
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 app.use(express.json())
 app.use(cookieParser())
 
