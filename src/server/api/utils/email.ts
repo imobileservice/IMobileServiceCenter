@@ -61,7 +61,7 @@ export const sendEmail = async ({
         throw new Error('Email service not configured: Missing SMTP credentials')
     }
 
-    const transport = getTransport()
+    const transport = await getTransport()
     const from = process.env.SMTP_FROM || `"IMobile Service Center" <${process.env.SMTP_USER}>`
     console.log('[Email] Using From Address:', from)
     const info = await transport.sendMail({
