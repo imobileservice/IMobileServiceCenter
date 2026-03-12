@@ -26,6 +26,38 @@ import apiRouter from './api'
 const app = express()
 const PORT = process.env.PORT || 4000
 
+// 🚀 BULLETPROOF CORS FIX: Must be the absolute first middleware
+// Reflects origin and headers to bypass any browser CORS block
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const requestedHeaders = req.headers['access-control-request-headers'];
+  
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  
+  if (requestedHeaders) {
+    res.setHeader('Access-Control-Allow-Headers', requestedHeaders);
+  } else {
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, x-session-token, X-Session-Token, x-requested-with, X-Requested-With, Cache-Control, Pragma, Expires, x-service-role, x-admin-token, x-api-key');
+  }
+  
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400'); // Cache for 24h
+
+  // Handle preflight immediately
+  if (req.method === 'OPTIONS') {
+    console.log(`✅ [PREFLIGHT] Reflected headers for ${req.path} from ${origin || 'unknown'}`);
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Log environment variable status (without exposing secrets)
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -60,35 +92,6 @@ if (!supabaseUrl || !supabaseKey) {
   console.warn('   Make sure your .env file contains VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY')
 }
 
-// Middleware
-// ULTRA-PERMISSIVE CORS FIX: Reflect origin and allow all common headers to bypass "Failed to fetch"
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  
-  // Log for debugging (this will show up in Railway logs)
-  console.log(`📡 [CORS DEBUG] ${req.method} ${req.path} | Origin: ${origin || 'none'}`);
-
-  if (origin) {
-    // Reflect any origin to satisfy Credential requests
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  } else {
-    // Fallback for tools
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  // Be extremely permissive with headers
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, x-session-token, X-Session-Token, x-requested-with, X-Requested-With, Cache-Control, Pragma, Expires, x-service-role, x-admin-token, x-api-key');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  // Handle preflight immediately with status 204 (No Content)
-  if (req.method === 'OPTIONS') {
-    console.log(`✅ [CORS PREFLIGHT] Handled for ${req.path}`);
-    return res.status(204).end();
-  }
-  next();
-});
 app.use(express.json())
 app.use(cookieParser())
 
@@ -162,6 +165,13 @@ if (process.env.NODE_ENV === 'production') {
 
 // Global error handler - MUST be after routes
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // Ensure CORS headers are present even on errors
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
   console.error('❌ Server Error:', err)
   console.error('❌ Error Stack:', err?.stack)
 
