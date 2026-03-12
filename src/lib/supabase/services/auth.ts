@@ -73,60 +73,27 @@ export const authService = {
 
     // The profile is automatically created by the database trigger
     // If we have whatsapp or name, we'll update it after ensuring the profile exists
+    // Run profile update ENTIRELY in background - do NOT block the return
     if (data.user && (whatsapp || name)) {
-      // Use a retry mechanism to update profile with exponential backoff
-      const updateProfileWithRetry = async (retries = 5, initialDelay = 500) => {
-        for (let i = 0; i < retries; i++) {
+      setTimeout(async () => {
+        const updates: { name?: string; whatsapp?: string } = {}
+        if (name) updates.name = name
+        if (whatsapp) updates.whatsapp = whatsapp
+
+        for (let i = 0; i < 3; i++) {
           try {
-            // Exponential backoff: 500ms, 1000ms, 2000ms, 4000ms, 8000ms
-            const delay = initialDelay * Math.pow(2, i)
-            await new Promise(resolve => setTimeout(resolve, delay))
-
-            // First, check if profile exists
-            try {
-              const existingProfile = await this.getProfile(data.user!.id)
-              console.log('Profile exists, updating...', existingProfile)
-            } catch (profileCheckError: any) {
-              // Profile doesn't exist yet, continue waiting
-              console.log(`Profile not ready yet (attempt ${i + 1}/${retries}), waiting...`)
-              if (i === retries - 1) {
-                console.warn('Profile was not created after signup. This might be a database trigger issue.')
-                return
-              }
-              continue
-            }
-
-            // Profile exists, try to update it
-            const updates: { name?: string; whatsapp?: string } = {}
-            if (name) updates.name = name
-            if (whatsapp) updates.whatsapp = whatsapp
-
+            await new Promise(resolve => setTimeout(resolve, 1500 * (i + 1)))
             await this.updateProfile(data.user!.id, updates)
-            console.log('Profile updated successfully with:', updates)
-            return // Success, exit retry loop
+            console.log('[authService] Background profile update succeeded')
+            return
           } catch (err: any) {
-            console.error(`Profile update attempt ${i + 1}/${retries} failed:`, err?.message || err)
-            if (i === retries - 1) {
-              // Last attempt failed
-              console.error('Failed to update profile after all retries. Error details:', {
-                message: err?.message,
-                code: err?.code,
-                status: err?.status,
-                details: err?.details,
-                hint: err?.hint,
-              })
-              // Don't throw - this is not critical for signup to succeed
-            }
+            console.warn(`[authService] Background profile update attempt ${i + 1}/3:`, err?.message)
           }
         }
-      }
-
-      // Don't await this - let it run in background so signup can complete
-      updateProfileWithRetry().catch(err => {
-        console.error('Background profile update failed:', err)
-      })
+      }, 0)
     }
 
+    // Return data immediately - don't wait for profile update
     return data
   },
 
