@@ -22,16 +22,19 @@ const getTransport = () => {
             pass: process.env.SMTP_PASS,
         },
         tls: {
-            rejectUnauthorized: false, // Essential for self-signed or internal certs
+            rejectUnauthorized: false,
             minVersion: 'TLSv1.2'
         },
-        connectionTimeout: 20000, // Increased to 20s
-        greetingTimeout: 20000,   // Increased to 20s
-        socketTimeout: 45000,     // Increased to 45s
-        // family: 4 forces Node to use IPv4 directly, which fixes Railway's ENETUNREACH
-        family: 4,
-        debug: true, // Enable debug logging
-        logger: true // Log to console
+        connectionTimeout: 30000, // 30s
+        greetingTimeout: 30000,   // 30s
+        socketTimeout: 60000,     // 60s
+        family: 4,                // IPv4 only
+        // Definitive fix for ENETUNREACH: force dns.lookup to use IPv4
+        lookup: (hostname: string, options: any, callback: any) => {
+            dns.lookup(hostname, { family: 4 }, callback);
+        },
+        debug: true,
+        logger: true
     } as any)
 }
 
@@ -58,20 +61,9 @@ export const sendEmail = async ({
         throw new Error('Email service not configured: Missing SMTP credentials')
     }
 
+    const transport = getTransport()
     const from = process.env.SMTP_FROM || `"IMobile Service Center" <${process.env.SMTP_USER}>`
     console.log('[Email] Using From Address:', from)
-    const transport = getTransport()
-
-    // Verify connection before sending
-    try {
-        await transport.verify()
-        console.log('[Email] SMTP connection verified successfully')
-    } catch (verifyError: any) {
-        console.error('[Email] SMTP connection verification failed:', verifyError.message)
-        throw new Error(`Email service connection failed: ${verifyError.message}`)
-    }
-
-    console.log(`[Email] Sending email to: ${to}, subject: ${subject}`)
     const info = await transport.sendMail({
         from,
         to,

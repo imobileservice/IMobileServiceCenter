@@ -76,36 +76,36 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
         }
 
         // 5. Send OTP via WhatsApp (Twilio)
-        // 5. Send OTP via Email
-        try {
-            await sendEmail({
-                to: normalizedEmail,
-                subject: 'Admin Login Verification Code',
-                text: `Your Admin Verification Code is: ${otp}. Valid for 10 minutes.`,
-                html: `
-                    <div style="font-family: sans-serif; padding: 20px;">
-                        <h2>Admin Verification Code</h2>
-                        <p>Your verification code is:</p>
-                        <h1 style="color: #333; letter-spacing: 5px;">${otp}</h1>
-                        <p>This code is valid for 10 minutes.</p>
-                        <p>If you didn't request this code, please ignore this email.</p>
-                    </div>
-                `
-            })
-            console.log(`[Email] OTP sent to ${normalizedEmail}`)
-        } catch (emailError: any) {
-            console.error('Failed to send OTP email:', emailError)
-            // Put the tech details directly in 'error' so it shows in the UI red box
-            return res.status(500).json({ 
-                error: `Email Error: ${emailError?.message || 'Unknown error'}. Please check SMTP credentials (SMTP_USER/PASS).`, 
-                details: emailError?.message,
-                hint: 'If using Gmail, Ensure "App Password" is used and SMTP_PORT is 587.'
-            })
-        }
+        // 5. Send OTP via Email (Non-blocking)
+        // We trigger the email send but don't 'await' it to prevent Gateway Timeouts (502)
+        sendEmail({
+            to: normalizedEmail,
+            subject: 'Admin Login Verification Code',
+            text: `Your Admin Verification Code is: ${otp}. Valid for 10 minutes.`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px;">
+                    <h2>Admin Verification Code</h2>
+                    <p>Your verification code is:</p>
+                    <h1 style="color: #333; letter-spacing: 5px;">${otp}</h1>
+                    <p>This code is valid for 10 minutes.</p>
+                    <p>If you didn't request this code, please ignore this email.</p>
+                </div>
+            `
+        }).then(() => {
+            console.log(`[Email] OTP sent successfully to ${normalizedEmail}`)
+        }).catch((emailError) => {
+            console.error('[Email] Background OTP sending failed:', emailError.message)
+            // Log full error in dev
+            if (process.env.NODE_ENV === 'development') {
+                console.error(emailError)
+            }
+        })
 
+        // Return success immediately - the OTP is stored in DB so verify step will work
+        // even if the email arrives a few seconds late or fails (can retry)
         return res.json({
             success: true,
-            message: 'Credentials valid. OTP sent to Email.',
+            message: 'Credentials valid. Verification code sent.',
             // In development, send OTP in response for testing
             otp: process.env.NODE_ENV === 'development' ? otp : undefined
         })
