@@ -8,6 +8,7 @@ import { sendEmail } from '../utils/email'
  * Step 1: Validate credentials (email/password) and send WhatsApp OTP
  */
 export async function initAdminLoginHandler(req: Request, res: Response) {
+    console.log(`🔐 [Admin] Login init attempt for: ${req.body?.email}`)
     try {
         const { email, password } = req.body
 
