@@ -93,14 +93,14 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
                 `
             })
             console.log(`[Email] OTP sent to ${normalizedEmail}`)
-        } catch (emailError) {
+        } catch (emailError: any) {
             console.error('Failed to send OTP email:', emailError)
-            // In case of email failure, we log it but maybe we should return error?
-            // For now, logging.
-            if (process.env.NODE_ENV === 'development') {
-                console.log(`[DEV ONLY] OTP for ${normalizedEmail}: ${otp}`)
-            }
-            return res.status(500).json({ error: 'Failed to send OTP email' })
+            // Return more descriptive error for debugging
+            return res.status(500).json({ 
+                error: 'Failed to send OTP email', 
+                details: emailError?.message || 'Unknown error',
+                hint: 'Check SMTP credentials (SMTP_USER, SMTP_PASS) and SMTP_HOST settings.'
+            })
         }
 
         return res.json({
