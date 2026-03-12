@@ -105,32 +105,9 @@ app.use((req, res, next) => {
   next()
 })
 
-// Middleware to ensure API routes always return JSON
+// Middleware to ensure API routes have correct headers
 app.use('/api', (req, res, next) => {
-  // Store original json method
-  const originalJson = res.json.bind(res)
-
-  // Override json to ensure Content-Type is set
-  res.json = function (body: any) {
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json')
-    }
-    return originalJson(body)
-  }
-
-  // Override send to ensure JSON for API routes
-  const originalSend = res.send.bind(res)
-  res.send = function (body: any) {
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json')
-      // If body is not already JSON, convert it
-      if (typeof body === 'string' && !body.startsWith('{') && !body.startsWith('[')) {
-        return originalSend(JSON.stringify({ error: body }))
-      }
-    }
-    return originalSend(body)
-  }
-
+  res.setHeader('Content-Type', 'application/json')
   next()
 })
 

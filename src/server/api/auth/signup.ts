@@ -109,113 +109,106 @@ export async function signupHandler(req: Request, res: Response) {
     console.log(`[api/auth/signup] User created: ${userId} in ${Date.now() - startTime}ms`)
 
     // 2. DATABASE OPERATIONS (FAST - Using Admin Client)
-    // We perform the OTP insertion before responding so the verification page works.
-    // We background the profile creation as it's less critical.
+    // We background EVERYTHING except the initial auth.signUp to ensure a fast response.
+    // The user will be redirected to the verify-otp page.
     
-    // Background profile creation
+    // Background task for Profile, OTP, and Email
     setImmediate(async () => {
+      console.log(`[api/auth/signup] Starting background tasks for: ${userId}`)
+      const db = adminClient || supabase
+      
+      // A. Profile Creation
       try {
-        const db = adminClient || supabase
         await db.from('profiles').upsert({
           id: userId,
           email: data.user.email || email,
           name: name || data.user.email || email,
           whatsapp: whatsapp || '',
         }, { onConflict: 'id' })
-        console.log('[api/auth/signup] Profile upserted in background')
+        console.log(`[api/auth/signup] [BKG] Profile upserted for ${userId}`)
       } catch (e: any) {
-        console.warn('[api/auth/signup] Background profile upsert failed:', e.message)
+        console.error(`[api/auth/signup] [BKG] Profile upsert failed:`, e.message)
       }
-    })
 
-    // Prepare OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
-
-    try {
-      const db = adminClient || supabase
-      const { error: otpError } = await db.from('email_verification_otps').insert({
-        email: data.user.email!.toLowerCase().trim(),
-        otp,
-        user_id: userId,
-        expires_at: expiresAt.toISOString()
-      })
-
-      if (otpError) {
-        console.error('[api/auth/signup] OTP Database Error:', otpError.message)
-        // We continue, but the user might need to resend OTP
-      } else {
-        console.log(`[api/auth/signup] OTP record created in ${Date.now() - startTime}ms`)
-      }
-    } catch (otpExc: any) {
-      console.error('[api/auth/signup] OTP insertion exception:', otpExc.message)
-    }
-
-    // 3. BACKGROUND EMAIL SENDING
-    setImmediate(async () => {
+      // B. OTP Generation & Insertion
+      const otp = Math.floor(100000 + Math.random() * 900000).toString()
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      
       try {
-        const { sendEmail } = await import('../utils/email')
-        console.log(`[api/auth/signup] Sending verification email to: ${email}`)
-        
-        await sendEmail({
-          to: data.user.email!,
-          subject: 'Confirm Your Signup - IMobile Service Center',
-          html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh;">
-              <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 40px 20px;">
-                <tr>
-                  <td align="center">
-                    <table width="600" cellpadding="0" cellspacing="0" style="background: #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); border: 1px solid #334155;">
-                      <!-- Header -->
-                      <tr>
-                        <td style="background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
-                          <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);">IMOBILE</h1>
-                          <p style="margin: 8px 0 0 0; color: #e0f2fe; font-size: 14px; font-weight: 500;">IMobile Service Center</p>
-                        </td>
-                      </tr>
-                      <!-- Content -->
-                      <tr>
-                        <td style="padding: 50px 40px; background: #1e293b;">
-                          <h2 style="margin: 0 0 20px 0; color: #f1f5f9; font-size: 24px; font-weight: 600; text-align: center;">Confirm Your Signup</h2>
-                          <p style="margin: 0 0 30px 0; color: #cbd5e1; font-size: 16px; line-height: 1.6; text-align: center;">Welcome! Use the verification code below to complete your registration.</p>
-                          <table width="100%" cellpadding="0" cellspacing="0" style="margin: 40px 0;">
-                            <tr>
-                              <td align="center">
-                                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 35px 20px;">
-                                  <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 13px; font-weight: 500; text-transform: uppercase;">Verification Code</p>
-                                  <div style="background: #0f172a; border-radius: 8px; padding: 25px; border: 1px solid #334155;">
-                                    <p style="margin: 0; color: #3b82f6; font-size: 42px; font-weight: 700; letter-spacing: 12px; font-family: 'Courier New', monospace;">${otp}</p>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                      <!-- Footer -->
-                      <tr>
-                        <td style="background: #0f172a; padding: 30px; text-align: center; border-top: 1px solid #334155;">
-                          <p style="margin: 0; color: #475569; font-size: 11px;">© 2024 IMobile Service Center.</p>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-            </body>
-            </html>
-          `,
-          text: `Your IMobile verification code is: ${otp}`
+        const { error: otpError } = await db.from('email_verification_otps').insert({
+          email: data.user.email!.toLowerCase().trim(),
+          otp,
+          user_id: userId,
+          expires_at: expiresAt.toISOString()
         })
-        console.log('[api/auth/signup] ✅ Verification email sent')
-      } catch (mailErr: any) {
-        console.error('[api/auth/signup] ⚠️ Verification email FAILED:', mailErr.message)
+
+        if (otpError) {
+          console.error(`[api/auth/signup] [BKG] OTP Database Error:`, otpError.message)
+        } else {
+          console.log(`[api/auth/signup] [BKG] OTP record created for ${userId}`)
+          
+          // C. Send Verification Email (only if OTP was saved)
+          try {
+            const { sendEmail } = await import('../utils/email')
+            console.log(`[api/auth/signup] [BKG] Sending email to: ${email}`)
+            
+            await sendEmail({
+              to: data.user.email!,
+              subject: 'Confirm Your Signup - IMobile Service Center',
+              html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                </head>
+                <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 40px 20px;">
+                    <tr>
+                      <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="background: #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); border: 1px solid #334155;">
+                          <!-- Header -->
+                          <tr>
+                            <td style="background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
+                              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);">IMOBILE</h1>
+                              <p style="margin: 8px 0 0 0; color: #e0f2fe; font-size: 14px; font-weight: 500;">IMobile Service Center</p>
+                            </td>
+                          </tr>
+                          <!-- Content -->
+                          <tr>
+                            <td style="padding: 50px 40px; background: #1e293b;">
+                              <h2 style="margin: 0 0 20px 0; color: #f1f5f9; font-size: 24px; font-weight: 600; text-align: center;">Confirm Your Signup</h2>
+                              <p style="margin: 0 0 30px 0; color: #cbd5e1; font-size: 16px; line-height: 1.6; text-align: center;">Welcome! Use the verification code below to complete your registration.</p>
+                              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 40px 0;">
+                                <tr>
+                                  <td align="center">
+                                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 35px 20px;">
+                                      <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 13px; font-weight: 500; text-transform: uppercase;">Verification Code</p>
+                                      <div style="background: #0f172a; border-radius: 8px; padding: 25px; border: 1px solid #334155;">
+                                        <p style="margin: 0; color: #3b82f6; font-size: 42px; font-weight: 700; letter-spacing: 12px; font-family: 'Courier New', monospace;">${otp}</p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </body>
+                </html>
+              `,
+              text: `Your IMobile verification code is: ${otp}`
+            })
+            console.log(`[api/auth/signup] [BKG] ✅ Email sent for ${userId}`)
+          } catch (mailErr: any) {
+            console.error(`[api/auth/signup] [BKG] ⚠️ Email FAILED for ${userId}:`, mailErr.message)
+          }
+        }
+      } catch (otpExc: any) {
+        console.error(`[api/auth/signup] [BKG] OTP Exception for ${userId}:`, otpExc.message)
       }
     })
 
