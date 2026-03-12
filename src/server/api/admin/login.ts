@@ -83,13 +83,89 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
             subject: 'Admin Login Verification Code',
             text: `Your Admin Verification Code is: ${otp}. Valid for 10 minutes.`,
             html: `
-                <div style="font-family: sans-serif; padding: 20px;">
-                    <h2>Admin Verification Code</h2>
-                    <p>Your verification code is:</p>
-                    <h1 style="color: #333; letter-spacing: 5px;">${otp}</h1>
-                    <p>This code is valid for 10 minutes.</p>
-                    <p>If you didn't request this code, please ignore this email.</p>
-                </div>
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                </head>
+                <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #0f172a; min-height: 100vh;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background: #0f172a; padding: 40px 20px;">
+                    <tr>
+                      <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="background: #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); border: 1px solid #334155;">
+                          <!-- Header with Gradient -->
+                          <tr>
+                            <td style="background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
+                              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);">
+                                IMOBILE
+                              </h1>
+                              <p style="margin: 8px 0 0 0; color: #e0f2fe; font-size: 14px; font-weight: 500;">
+                                IMobile Service Center
+                              </p>
+                            </td>
+                          </tr>
+                          
+                          <!-- Main Content -->
+                          <tr>
+                            <td style="padding: 50px 40px; background: #1e293b;">
+                              <h2 style="margin: 0 0 20px 0; color: #f1f5f9; font-size: 24px; font-weight: 600; text-align: center;">
+                                Admin Login Verification
+                              </h2>
+                              
+                              <p style="margin: 0 0 30px 0; color: #cbd5e1; font-size: 16px; line-height: 1.6; text-align: center;">
+                                You are attempting to access the IMobile Admin Panel. Please use the verification code below to complete your login.
+                              </p>
+                              
+                              <!-- Token Display Box -->
+                              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 40px 0;">
+                                <tr>
+                                  <td align="center">
+                                    <div style="background: #1e293b; border: 2px solid #3b82f6; border-radius: 12px; padding: 35px 20px; box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);">
+                                      <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; text-align: center;">
+                                        Your Verification Code
+                                      </p>
+                                      <div style="background: #0f172a; border-radius: 8px; padding: 25px; margin: 15px 0; border: 1px solid #334155;">
+                                        <p style="margin: 0; color: #3b82f6; font-size: 42px; font-weight: 700; letter-spacing: 12px; text-align: center; font-family: 'Courier New', monospace; text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);">
+                                          ${otp}
+                                        </p>
+                                      </div>
+                                      <p style="margin: 15px 0 0 0; color: #64748b; font-size: 12px; text-align: center; line-height: 1.5;">
+                                        Valid for 10 minutes
+                                      </p>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </table>
+                              
+                              <!-- Instructions -->
+                              <div style="background: #0f172a; border-radius: 8px; padding: 25px; margin: 30px 0; border: 1px solid #334155;">
+                                <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                  🛡️ Security Notice
+                                </p>
+                                <ul style="margin: 0; padding-left: 20px; color: #cbd5e1; font-size: 14px; line-height: 1.8;">
+                                  <li style="margin-bottom: 8px;">Never share this code with anyone</li>
+                                  <li style="margin-bottom: 8px;">This code only works for the current login session</li>
+                                  <li style="margin-bottom: 0;">If you didn't request this, please change your password</li>
+                                </ul>
+                              </div>
+                            </td>
+                          </tr>
+                          
+                          <!-- Footer -->
+                          <tr>
+                            <td style="background: #0f172a; padding: 30px; text-align: center; border-top: 1px solid #334155;">
+                              <p style="margin: 0 0 10px 0; color: #64748b; font-size: 12px; line-height: 1.6;">
+                                © 2024 IMobile Service Center.
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </body>
+                </html>
             `
         }).then(() => {
             console.log(`[Email] OTP sent successfully to ${normalizedEmail}`)
