@@ -95,11 +95,11 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
             console.log(`[Email] OTP sent to ${normalizedEmail}`)
         } catch (emailError: any) {
             console.error('Failed to send OTP email:', emailError)
-            // Return more descriptive error for debugging
+            // Put the tech details directly in 'error' so it shows in the UI red box
             return res.status(500).json({ 
-                error: 'Failed to send OTP email', 
-                details: emailError?.message || 'Unknown error',
-                hint: 'Check SMTP credentials (SMTP_USER, SMTP_PASS) and SMTP_HOST settings.'
+                error: `Email Error: ${emailError?.message || 'Unknown error'}. Please check SMTP credentials (SMTP_USER/PASS).`, 
+                details: emailError?.message,
+                hint: 'If using Gmail, Ensure "App Password" is used and SMTP_PORT is 587.'
             })
         }
 
