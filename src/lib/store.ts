@@ -170,17 +170,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             console.log('[AuthStore] 🔑 Found OAuth token in URL, storing in localStorage...')
             localStorage.setItem('supabase_session_token', oauthToken)
 
-            // Also set the session in Supabase client for full compatibility
+            // Also set the session in Supabase client for full compatibility without blocking
             if (oauthRefresh) {
-              try {
-                await supabase.auth.setSession({
+                supabase.auth.setSession({
                   access_token: oauthToken,
                   refresh_token: oauthRefresh,
+                }).then(({ error }: any) => {
+                  if (error) throw error
+                  console.log('[AuthStore] ✅ Supabase client session set from OAuth tokens')
+                }).catch((setErr: any) => {
+                  console.warn('[AuthStore] ⚠️ Failed to set Supabase session (non-fatal):', setErr.message)
                 })
-                console.log('[AuthStore] ✅ Supabase client session set from OAuth tokens')
-              } catch (setErr: any) {
-                console.warn('[AuthStore] ⚠️ Failed to set Supabase session (non-fatal):', setErr.message)
-              }
             }
 
             // Clean up URL (remove tokens from address bar for security)
