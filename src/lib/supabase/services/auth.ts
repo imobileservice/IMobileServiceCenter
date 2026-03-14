@@ -582,17 +582,21 @@ export const authService = {
 
       // CRITICAL: Use skipBrowserRedirect: false to ensure proper redirect handling
       // and explicitly set redirectTo to our app callback, not Supabase
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      console.log('🚀 [auth.ts] calling supabase.auth.signInWithOAuth with Google! redirectTo=', redirectTo)
+      const oauthResult = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: redirectTo,
-          skipHttpRedirect: false,
+          skipBrowserRedirect: false,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
           },
         },
       })
+      
+      console.log('📥 [auth.ts] signInWithOAuth returned:', JSON.stringify(oauthResult, null, 2))
+      const { data, error } = oauthResult
 
       if (error) {
         console.error('❌ Google OAuth error:', error)
