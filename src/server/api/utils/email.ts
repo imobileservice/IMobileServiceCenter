@@ -2,16 +2,16 @@ import nodemailer from 'nodemailer'
 import dns from 'dns'
 
 const getTransport = async () => {
-    // Resend SMTP Settings
-    const host = 'smtp.resend.com'
-    const port = 465 // Use 465 for SSL/TLS
-    const secure = true
-    const user = 'resend' // Resend literal username
+    // Read SMTP Settings from envor fallback
+    const host = process.env.SMTP_HOST || 'smtp.resend.com'
+    const port = parseInt(process.env.SMTP_PORT || '465') // Use 465 for SSL/TLS, 587 for STARTTLS
+    const secure = port === 465 // true for 465, false for other ports
+    const user = process.env.SMTP_USER || 'resend' 
     const pass = process.env.SMTP_PASS || 're_3xuwxa4h_NfsCkF8p26UdRvigiMk2eW4Y'
 
-    console.log('[Email] Configuring Resend Transport (IPv4 Forced)')
+    console.log(`[Email] Configuring SMTP Transport for ${host}:${port}`)
 
-    // FORCE IPv4: Manually resolve hostname to an IPv4 address
+    // FORCE IPv4: Manually resolve hostname to an IPv4 address (especially needed for Resend, optional for Gmail)
     let resolvedHost = host
     try {
         const addresses = await new Promise<string[]>((resolve, reject) => {
@@ -21,7 +21,7 @@ const getTransport = async () => {
             })
         })
         resolvedHost = addresses[0]
-        console.log(`[Email] Resend Host ${host} resolved to IPv4: ${resolvedHost}`)
+        console.log(`[Email] Host ${host} resolved to IPv4: ${resolvedHost}`)
     } catch (dnsError: any) {
         console.warn(`[Email] DNS Resolve failed for ${host}: ${dnsError.message}.`)
     }
