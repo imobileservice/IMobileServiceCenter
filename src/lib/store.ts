@@ -1,6 +1,35 @@
 import { create } from "zustand"
 import { getApiUrl } from './utils/api'
 
+// ── Session cache helpers ──────────────────────────────────────────────
+const CACHE_KEY = 'imobile_cached_user'
+const CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+function saveUserCache(user: User) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ user, timestamp: Date.now() }))
+  } catch { /* quota errors etc. */ }
+}
+
+function loadUserCache(): User | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const { user, timestamp } = JSON.parse(raw)
+    if (Date.now() - timestamp > CACHE_MAX_AGE_MS) {
+      localStorage.removeItem(CACHE_KEY)
+      return null
+    }
+    return user as User
+  } catch {
+    return null
+  }
+}
+
+function clearUserCache() {
+  try { localStorage.removeItem(CACHE_KEY) } catch { /* ok */ }
+}
+
 export interface CartItem {
   id: string
   name: string
@@ -70,6 +99,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   setUser: (user) => {
     const newState = { user, isAuthenticated: !!user }
     set(newState)
+
+    // Persist / clear cache
+    if (user) {
+      saveUserCache(user)
+    } else {
+      clearUserCache()
+    }
+
     console.log('[AuthStore] setUser called:', newState)
 
     // Expose to window for debugging
@@ -103,6 +140,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (currentState.user && currentState.isAuthenticated) {
       console.log('[AuthStore] ⏭️ Skipping initialization - user already authenticated:', currentState.user.id)
       return
+    }
+
+    // ── INSTANT RESTORE: Load cached user from localStorage (< 5ms) ──
+    const cachedUser = loadUserCache()
+    if (cachedUser) {
+      console.log('[AuthStore] ⚡ Instant restore from cache:', cachedUser.id)
+      set({ user: cachedUser, isAuthenticated: true })
     }
 
     isInitializing = true
@@ -198,7 +242,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             try {
               const profilePromise = authService.getProfile(sessionData.user.id)
               const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
+                setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
               )
 
               const profile = await Promise.race([profilePromise, timeoutPromise]) as any
@@ -283,7 +327,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       try {
         const getSessionPromise = supabase.auth.getSession()
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout')), 15000)
+          setTimeout(() => reject(new Error('Timeout')), 5000)
         )
 
         const { data: { session }, error: sessionError } = await Promise.race([
@@ -332,17 +376,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
       }
 
-      // No session found anywhere - only reset if we don't already have a user
-      const finalState = get()
-      if (!finalState.user) {
-        console.log('[AuthStore] ❌ No session found - user not authenticated')
-        set({ user: null, isAuthenticated: false })
-      } else {
-        console.log('[AuthStore] ✅ User already set, not resetting state')
-      }
+      // No valid session found anywhere — clear any cached/restored user
+      console.log('[AuthStore] ❌ No valid session found - logging out')
+      clearUserCache()
+      set({ user: null, isAuthenticated: false })
     } catch (error: any) {
       console.error('[AuthStore] ❌ Auth initialization error:', error)
-      // Only reset if we don't already have a user
+      // On network errors, keep the cached user (offline-friendly)
+      // Only clear if there's no user at all
       const finalState = get()
       if (!finalState.user) {
         set({ user: null, isAuthenticated: false })
