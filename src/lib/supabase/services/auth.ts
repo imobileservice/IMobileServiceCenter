@@ -553,12 +553,8 @@ export const authService = {
         )
       }
 
-      // Sign out any existing session to clear old data
-      try {
-        await supabase.auth.signOut()
-      } catch (signOutError) {
-        // Ignore sign out errors - might not have a session
-      }
+      // Sign out used to hang silently under some cookie configurations, 
+      // removed since it's not strictly necessary before a fresh OAuth redirect.
 
       const siteUrl = import.meta.env.VITE_SITE_URL || import.meta.env.NEXT_PUBLIC_SITE_URL || window.location.origin
       // CRITICAL: Ensure redirect URL is the APP URL, not Supabase URL
