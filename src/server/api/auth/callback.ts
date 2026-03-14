@@ -15,10 +15,14 @@ export async function callbackHandler(req: Request, res: Response) {
       return res.redirect('/auth/error?error=missing_code&message=Authorization code is missing')
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || 'https://imobileservicecenter.lk'
+    const host = req.headers.host || ''
+    const defaultSiteUrl = host.includes('localhost') ? 'http://localhost:3000' : 'https://imobileservicecenter.lk'
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || defaultSiteUrl
+    
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const isProd = process.env.NODE_ENV === 'production'
 
     if (!supabaseUrl || !supabaseKey) {
       return res.redirect(`${siteUrl}/auth/error?error=supabase_not_configured&message=Supabase environment variables are not set`)
@@ -42,13 +46,13 @@ export async function callbackHandler(req: Request, res: Response) {
             res.cookie(name, value, {
               ...options,
               httpOnly: options?.httpOnly ?? true,
-              sameSite: options?.sameSite ?? (process.env.NODE_ENV === 'production' ? 'none' : 'lax'),
-              secure: process.env.NODE_ENV === 'production',
-              path: '/',
+              sameSite: options?.sameSite ?? (isProd ? 'lax' : 'lax'),
+              secure: isProd,
+              path: options?.path || '/',
             })
           },
           remove(name: string, options: any) {
-            res.clearCookie(name, options)
+            res.clearCookie(name, { ...options, path: options?.path || '/' })
           },
         },
       }

@@ -111,23 +111,44 @@ export function createClient() {
         },
         set(name: string, value: string, options: any) {
           if (typeof document === 'undefined') return
+          
+          const cookieOptions = {
+            path: options?.path || '/',
+            maxAge: options?.maxAge || 60 * 60 * 24 * 30, // Default 30 days
+            sameSite: options?.sameSite || (import.meta.env.PROD ? 'lax' : 'lax'),
+            secure: options?.secure !== undefined ? options.secure : import.meta.env.PROD,
+            domain: options?.domain
+          }
+
           let cookieStr = `${name}=${encodeURIComponent(value)}`
-          if (options?.maxAge) cookieStr += `; Max-Age=${options.maxAge}`
-          if (options?.domain) cookieStr += `; Domain=${options.domain}`
-          if (options?.path) cookieStr += `; Path=${options.path}`
-          if (options?.sameSite) cookieStr += `; SameSite=${options.sameSite}`
-          if (options?.secure) cookieStr += `; Secure`
+          cookieStr += `; Path=${cookieOptions.path}`
+          cookieStr += `; Max-Age=${cookieOptions.maxAge}`
+          cookieStr += `; SameSite=${cookieOptions.sameSite}`
+          if (cookieOptions.secure) cookieStr += `; Secure`
+          if (cookieOptions.domain) cookieStr += `; Domain=${cookieOptions.domain}`
+          
           document.cookie = cookieStr
+          
+          // Redundant backup in localStorage for PKCE verifier (this is a lifesaver for mobile)
+          if (name.includes('code-verifier') || name.includes('state')) {
+            localStorage.setItem(name, value)
+          }
         },
         remove(name: string, options: any) {
           if (typeof document === 'undefined') return
-          let cookieStr = `${name}=; Max-Age=0`
-          if (options?.domain) cookieStr += `; Domain=${options.domain}`
-          if (options?.path) cookieStr += `; Path=${options.path}`
-          document.cookie = cookieStr
+          const path = options?.path || '/'
+          const domain = options?.domain ? `; Domain=${options.domain}` : ''
+          document.cookie = `${name}=; Path=${path}; Max-Age=0${domain}`
+          
+          if (name.includes('code-verifier') || name.includes('state')) {
+            localStorage.removeItem(name)
+          }
         }
       },
       cookieOptions: {
+        path: '/',
+        secure: import.meta.env.PROD,
+        sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 30,
       },
       db: { schema: 'public' },

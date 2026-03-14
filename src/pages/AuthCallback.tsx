@@ -13,71 +13,92 @@ export default function AuthCallback() {
             try {
                 // Determine if there is a code in the URL (PKCE flow)
                 // If there is, redirect the browser entirely to the backend Express route
-                // so the backend can set the secure HTTP-only cookies and database session
                 if (window.location.search.includes('code=')) {
                     // Extract PKCE code verifier since the backend (on a different domain) needs it
                     let codeVerifier = ''
+                    console.log('[AuthCallback] 🧩 Code found in URL, attempting PKCE exchange...')
                     
-                    // 1. Try to get it from cookies (since createBrowserClient uses cookies)
+                    // 1. Try to get it from cookies
                     const cookies = document.cookie.split(';')
                     for (const cookie of cookies) {
                         const [name, ...rest] = cookie.trim().split('=')
                         if (name.includes('-auth-token-code-verifier')) {
                             codeVerifier = decodeURIComponent(rest.join('='))
+                            console.log('[AuthCallback] ✅ Found verifier in cookie')
                             break
                         }
                     }
 
-                    // 2. Fallback to localStorage just in case
+                    // 2. Fallback to localStorage
                     if (!codeVerifier) {
                         for (let i = 0; i < localStorage.length; i++) {
                             const key = localStorage.key(i)
                             if (key && key.includes('-auth-token-code-verifier')) {
                                codeVerifier = localStorage.getItem(key) || ''
+                               console.log('[AuthCallback] ✅ Found verifier in localStorage')
                                break
                             }
                         }
                     }
 
-                    // Clean up quotes (Supabase JSON serialization wraps strings in quotes)
                     if (codeVerifier) {
                         codeVerifier = codeVerifier.replace(/^"|"$/g, '')
                     }
-                    console.log('[AuthCallback] Extracted PKCE verifier length:', codeVerifier.length)
 
                     const { getApiUrl } = await import('../lib/utils/api')
                     const params = new URLSearchParams(window.location.search)
                     if (codeVerifier) {
                         params.append('code_verifier', codeVerifier)
                     }
+                    
+                    console.log('[AuthCallback] 🚀 Redirecting to backend...')
                     window.location.href = getApiUrl('/api/auth/callback?' + params.toString())
                     return
                 }
 
+                // Handle errors passed in URL (like invalid_flow_state)
+                const urlParams = new URLSearchParams(window.location.search)
+                const errorInUrl = urlParams.get('error') || urlParams.get('error_description')
+                if (errorInUrl) {
+                    console.error('[AuthCallback] ❌ Error in redirect URL:', errorInUrl)
+                    if (errorInUrl.includes('flow_state')) {
+                        setError("Login session expired or was blocked by browser. Please try signing in again.")
+                    } else {
+                        setError(errorInUrl)
+                    }
+                    return
+                }
+
                 const supabase = createClient()
+                console.log('[AuthCallback] Checking current Supabase session...')
                 const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
                 if (sessionError) throw sessionError
 
                 if (session && mounted) {
+                    console.log('[AuthCallback] ✅ Active session found, storing token...')
                     localStorage.setItem('supabase_session_token', session.access_token)
                     navigate('/?oauth=success', { replace: true })
                 } else if (mounted) {
+                    console.log('[AuthCallback] No session yet, waiting for retry...')
                     setTimeout(async () => {
                         const { data: retrySession } = await supabase.auth.getSession()
                         if (retrySession?.session && mounted) {
+                            console.log('[AuthCallback] ✅ Session found on retry!')
                             localStorage.setItem('supabase_session_token', retrySession.session.access_token)
                             navigate('/?oauth=success', { replace: true })
                         } else if (mounted) {
-                            setError("Authentication failed or was cancelled.")
+                            console.warn('[AuthCallback] ❌ No session after retry')
+                            setError("Authentication failed or session was not created. Please try again.")
                         }
-                    }, 1500)
+                    }, 2000)
                 }
             } catch (err: any) {
                 console.error('Auth callback error:', err)
                 if (mounted) setError(err.message || "An error occurred during sign-in")
             }
         }
+
 
         processAuth()
 
