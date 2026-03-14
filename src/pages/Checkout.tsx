@@ -150,7 +150,7 @@ export default function CheckoutPage() {
                 customer_email: formData.email,
                 customer_phone: formData.whatsapp || formData.alternateNumber,
                 shipping_address: `${formData.addressLine1}${formData.addressLine2 ? ', ' + formData.addressLine2 : ''}, ${formData.city}, ${formData.postalCode}`,
-                billing_address: formData.addressLine1,
+                billing_address: formData.billingAddressFull || formData.addressLine1,
                 items: orderItems as any,
                 subtotal: subtotal,
                 shipping: shipping,

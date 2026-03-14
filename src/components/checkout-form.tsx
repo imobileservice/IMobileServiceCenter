@@ -30,6 +30,9 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
     paymentMethod: "cash_on_delivery",
   })
   const [loading, setLoading] = useState(false)
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([])
+  const [selectedShippingId, setSelectedShippingId] = useState<string>("new")
+  const [selectedBillingId, setSelectedBillingId] = useState<string>("new")
 
   // Auto-load profile data when component mounts
   useEffect(() => {
@@ -48,17 +51,22 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
           }))
         }
 
-        // Load default address
+        // Load addresses
         const addresses = await accountService.listAddresses()
-        const defaultAddress = addresses?.find((a: any) => a.is_default) || addresses?.[0]
-        if (defaultAddress) {
-          setFormData(prev => ({
-            ...prev,
-            addressLine1: defaultAddress.address_line1 || prev.addressLine1,
-            addressLine2: defaultAddress.address_line2 || prev.addressLine2,
-            postalCode: defaultAddress.postal_code || prev.postalCode,
-            city: defaultAddress.city || prev.city,
-          }))
+        if (addresses && addresses.length > 0) {
+          setSavedAddresses(addresses)
+          
+          // Find default shipping and billing
+          const defaultShipping = addresses.find((a: any) => a.is_default && a.type === 'shipping') || addresses.find((a: any) => a.type === 'shipping') || addresses[0]
+          const defaultBilling = addresses.find((a: any) => a.is_default && a.type === 'billing') || addresses.find((a: any) => a.type === 'billing') || addresses[0]
+          
+          if (defaultShipping) {
+            setSelectedShippingId(defaultShipping.id)
+            applyAddressToForm(defaultShipping)
+          }
+          if (defaultBilling) {
+            setSelectedBillingId(defaultBilling.id)
+          }
         }
       } catch (error) {
         console.error("Failed to load profile data:", error)
@@ -68,15 +76,48 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
     loadProfileData()
   }, [user])
 
+  const applyAddressToForm = (address: any) => {
+    if (!address) return
+    setFormData(prev => ({
+      ...prev,
+      addressLine1: address.address_line1 || "",
+      addressLine2: address.address_line2 || "",
+      postalCode: address.postal_code || "",
+      city: address.city || "",
+      fullName: address.full_name || prev.fullName,
+      whatsapp: address.phone || prev.whatsapp,
+    }))
+  }
+
+  const handleShippingChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value
+    setSelectedShippingId(id)
+    if (id === "new") {
+      // Clear address fields for new entry
+      setFormData(prev => ({
+        ...prev,
+        addressLine1: "",
+        addressLine2: "",
+        postalCode: "",
+        city: "",
+      }))
+    } else {
+      const addr = savedAddresses.find(a => a.id === id)
+      if (addr) applyAddressToForm(addr)
+    }
+  }
+
+  const handleBillingChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedBillingId(e.target.value)
+    // Billing address doesn't fill the shipping form fields, but it's saved in state for the order payload if needed
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    console.log('[CheckoutForm] handleChange:', name, value)
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
   const handlePaymentChange = (method: string) => {
-    console.log('[CheckoutForm] Payment method changed to:', method)
     setFormData((prev) => ({ ...prev, paymentMethod: method }))
   }
 
@@ -86,7 +127,14 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
       setLoading(true)
       try {
         // Pass form data to parent for order creation
-        await onComplete(formData)
+        const finalData = {
+            ...formData,
+            // Include billing address string from selected ID if available and different from shipping
+            billingAddressFull: selectedBillingId !== "new" && selectedBillingId !== selectedShippingId 
+                ? savedAddresses.find(a => a.id === selectedBillingId)?.address_line1 
+                : formData.addressLine1
+        }
+        await onComplete(finalData)
       } catch (error) {
         console.error("Order creation failed:", error)
       } finally {
@@ -102,6 +150,43 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
       {step === 1 && (
         <div className="bg-card border border-border rounded-lg p-6 space-y-4">
           <h2 className="text-2xl font-bold mb-6">Shipping Information</h2>
+
+          {savedAddresses.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-6 border-b border-border mb-6">
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-primary">Shipping Address</label>
+                <select 
+                  value={selectedShippingId}
+                  onChange={handleShippingChange}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="new">+ Add New Address</option>
+                  {savedAddresses.map(addr => (
+                    <option key={`ship-${addr.id}`} value={addr.id}>
+                      {addr.full_name} - {addr.address_line1}, {addr.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold mb-2 text-primary">Billing Address</label>
+                <select 
+                  value={selectedBillingId}
+                  onChange={handleBillingChange}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="Same as shipping">Same as Shipping</option>
+                  <option value="new">+ Add New Address</option>
+                  {savedAddresses.map(addr => (
+                    <option key={`bill-${addr.id}`} value={addr.id}>
+                      {addr.full_name} - {addr.address_line1}, {addr.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-semibold mb-2">Full Name</label>
