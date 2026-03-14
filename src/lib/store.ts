@@ -151,6 +151,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     isInitializing = true
     try {
+      if (typeof window !== 'undefined' && window.location.pathname.includes('/auth/callback')) {
+        console.log('[AuthStore] ⏸️ On auth callback page, deferring initialization to callback component.')
+        isInitializing = false
+        return
+      }
+      
       console.log('[AuthStore] Initializing auth state...')
       const { createClient } = await import('./supabase/client')
       const { authService } = await import('./supabase/services/auth')

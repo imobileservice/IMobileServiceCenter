@@ -5,15 +5,22 @@ import { createClient } from '../lib/supabase/client'
 export default function AuthCallback() {
     const navigate = useNavigate()
     const [error, setError] = useState<string | null>(null)
+    const started = React.useRef(false)
 
     useEffect(() => {
         let mounted = true
 
         const processAuth = async () => {
+            if (started.current) {
+                console.log('[AuthCallback] ⏭️ Exchange already started, skipping duplicate run.')
+                return
+            }
+            
             try {
                 // Determine if there is a code in the URL (PKCE flow)
                 // If there is, redirect the browser entirely to the backend Express route
                 if (window.location.search.includes('code=')) {
+                    started.current = true
                     console.log('[AuthCallback] 🧩 Code found in URL, performing local exchange...')
                     const supabase = createClient()
                     const params = new URLSearchParams(window.location.search)
@@ -22,13 +29,10 @@ export default function AuthCallback() {
                     if (!code) throw new Error('Authorization code missing in URL')
 
                     // EXCHANGE CODE LOCALLY ON FRONTEND
-                    // This is much safer as the frontend client has access to its own cookies/storage
                     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
                     
                     if (exchangeError) {
                         console.error('[AuthCallback] Local exchange failed:', exchangeError)
-                        // If local exchange fails, it might be due to flow_state missing
-                        // In that case, we can't do much but ask the user to sign in again
                         if (exchangeError.message.includes('flow_state')) {
                             throw new Error('Login session expired or blocked by browser. Please try signing in again.')
                         }
@@ -47,12 +51,16 @@ export default function AuthCallback() {
                             if (key !== 'code') forwardParams.append(key, val)
                         })
 
-                        window.location.href = getApiUrl('/api/auth/callback?' + forwardParams.toString())
+                        const backendUrl = getApiUrl('/api/auth/callback?' + forwardParams.toString())
+                        console.log('[AuthCallback] 🚀 Redirecting to:', backendUrl)
+                        window.location.href = backendUrl
                         return
+                    } else {
+                        throw new Error('Exchange completed but no session was returned.')
                     }
                 }
             } catch (err: any) {
-                console.error('Auth callback error:', err)
+                console.error('[AuthCallback] ❌ Auth callback error:', err)
                 if (mounted) setError(err.message || "An error occurred during sign-in")
             }
         }
