@@ -3,13 +3,20 @@ import { createClient } from '../client'
 // Helper to check if a JWT token is expired
 function isTokenExpired(token: string) {
     try {
-        const payloadBase64 = token.split('.')[1];
-        if (!payloadBase64) return true;
+        const payloadBase64Url = token.split('.')[1];
+        if (!payloadBase64Url) return true;
         
-        // Decode base64 (browser/node compatible)
+        // Convert Base64Url to standard Base64
+        let base64 = payloadBase64Url.replace(/-/g, '+').replace(/_/g, '/');
+        // Add padding if necessary
+        while (base64.length % 4) {
+            base64 += '=';
+        }
+        
+        // Decode base64
         const payloadJson = typeof window !== 'undefined' 
-            ? window.atob(payloadBase64)
-            : Buffer.from(payloadBase64, 'base64').toString();
+            ? window.atob(base64)
+            : Buffer.from(base64, 'base64').toString();
             
         const payload = JSON.parse(payloadJson);
         const now = Math.floor(Date.now() / 1000);
@@ -17,6 +24,7 @@ function isTokenExpired(token: string) {
         // If it expires in less than 60 seconds, treat it as expired
         return payload.exp < now + 60;
     } catch (e) {
+        console.warn('[auth-helpers] Failed to decode token:', e);
         return true;
     }
 }

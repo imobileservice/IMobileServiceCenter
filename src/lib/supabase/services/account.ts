@@ -5,6 +5,32 @@ import { getAuthTokenFast } from '../utils/auth-helpers'
 export const accountService = {
   // Addresses
   async listAddresses() {
+    // Try backend API first
+    if (typeof window !== 'undefined') {
+      try {
+        const { getApiUrl } = await import('../../utils/api')
+        const storedToken = await getAuthTokenFast(false)
+        const headers: HeadersInit = {}
+        if (storedToken) headers['x-session-token'] = storedToken
+
+        const response = await fetch(getApiUrl('/api/addresses'), {
+          headers,
+          credentials: 'include',
+          signal: AbortSignal.timeout(15000), // 15s timeout
+        })
+
+        if (response.ok) {
+          const payload = await response.json()
+          return payload.data || []
+        }
+      } catch (e: any) {
+        if (!e.message?.includes('timeout') && e.name !== 'AbortError') {
+          console.warn('[accountService] listAddresses API failed, using direct Supabase:', e.message)
+        }
+      }
+    }
+
+    // Fallback to direct Supabase
     const supabase = createClient()
     const { data, error } = await supabase.from('addresses').select('*').order('created_at', { ascending: false })
     if (error) throw error
