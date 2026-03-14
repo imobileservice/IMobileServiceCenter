@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient()
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (event === "SIGNED_IN" && session?.user) {
         try {
           const profile = await authService.getProfile(session.user.id)
@@ -42,7 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })
         }
       } else if (event === "SIGNED_OUT") {
-        setUser(null)
+        // Prevent wiping a valid backend-verified session if Supabase client fails to load (e.g. adblocker)
+        const { isAuthenticated, user } = useAuthStore.getState()
+        if (isAuthenticated && user) {
+          console.log('[AuthProvider] 🛡️ Supabase reported SIGNED_OUT but we have a valid backend session. Ignoring.')
+        } else {
+          setUser(null)
+        }
       }
     })
 

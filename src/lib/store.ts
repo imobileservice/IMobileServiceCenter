@@ -267,6 +267,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
             console.log('[AuthStore] 🔄 Setting user state:', newState)
             set(newState)
+            isInitializing = false // Release lock early since we are done
 
             // Verify state was set
             const verifyState = useAuthStore.getState()
@@ -319,11 +320,18 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           console.warn('[AuthStore] ⚠️ Backend session check failed:', response.status, '- checking localStorage...')
         }
       } catch (fetchError: any) {
-        console.warn('[AuthStore] ⚠️ Backend check failed (non-fatal):', fetchError.message, '- checking localStorage...')
+        console.warn('[AuthStore] ⚠️ Backend check failed (non-fatal):', fetchError.message)
+      }
+
+      // Check if we are already authenticated from backend or URL tokens
+      // If so, we MUST NOT proceed to the fallback check which might clear the session
+      if (get().isAuthenticated) {
+        console.log('[AuthStore] ✅ Already authenticated via backend source, skipping localStorage fallback.')
+        return
       }
 
       // Fallback: Check localStorage (with timeout)
-      console.log('[AuthStore] Checking localStorage for session...')
+      console.log('[AuthStore] 🔍 Fallback: Checking localStorage for session...')
       try {
         const getSessionPromise = supabase.auth.getSession()
         const timeoutPromise = new Promise((_, reject) =>
