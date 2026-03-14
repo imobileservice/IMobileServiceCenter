@@ -15,15 +15,35 @@ export default function AuthCallback() {
                 // If there is, redirect the browser entirely to the backend Express route
                 // so the backend can set the secure HTTP-only cookies and database session
                 if (window.location.search.includes('code=')) {
-                    // Extract PKCE code verifier from localStorage since the backend (on a different domain) needs it
+                    // Extract PKCE code verifier since the backend (on a different domain) needs it
                     let codeVerifier = ''
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i)
-                        if (key && key.includes('-auth-token-code-verifier')) {
-                           codeVerifier = localStorage.getItem(key) || ''
-                           break
+                    
+                    // 1. Try to get it from cookies (since createBrowserClient uses cookies)
+                    const cookies = document.cookie.split(';')
+                    for (const cookie of cookies) {
+                        const [name, ...rest] = cookie.trim().split('=')
+                        if (name.includes('-auth-token-code-verifier')) {
+                            codeVerifier = decodeURIComponent(rest.join('='))
+                            break
                         }
                     }
+
+                    // 2. Fallback to localStorage just in case
+                    if (!codeVerifier) {
+                        for (let i = 0; i < localStorage.length; i++) {
+                            const key = localStorage.key(i)
+                            if (key && key.includes('-auth-token-code-verifier')) {
+                               codeVerifier = localStorage.getItem(key) || ''
+                               break
+                            }
+                        }
+                    }
+
+                    // Clean up quotes (Supabase JSON serialization wraps strings in quotes)
+                    if (codeVerifier) {
+                        codeVerifier = codeVerifier.replace(/^"|"$/g, '')
+                    }
+                    console.log('[AuthCallback] Extracted PKCE verifier length:', codeVerifier.length)
 
                     const { getApiUrl } = await import('../lib/utils/api')
                     const params = new URLSearchParams(window.location.search)
