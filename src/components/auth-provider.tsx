@@ -18,6 +18,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
+      // Skip state updates if we are on the callback page to avoid race conditions
+      if (typeof window !== 'undefined' && window.location.pathname.includes('/auth/callback')) {
+        console.log('[AuthProvider] ⏸️ On callback page, letting AuthCallback handle state.')
+        return
+      }
+
       if (event === "SIGNED_IN" && session?.user) {
         try {
           const profile = await authService.getProfile(session.user.id)

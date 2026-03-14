@@ -155,7 +155,7 @@ export function createClient() {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false, // We handle this manually in AuthCallback
       },
     } as any)
   } catch (error: any) {
