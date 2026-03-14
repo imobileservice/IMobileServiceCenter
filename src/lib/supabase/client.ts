@@ -103,6 +103,30 @@ export function createClient() {
 
   try {
     return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        get(name: string) {
+          if (typeof document === 'undefined') return ''
+          const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+          return match ? decodeURIComponent(match[2]) : ''
+        },
+        set(name: string, value: string, options: any) {
+          if (typeof document === 'undefined') return
+          let cookieStr = `${name}=${encodeURIComponent(value)}`
+          if (options?.maxAge) cookieStr += `; Max-Age=${options.maxAge}`
+          if (options?.domain) cookieStr += `; Domain=${options.domain}`
+          if (options?.path) cookieStr += `; Path=${options.path}`
+          if (options?.sameSite) cookieStr += `; SameSite=${options.sameSite}`
+          if (options?.secure) cookieStr += `; Secure`
+          document.cookie = cookieStr
+        },
+        remove(name: string, options: any) {
+          if (typeof document === 'undefined') return
+          let cookieStr = `${name}=; Max-Age=0`
+          if (options?.domain) cookieStr += `; Domain=${options.domain}`
+          if (options?.path) cookieStr += `; Path=${options.path}`
+          document.cookie = cookieStr
+        }
+      },
       cookieOptions: {
         maxAge: 60 * 60 * 24 * 30,
       },
