@@ -31,6 +31,11 @@ export async function callbackHandler(req: Request, res: Response) {
       {
         cookies: {
           get(name: string) {
+            // Frontend passes the PKCE verifier via query param since it's stored in localStorage,
+            // so we must intercept the cookie getter and provide it to Supabase.
+            if (name.includes('-auth-token-code-verifier') && req.query.code_verifier) {
+               return req.query.code_verifier as string
+            }
             return req.cookies?.[name]
           },
           set(name: string, value: string, options: any) {

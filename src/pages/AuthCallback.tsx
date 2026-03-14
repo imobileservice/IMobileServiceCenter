@@ -15,8 +15,22 @@ export default function AuthCallback() {
                 // If there is, redirect the browser entirely to the backend Express route
                 // so the backend can set the secure HTTP-only cookies and database session
                 if (window.location.search.includes('code=')) {
+                    // Extract PKCE code verifier from localStorage since the backend (on a different domain) needs it
+                    let codeVerifier = ''
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i)
+                        if (key && key.includes('-auth-token-code-verifier')) {
+                           codeVerifier = localStorage.getItem(key) || ''
+                           break
+                        }
+                    }
+
                     const { getApiUrl } = await import('../lib/utils/api')
-                    window.location.href = getApiUrl('/api/auth/callback' + window.location.search)
+                    const params = new URLSearchParams(window.location.search)
+                    if (codeVerifier) {
+                        params.append('code_verifier', codeVerifier)
+                    }
+                    window.location.href = getApiUrl('/api/auth/callback?' + params.toString())
                     return
                 }
 
