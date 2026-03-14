@@ -14,84 +14,42 @@ export default function AuthCallback() {
                 // Determine if there is a code in the URL (PKCE flow)
                 // If there is, redirect the browser entirely to the backend Express route
                 if (window.location.search.includes('code=')) {
-                    // Extract PKCE code verifier since the backend (on a different domain) needs it
-                    let codeVerifier = ''
-                    console.log('[AuthCallback] 🧩 Code found in URL, attempting PKCE exchange...')
-                    
-                    // 1. Try to get it from cookies
-                    const cookies = document.cookie.split(';')
-                    for (const cookie of cookies) {
-                        const [name, ...rest] = cookie.trim().split('=')
-                        if (name.includes('-auth-token-code-verifier')) {
-                            codeVerifier = decodeURIComponent(rest.join('='))
-                            console.log('[AuthCallback] ✅ Found verifier in cookie')
-                            break
-                        }
-                    }
-
-                    // 2. Fallback to localStorage
-                    if (!codeVerifier) {
-                        for (let i = 0; i < localStorage.length; i++) {
-                            const key = localStorage.key(i)
-                            if (key && key.includes('-auth-token-code-verifier')) {
-                               codeVerifier = localStorage.getItem(key) || ''
-                               console.log('[AuthCallback] ✅ Found verifier in localStorage')
-                               break
-                            }
-                        }
-                    }
-
-                    if (codeVerifier) {
-                        codeVerifier = codeVerifier.replace(/^"|"$/g, '')
-                    }
-
-                    const { getApiUrl } = await import('../lib/utils/api')
+                    console.log('[AuthCallback] 🧩 Code found in URL, performing local exchange...')
+                    const supabase = createClient()
                     const params = new URLSearchParams(window.location.search)
-                    if (codeVerifier) {
-                        params.append('code_verifier', codeVerifier)
-                    }
+                    const code = params.get('code')
                     
-                    console.log('[AuthCallback] 🚀 Redirecting to backend...')
-                    window.location.href = getApiUrl('/api/auth/callback?' + params.toString())
-                    return
-                }
+                    if (!code) throw new Error('Authorization code missing in URL')
 
-                // Handle errors passed in URL (like invalid_flow_state)
-                const urlParams = new URLSearchParams(window.location.search)
-                const errorInUrl = urlParams.get('error') || urlParams.get('error_description')
-                if (errorInUrl) {
-                    console.error('[AuthCallback] ❌ Error in redirect URL:', errorInUrl)
-                    if (errorInUrl.includes('flow_state')) {
-                        setError("Login session expired or was blocked by browser. Please try signing in again.")
-                    } else {
-                        setError(errorInUrl)
-                    }
-                    return
-                }
-
-                const supabase = createClient()
-                console.log('[AuthCallback] Checking current Supabase session...')
-                const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-                if (sessionError) throw sessionError
-
-                if (session && mounted) {
-                    console.log('[AuthCallback] ✅ Active session found, storing token...')
-                    localStorage.setItem('supabase_session_token', session.access_token)
-                    navigate('/?oauth=success', { replace: true })
-                } else if (mounted) {
-                    console.log('[AuthCallback] No session yet, waiting for retry...')
-                    setTimeout(async () => {
-                        const { data: retrySession } = await supabase.auth.getSession()
-                        if (retrySession?.session && mounted) {
-                            console.log('[AuthCallback] ✅ Session found on retry!')
-                            localStorage.setItem('supabase_session_token', retrySession.session.access_token)
-                            navigate('/?oauth=success', { replace: true })
-                        } else if (mounted) {
-                            console.warn('[AuthCallback] ❌ No session after retry')
-                            setError("Authentication failed or session was not created. Please try again.")
+                    // EXCHANGE CODE LOCALLY ON FRONTEND
+                    // This is much safer as the frontend client has access to its own cookies/storage
+                    const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+                    
+                    if (exchangeError) {
+                        console.error('[AuthCallback] Local exchange failed:', exchangeError)
+                        // If local exchange fails, it might be due to flow_state missing
+                        // In that case, we can't do much but ask the user to sign in again
+                        if (exchangeError.message.includes('flow_state')) {
+                            throw new Error('Login session expired or blocked by browser. Please try signing in again.')
                         }
-                    }, 2000)
+                        throw exchangeError
+                    }
+
+                    if (data?.session) {
+                        console.log('[AuthCallback] ✅ Exchange successful! Forwarding tokens to backend...')
+                        const { getApiUrl } = await import('../lib/utils/api')
+                        const forwardParams = new URLSearchParams()
+                        forwardParams.append('session_token', data.session.access_token)
+                        forwardParams.append('refresh_token', data.session.refresh_token)
+                        
+                        // We also pass any other params from the original redirect
+                        params.forEach((val, key) => {
+                            if (key !== 'code') forwardParams.append(key, val)
+                        })
+
+                        window.location.href = getApiUrl('/api/auth/callback?' + forwardParams.toString())
+                        return
+                    }
                 }
             } catch (err: any) {
                 console.error('Auth callback error:', err)

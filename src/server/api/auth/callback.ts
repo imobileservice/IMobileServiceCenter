@@ -9,15 +9,16 @@ import { createClient } from '@supabase/supabase-js'
  */
 export async function callbackHandler(req: Request, res: Response) {
   try {
-    const { code } = req.query
+    const { code, session_token, refresh_token } = req.query
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || 'https://imobileservicecenter.lk'
 
-    if (!code) {
-      return res.redirect('/auth/error?error=missing_code&message=Authorization code is missing')
+    if (!code && !session_token) {
+      return res.redirect('/auth/error?error=missing_code&message=Authorization code or session token is missing')
     }
 
     const host = req.headers.host || ''
     const defaultSiteUrl = host.includes('localhost') ? 'http://localhost:3000' : 'https://imobileservicecenter.lk'
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || defaultSiteUrl
+    const finalSiteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.VITE_SITE_URL || defaultSiteUrl
     
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
@@ -25,7 +26,7 @@ export async function callbackHandler(req: Request, res: Response) {
     const isProd = process.env.NODE_ENV === 'production'
 
     if (!supabaseUrl || !supabaseKey) {
-      return res.redirect(`${siteUrl}/auth/error?error=supabase_not_configured&message=Supabase environment variables are not set`)
+      return res.redirect(`${finalSiteUrl}/auth/error?error=supabase_not_configured&message=Supabase environment variables are not set`)
     }
 
     // Create Supabase client with Express cookie handling
@@ -35,11 +36,6 @@ export async function callbackHandler(req: Request, res: Response) {
       {
         cookies: {
           get(name: string) {
-            // Frontend passes the PKCE verifier via query param since it's stored in localStorage,
-            // so we must intercept the cookie getter and provide it to Supabase.
-            if (name.includes('-auth-token-code-verifier') && req.query.code_verifier) {
-               return req.query.code_verifier as string
-            }
             return req.cookies?.[name]
           },
           set(name: string, value: string, options: any) {
@@ -58,61 +54,54 @@ export async function callbackHandler(req: Request, res: Response) {
       }
     )
 
-    // Check for existing account BEFORE exchanging code (if we can get email from code)
-    // Note: We can't get email from code directly, so we'll check after exchange
-    // But we'll handle duplicates more aggressively
-
-    // Exchange code for session
+    // Exchange code or set session from tokens
     let data: any
     let error: any
 
     try {
-      const result = await supabase.auth.exchangeCodeForSession(code as string)
-      data = result.data
-      error = result.error
+      if (session_token && refresh_token) {
+        console.log('[api/auth/callback] Establishing session from forwarded tokens...')
+        const result = await supabase.auth.setSession({
+          access_token: session_token as string,
+          refresh_token: refresh_token as string,
+        })
+        data = result.data
+        error = result.error
+      } else {
+        console.log('[api/auth/callback] Exchanging code for session...')
+        const result = await supabase.auth.exchangeCodeForSession(code as string)
+        data = result.data
+        error = result.error
+      }
     } catch (exchangeError: any) {
-      console.error('[api/auth/callback] Exchange code exception:', exchangeError)
+      console.error('[api/auth/callback] Session establishment exception:', exchangeError)
 
       // Check for network/DNS errors
       if (exchangeError.message?.includes('Failed to fetch') ||
         exchangeError.message?.includes('ERR_NAME_NOT_RESOLVED') ||
         exchangeError.message?.includes('ENOTFOUND')) {
-        return res.redirect(`${siteUrl}/auth/error?error=supabase_connection&message=` +
+        return res.redirect(`${finalSiteUrl}/auth/error?error=supabase_connection&message=` +
           encodeURIComponent(
-            'Cannot connect to Supabase. Please check:\n' +
-            '1. Your Supabase project is active (not paused)\n' +
-            '2. VITE_SUPABASE_URL is correct in your .env file\n' +
-            '3. The URL matches your Supabase Dashboard'
+            'Cannot connect to Supabase. Please check your network and environment variables.'
           ))
       }
 
-      return res.redirect(`${siteUrl}/auth/error?error=${encodeURIComponent(exchangeError?.message || 'Failed to exchange code for session')}`)
+      return res.redirect(`${finalSiteUrl}/auth/error?error=${encodeURIComponent(exchangeError?.message || 'Failed to establish session')}`)
     }
 
     if (error) {
-      console.error('[api/auth/callback] Exchange code error:', error)
+      console.error('[api/auth/callback] Session establishment error:', error)
 
-      // Check if error is about user already exists or email conflict
-      if (error.message?.includes('already registered') ||
-        error.message?.includes('User already registered') ||
-        error.message?.includes('email address is already registered') ||
-        error.message?.includes('Email already registered')) {
-        return res.redirect(`${siteUrl}/signin?error=account_exists&message=` +
-          encodeURIComponent('An account with this email already exists. Please sign in with your password instead.'))
+      if (error.message?.includes('already registered')) {
+        return res.redirect(`${finalSiteUrl}/signin?error=account_exists&message=` +
+          encodeURIComponent('An account with this email already exists.'))
       }
 
-      // Check for network errors
-      if (error.message?.includes('Failed to fetch') ||
-        error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
-        return res.redirect(`${siteUrl}/auth/error?error=supabase_connection&message=` +
-          encodeURIComponent('Cannot connect to Supabase. Please check your Supabase URL configuration.'))
-      }
-
-      return res.redirect(`${siteUrl}/auth/error?error=${encodeURIComponent(error.message)}`)
+      return res.redirect(`${finalSiteUrl}/auth/error?error=${encodeURIComponent(error.message)}`)
     }
 
     if (!data?.user || !data?.session) {
-      return res.redirect(`${siteUrl}/auth/error?error=no_session&message=Failed to create session`)
+      return res.redirect(`${finalSiteUrl}/auth/error?error=no_session&message=Failed to create session`)
     }
 
     const oauthEmail = data.user.email
