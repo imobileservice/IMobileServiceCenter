@@ -163,7 +163,7 @@ export default function AddressModal({ isOpen, onClose, onSave, initial }: Addre
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-            <Button type="submit" onClick={handleSubmit} disabled={saving}>
+            <Button type="submit" disabled={saving}>
               {saving ? "Saving..." : form.id ? "Save Changes" : "Save Address"}
             </Button>
           </div>
