@@ -83,7 +83,6 @@ export function createClient() {
 
       try {
         return createBrowserClient('https://placeholder.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTIwMDAsImV4cCI6MTk2MDc2ODAwMH0.placeholder', {
-          cookies: {},
           cookieOptions: { maxAge: 60 * 60 * 24 * 30 },
           db: { schema: 'public' },
           auth: {
@@ -104,7 +103,6 @@ export function createClient() {
 
   try {
     return createBrowserClient(supabaseUrl, supabaseAnonKey, {
-      cookies: {},
       cookieOptions: {
         maxAge: 60 * 60 * 24 * 30,
       },
