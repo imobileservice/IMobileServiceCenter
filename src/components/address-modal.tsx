@@ -104,7 +104,7 @@ export default function AddressModal({ isOpen, onClose, onSave, initial }: Addre
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-card border border-border rounded-lg p-6 w-full max-w-xl"
+        className="bg-card border border-border rounded-lg p-6 pb-20 md:pb-6 w-full max-w-xl max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

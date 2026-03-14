@@ -32,7 +32,7 @@ export default function ConditionalLayout({ children }: ConditionalLayoutProps) 
         <PageLoadAnimation />
       </Suspense>
       <Navbar />
-      <main className="min-h-screen pb-20 lg:pb-0">{children}</main>
+      <main className="min-h-screen pb-24 md:pb-0">{children}</main>
       <Footer />
       <Suspense fallback={null}>
         <ScrollToTop />
