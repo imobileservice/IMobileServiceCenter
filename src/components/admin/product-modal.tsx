@@ -314,8 +314,8 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
       })
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Search failed' }))
-        throw new Error(err.error || 'Search failed')
+        const err = await response.json().catch(() => ({ error: `Search failed (Status: ${response.status})` }))
+        throw new Error(err.message || err.error || `Search failed (Status: ${response.status})`)
       }
 
       const { data } = await response.json()

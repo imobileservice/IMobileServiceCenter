@@ -185,6 +185,26 @@ const server = app.listen(PORT, () => {
   console.log(`✅ API server listening on port ${PORT}`)
   console.log(`   Health check: http://localhost:${PORT}/health`)
   console.log(`   API routes:   http://localhost:${PORT}/api`)
+  
+  // Debug: Log all registered routes
+  console.log('--- Registered Routes ---')
+  try {
+    const printRoutes = (stack: any[], prefix = '') => {
+      stack.forEach((r: any) => {
+        if (r.route) {
+          const methods = Object.keys(r.route.methods).map(m => m.toUpperCase()).join(',')
+          console.log(`  [${methods}] ${prefix}${r.route.path}`)
+        } else if (r.name === 'router' && r.handle.stack) {
+          const newPrefix = prefix + (r.regexp.source.replace('^\\', '').replace('\\/?(?=\\/|$)', '').replace('\\/', '/') || '')
+          printRoutes(r.handle.stack, newPrefix)
+        }
+      })
+    }
+    printRoutes(app._router.stack)
+  } catch (e) {
+    console.log('  (Could not list all routes)')
+  }
+  console.log('-----------------------')
 })
 
 // Graceful shutdown
