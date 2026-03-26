@@ -29,6 +29,13 @@ import { productSearchHandler } from './product-search'
 
 
 const router = Router()
+console.log('✅ Admin Router Module Loaded and Initialized');
+
+// Diagnostic middleware for all admin routes
+router.use((req, res, next) => {
+    console.log(`[Admin Router] Request received: ${req.method} ${req.originalUrl}`);
+    next();
+});
 
 // New 2-Factor Login Flow
 router.post('/login/init', initAdminLoginHandler)
@@ -50,8 +57,11 @@ router.post('/products', createProductHandler)
 router.put('/products/:id', updateProductHandler)
 router.delete('/products/:id', deleteProductHandler)
 
-// Product auto-search endpoint
+// Product auto-search endpoint (POST for production, GET for diagnostic check)
 router.post('/product-search', productSearchHandler)
+router.get('/product-search', (req, res) => {
+    res.json({ message: 'Product search endpoint is active. Use POST to perform a search.', method: 'GET' });
+})
 
 
 router.put('/orders/:id/status', updateOrderStatusHandler)
