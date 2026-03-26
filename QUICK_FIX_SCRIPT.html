@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Fix - Remove Production URL</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .button {
+            display: block;
+            width: 100%;
+            padding: 20px;
+            margin: 15px 0;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 16px;
+        }
+        .status-success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            color: #065f46;
+        }
+        .status-error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            color: #991b1b;
+        }
+        .status-info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+        }
+        .section {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        code {
+            background: #1f2937;
+            color: #10b981;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .step {
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+        }
+        #log {
+            background: #1f2937;
+            color: #10b981;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Quick Fix: Remove Production URL</h1>
+        
+        <div class="status status-info">
+            <strong>📋 What This Will Do:</strong>
+            <ul style="margin: 10px 0;">
+                <li>✅ Unregister all service workers</li>
+                <li>✅ Clear localStorage and sessionStorage</li>
+                <li>✅ Show you registered service workers</li>
+                <li>✅ Redirect to localhost:3000</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h3>🚀 Quick Actions</h3>
+            
+            <button class="button btn-primary" onclick="cleanAndRedirect()">
+                🧹 Clean Everything & Go to Localhost
+            </button>
+
+            <button class="button btn-success" onclick="checkStatus()">
+                🔍 Check Current Status
+            </button>
+
+            <button class="button btn-danger" onclick="unregisterServiceWorkers()">
+                🗑️ Remove Service Workers Only
+            </button>
+        </div>
+
+        <div class="section">
+            <h3>📊 Log Output</h3>
+            <div id="log"></div>
+        </div>
+
+        <div class="section">
+            <h3>📝 Manual Steps</h3>
+            
+            <div class="step">
+                <strong>Step 1:</strong> Clear Browser Cache
+                <br><small>Press <code>Ctrl + Shift + Delete</code> → Select "All time" → Clear data</small>
+            </div>
+
+            <div class="step">
+                <strong>Step 2:</strong> Remove from Autocomplete
+                <br><small>Type in address bar → Highlight production URL → Press <code>Shift + Delete</code></small>
+            </div>
+
+            <div class="step">
+                <strong>Step 3:</strong> Set Localhost as Homepage
+                <br><small>Browser Settings → On startup → Set to <code>http://localhost:3000</code></small>
+            </div>
+
+            <div class="step">
+                <strong>Step 4:</strong> Create Bookmark
+                <br><small>Visit <code>http://localhost:3000</code> → Press <code>Ctrl + D</code> → Save</small>
+            </div>
+        </div>
+
+        <div class="status status-success">
+            <strong>✅ After This:</strong>
+            <p style="margin: 10px 0 0 0;">
+                Close this page and open a new tab. Your browser should no longer automatically go to the production site!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const log = document.getElementById('log');
+
+        function addLog(message, type = 'info') {
+            const colors = {
+                success: '#10b981',
+                error: '#ef4444',
+                info: '#3b82f6',
+                warning: '#f59e0b'
+            };
+            const timestamp = new Date().toLocaleTimeString();
+            const color = colors[type] || colors.info;
+            log.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function unregisterServiceWorkers() {
+            addLog('🔍 Checking for service workers...', 'info');
+            
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                
+                if (registrations.length === 0) {
+                    addLog('✅ No service workers found - already clean!', 'success');
+                    return;
+                }
+
+                addLog(`📋 Found ${registrations.length} service worker(s)`, 'info');
+                
+                for (const registration of registrations) {
+                    addLog(`🗑️ Unregistering: ${registration.scope}`, 'warning');
+                    await registration.unregister();
+                    addLog(`✅ Unregistered: ${registration.scope}`, 'success');
+                }
+
+                addLog('🎉 All service workers removed!', 'success');
+            } catch (error) {
+                addLog(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearStorage() {
+            addLog('🧹 Clearing localStorage...', 'info');
+            const localItems = localStorage.length;
+            localStorage.clear();
+            addLog(`✅ Cleared ${localItems} items from localStorage`, 'success');
+
+            addLog('🧹 Clearing sessionStorage...', 'info');
+            const sessionItems = sessionStorage.length;
+            sessionStorage.clear();
+            addLog(`✅ Cleared ${sessionItems} items from sessionStorage`, 'success');
+        }
+
+        async function checkStatus() {
+            addLog('=== 📊 System Status ===', 'info');
+            
+            // Check service workers
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                if (registrations.length === 0) {
+                    addLog('✅ Service Workers: None (Good!)', 'success');
+                } else {
+                    addLog(`⚠️ Service Workers: ${registrations.length} registered`, 'warning');
+                    registrations.forEach(reg => {
+                        addLog(`   - ${reg.scope}`, 'warning');
+                    });
+                }
+            } catch (error) {
+                addLog('❌ Could not check service workers', 'error');
+            }
+
+            // Check storage
+            const localCount = localStorage.length;
+            const sessionCount = sessionStorage.length;
+            addLog(`📦 localStorage: ${localCount} items`, localCount > 0 ? 'warning' : 'success');
+            addLog(`📦 sessionStorage: ${sessionCount} items`, sessionCount > 0 ? 'warning' : 'success');
+
+            // Check current URL
+            addLog(`🌐 Current URL: ${window.location.href}`, 'info');
+            
+            if (window.location.href.includes('pages.dev')) {
+                addLog('⚠️ You are currently on production site!', 'warning');
+                addLog('💡 Use the "Clean & Go to Localhost" button', 'info');
+            } else if (window.location.href.includes('localhost')) {
+                addLog('✅ You are on localhost - Good!', 'success');
+            }
+
+            addLog('=== Status Check Complete ===', 'info');
+        }
+
+        async function cleanAndRedirect() {
+            addLog('🚀 Starting cleanup process...', 'info');
+            
+            // Step 1: Unregister service workers
+            await unregisterServiceWorkers();
+            
+            // Step 2: Clear storage
+            clearStorage();
+            
+            // Step 3: Final message
+            addLog('🎉 Cleanup complete!', 'success');
+            addLog('🔄 Redirecting to localhost:3000 in 2 seconds...', 'info');
+            
+            // Step 4: Redirect
+            setTimeout(() => {
+                window.location.href = 'http://localhost:3000';
+            }, 2000);
+        }
+
+        // Initial status check
+        window.onload = () => {
+            addLog('👋 Welcome to Quick Fix Tool', 'success');
+            addLog('💡 Click a button above to get started', 'info');
+        };
+    </script>
+</body>
+</html>
+

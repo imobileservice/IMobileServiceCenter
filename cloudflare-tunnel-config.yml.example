@@ -1,0 +1,14 @@
+# Cloudflare Tunnel Configuration Example
+# Copy this file to cloudflare-tunnel-config.yml and update with your tunnel ID
+
+tunnel: <YOUR_TUNNEL_ID>
+credentials-file: C:\Users\<YOUR_USERNAME>\.cloudflared\<TUNNEL_ID>.json
+
+ingress:
+  # Backend API - Replace with your actual tunnel hostname
+  - hostname: imobile-backend.your-account.workers.dev
+    service: http://localhost:4000
+  
+  # Catch-all rule (must be last)
+  - service: http_status:404
+

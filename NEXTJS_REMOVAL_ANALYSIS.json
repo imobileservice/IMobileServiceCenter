@@ -1,0 +1,398 @@
+{
+  "status": "analysis-only",
+  "gitBranch": "remove-nextjs",
+  "analysisDate": "2024-12-19",
+  "summary": {
+    "totalNextJsFiles": 25,
+    "safeToDelete": 12,
+    "needsTransformation": 10,
+    "manualAttention": 3
+  },
+  "deletedFiles": [
+    {
+      "path": "next.config.mjs",
+      "reason": "Next.js configuration file - not used by Vite",
+      "classification": "safe-to-delete",
+      "lines": "1-26"
+    },
+    {
+      "path": "next-env.d.ts",
+      "reason": "Next.js TypeScript type definitions - not needed for Vite",
+      "classification": "safe-to-delete",
+      "lines": "1-5"
+    },
+    {
+      "path": "middleware.ts",
+      "reason": "Next.js middleware - not compatible with Vite. Express middleware should be used instead",
+      "classification": "safe-to-delete",
+      "lines": "1-21"
+    },
+    {
+      "path": "app/api/products/list/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/products/list.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-56"
+    },
+    {
+      "path": "app/api/products/categories/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/products/categories.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-120"
+    },
+    {
+      "path": "app/api/auth/signin/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/auth/signin.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-52"
+    },
+    {
+      "path": "app/api/auth/signup/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/auth/signup.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-91"
+    },
+    {
+      "path": "app/api/auth/verify-otp/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/auth/verify-otp.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-67"
+    },
+    {
+      "path": "app/api/test-env/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/test-env.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-72"
+    },
+    {
+      "path": "app/auth/callback/route.ts",
+      "reason": "Next.js API route handler - Express equivalent exists in src/server/api/auth/callback.ts",
+      "classification": "safe-to-delete",
+      "lines": "1-47"
+    },
+    {
+      "path": "app/favicon.ico/route.ts",
+      "reason": "Next.js API route for favicon - Vite serves static files from public/ automatically",
+      "classification": "safe-to-delete",
+      "lines": "1-23"
+    },
+    {
+      "path": "lib/supabase/middleware.ts",
+      "reason": "Next.js middleware utility - uses NextRequest/NextResponse. Not compatible with Vite",
+      "classification": "safe-to-delete",
+      "lines": "1-75"
+    }
+  ],
+  "modifiedFiles": [
+    {
+      "path": "app/layout.tsx",
+      "changeSummary": "Remove Next.js-specific imports and exports. Replace Metadata export with react-helmet. Remove next/font/google. Remove @vercel/analytics/next. This file is not used (layout handled in src/main.tsx) but should be cleaned up or deleted.",
+      "classification": "needs-transformation",
+      "linesChanged": 48,
+      "issues": [
+        {
+          "line": 2,
+          "issue": "import type { Metadata } from \"next\"",
+          "action": "Remove - not used in Vite"
+        },
+        {
+          "line": 3,
+          "issue": "import { Geist, Geist_Mono } from \"next/font/google\"",
+          "action": "Remove - fonts loaded via CSS/CDN in index.html"
+        },
+        {
+          "line": 4,
+          "issue": "import { Analytics } from \"@vercel/analytics/next\"",
+          "action": "Remove or replace with @vercel/analytics/react if needed"
+        },
+        {
+          "line": 14,
+          "issue": "export const metadata: Metadata",
+          "action": "Remove - use react-helmet in src/main.tsx instead"
+        },
+        {
+          "line": "11-12",
+          "issue": "Unused font variables",
+          "action": "Remove"
+        }
+      ]
+    },
+    {
+      "path": "lib/supabase/server.ts",
+      "changeSummary": "Replace next/headers cookies() with Express cookie handling. This file is used by Express server but has Next.js dependencies.",
+      "classification": "needs-transformation",
+      "linesChanged": 33,
+      "issues": [
+        {
+          "line": 2,
+          "issue": "import { cookies } from 'next/headers'",
+          "action": "Remove - use Express req.cookies instead"
+        },
+        {
+          "line": 5,
+          "issue": "await cookies() - Next.js API",
+          "action": "Change to accept Request object and use req.cookies"
+        }
+      ]
+    },
+    {
+      "path": "app/product/[id]/page.tsx",
+      "changeSummary": "Remove 'export const runtime = \"edge\"' - Next.js edge runtime not applicable to Vite",
+      "classification": "needs-transformation",
+      "linesChanged": 1,
+      "issues": [
+        {
+          "line": 13,
+          "issue": "export const runtime = \"edge\"",
+          "action": "Remove - not used in Vite"
+        }
+      ]
+    },
+    {
+      "path": "app/api/auth/signin/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists), but if kept, needs transformation",
+      "classification": "safe-to-delete",
+      "issues": [
+        {
+          "line": 1,
+          "issue": "import { NextResponse } from 'next/server'",
+          "action": "Delete file - use src/server/api/auth/signin.ts instead"
+        },
+        {
+          "line": 2,
+          "issue": "export const runtime = 'edge'",
+          "action": "Delete file"
+        },
+        {
+          "line": 5,
+          "issue": "import { cookies } from 'next/headers'",
+          "action": "Delete file"
+        }
+      ]
+    },
+    {
+      "path": "app/api/auth/signup/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists)",
+      "classification": "safe-to-delete"
+    },
+    {
+      "path": "app/api/auth/verify-otp/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists)",
+      "classification": "safe-to-delete"
+    },
+    {
+      "path": "app/api/products/list/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists)",
+      "classification": "safe-to-delete"
+    },
+    {
+      "path": "app/api/products/categories/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists)",
+      "classification": "safe-to-delete"
+    },
+    {
+      "path": "app/api/test-env/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists)",
+      "classification": "safe-to-delete"
+    },
+    {
+      "path": "app/auth/callback/route.ts",
+      "changeSummary": "File marked for deletion (Express equivalent exists)",
+      "classification": "safe-to-delete"
+    }
+  ],
+  "flaggedFiles": [
+    {
+      "path": "app/layout.tsx",
+      "issue": "This file contains Next.js-specific code but is NOT actually used by the Vite app (layout is handled in src/main.tsx). Should be deleted or kept for reference only.",
+      "recommendedAction": "Delete - not used in Vite application",
+      "manual": true,
+      "classification": "manual-attention"
+    },
+    {
+      "path": "lib/supabase/server.ts",
+      "issue": "Uses next/headers but is imported by Express server code. Needs refactoring to work with Express request objects instead of Next.js cookies API.",
+      "recommendedAction": "Refactor to accept Express Request object and use req.cookies. Update all callers in src/server/api/",
+      "manual": true,
+      "classification": "manual-attention"
+    },
+    {
+      "path": "All files with 'use client' directive",
+      "issue": "59 files contain 'use client' directive. This is Next.js-specific but harmless in Vite (ignored). Can be removed for cleanliness but not required.",
+      "recommendedAction": "Optional: Remove 'use client' directives for cleaner code. Not required for functionality.",
+      "manual": true,
+      "classification": "manual-attention",
+      "count": 59
+    }
+  ],
+  "nextJsImportsFound": [
+    {
+      "pattern": "from 'next/server'",
+      "files": [
+        "app/api/products/list/route.ts:1",
+        "app/api/products/categories/route.ts:1",
+        "lib/supabase/middleware.ts:2",
+        "app/auth/callback/route.ts:2",
+        "app/api/auth/signin/route.ts:1",
+        "app/api/auth/verify-otp/route.ts:1",
+        "app/api/auth/signup/route.ts:1",
+        "app/api/test-env/route.ts:1",
+        "app/favicon.ico/route.ts:1",
+        "middleware.ts:1"
+      ],
+      "action": "Delete files or replace with Express equivalents"
+    },
+    {
+      "pattern": "from 'next/headers'",
+      "files": [
+        "app/api/auth/signin/route.ts:5",
+        "app/api/auth/signup/route.ts:3",
+        "lib/supabase/server.ts:2"
+      ],
+      "action": "Replace with Express req.cookies or delete files"
+    },
+    {
+      "pattern": "from 'next/font/google'",
+      "files": [
+        "app/layout.tsx:3"
+      ],
+      "action": "Remove - fonts loaded via CSS in index.html"
+    },
+    {
+      "pattern": "type { Metadata } from 'next'",
+      "files": [
+        "app/layout.tsx:2"
+      ],
+      "action": "Remove - use react-helmet instead"
+    },
+    {
+      "pattern": "@vercel/analytics/next",
+      "files": [
+        "app/layout.tsx:4"
+      ],
+      "action": "Remove or replace with @vercel/analytics/react if needed"
+    }
+  ],
+  "nextJsExportsFound": [
+    {
+      "pattern": "export const runtime = 'edge'",
+      "files": [
+        "app/product/[id]/page.tsx:13",
+        "app/auth/callback/route.ts:4",
+        "app/api/auth/signin/route.ts:2",
+        "app/api/auth/verify-otp/route.ts:4",
+        "app/api/auth/signup/route.ts:5",
+        "app/api/test-env/route.ts:4"
+      ],
+      "action": "Remove - not applicable to Vite"
+    },
+    {
+      "pattern": "export const metadata",
+      "files": [
+        "app/layout.tsx:14"
+      ],
+      "action": "Remove - use react-helmet in src/main.tsx"
+    },
+    {
+      "pattern": "export const revalidate",
+      "files": [
+        "app/api/products/list/route.ts:4"
+      ],
+      "action": "Remove - not applicable to Vite"
+    },
+    {
+      "pattern": "export async function middleware",
+      "files": [
+        "middleware.ts:4"
+      ],
+      "action": "Delete file - use Express middleware instead"
+    }
+  ],
+  "directoriesToReview": [
+    {
+      "path": "app/api/",
+      "reason": "Contains Next.js API route handlers. All have Express equivalents in src/server/api/",
+      "action": "Delete entire directory - Express server handles all API routes",
+      "files": 7
+    },
+    {
+      "path": "app/",
+      "reason": "Contains page components. These are used by React Router (configured in src/App.tsx), so they should be kept but cleaned of Next.js-specific code.",
+      "action": "Keep pages, remove Next.js-specific code (runtime exports, etc.)",
+      "note": "Pages are already being used by React Router via lazy imports in src/App.tsx"
+    }
+  ],
+  "packageJsonAnalysis": {
+    "nextJsDependencies": [],
+    "nextJsDevDependencies": [],
+    "note": "No Next.js packages in package.json - already clean!",
+    "suggestedScripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "preview": "vite preview --port 5173",
+      "dev:server": "tsx watch src/server/index.ts",
+      "start:server": "node dist-server/index.js",
+      "build:server": "tsc -p tsconfig.server.json",
+      "build:all": "npm run build && npm run build:server",
+      "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+      "typecheck": "tsc --noEmit"
+    },
+    "suggestedDependencies": {
+      "note": "Current dependencies are already Vite-compatible. No changes needed."
+    },
+    "suggestedDevDependencies": {
+      "note": "Current devDependencies are already Vite-compatible. No changes needed."
+    }
+  },
+  "tsconfigAnalysis": {
+    "currentState": "Already configured for Vite",
+    "types": ["vite/client"],
+    "note": "No Next.js types found. tsconfig.json is already Vite-compatible.",
+    "recommendation": "No changes needed to tsconfig.json"
+  },
+  "buildOutputs": {
+    ".next/": "Not found - no Next.js build output",
+    "dist/": "Vite build output - keep",
+    "dist-server/": "Express server build output - keep"
+  },
+  "verification": {
+    "commands": [
+      "tsc --noEmit",
+      "npm run lint -- --fix",
+      "npm install",
+      "npm run dev",
+      "npm run build"
+    ],
+    "results": "To be run after modifications"
+  },
+  "todo": [
+    "Create __next_backup/ directory",
+    "Move all Next.js files to __next_backup/ before deletion",
+    "Delete next.config.mjs",
+    "Delete next-env.d.ts",
+    "Delete middleware.ts",
+    "Delete lib/supabase/middleware.ts",
+    "Delete entire app/api/ directory (7 files)",
+    "Delete app/auth/callback/route.ts",
+    "Delete app/favicon.ico/route.ts",
+    "Remove Next.js imports from app/layout.tsx or delete file entirely",
+    "Remove 'export const runtime' from app/product/[id]/page.tsx",
+    "Refactor lib/supabase/server.ts to work with Express (optional - currently not used by Express server)",
+    "Optionally remove 'use client' directives from 59 files (cosmetic only)",
+    "Run type check: tsc --noEmit",
+    "Run lint: npm run lint",
+    "Test dev server: npm run dev",
+    "Test build: npm run build",
+    "Verify API routes work with Express server",
+    "Test application functionality"
+  ],
+  "notes": [
+    "The project has already been migrated from Next.js to Vite. Most Next.js code is legacy/unused.",
+    "All API routes have Express equivalents in src/server/api/",
+    "Pages in app/ are used by React Router (configured in src/App.tsx)",
+    "app/layout.tsx is NOT used - layout is handled in src/main.tsx",
+    "'use client' directives are harmless in Vite (ignored) but can be removed for cleanliness",
+    "No Next.js packages in package.json - already clean!",
+    "TypeScript config is already Vite-compatible"
+  ]
+}
+

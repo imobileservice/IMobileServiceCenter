@@ -1,0 +1,12 @@
+{
+  "name": "imobileservicecenter",
+  "compatibility_date": "2025-11-24",
+  "assets": {
+    "directory": "./dist"
+  },
+  "vars": {
+    "VITE_SUPABASE_URL": "https://jzdsgqdwpmfrrspxpehi.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp6ZHNncWR3cG1mcnJzcHhwZWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNzM5OTcsImV4cCI6MjA3NzY0OTk5N30.wPzTwdl7o9QY_EMNoJ6jwzUAiE3Rq136n98-yH1aBzc"
+  }
+}
+
