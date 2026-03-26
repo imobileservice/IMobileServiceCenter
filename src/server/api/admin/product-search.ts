@@ -1,5 +1,5 @@
 import { Request, Response } from 'express'
-import { OpenRouter } from "@openrouter/sdk"
+// import { OpenRouter } from "@openrouter/sdk" <-- Removed to avoid CJS/ESM clash
 
 interface ProductSearchResult {
     name: string
@@ -658,7 +658,11 @@ async function searchOpenRouter(modelName: string): Promise<ProductSearchResult 
     }
 
     try {
-        console.log(`[OpenRouter] Requesting AI details for: "${modelName}" (Using SDK)`)
+        console.log(`[OpenRouter] Requesting AI details for: "${modelName}" (Using SDK with dynamic import)`)
+        
+        // Dynamic import to avoid ERR_REQUIRE_ESM in CJS environment
+        const sdk = await (eval('import("@openrouter/sdk")') as Promise<any>);
+        const OpenRouter = sdk.OpenRouter;
         const openrouter = new OpenRouter({ apiKey })
 
         const prompt = `
