@@ -107,7 +107,20 @@ export function createClient() {
         get(name: string) {
           if (typeof document === 'undefined') return ''
           const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-          return match ? decodeURIComponent(match[2]) : ''
+          if (match) return decodeURIComponent(match[2])
+          
+          // CRITICAL FIX: Fallback to localStorage for PKCE verifier and auth state
+          // The cookie can get lost during the Google OAuth redirect chain
+          // (browser cookie policies, SameSite restrictions, cross-origin issues)
+          // Without this fallback, exchangeCodeForSession() hangs forever
+          if (name.includes('code-verifier') || name.includes('auth-token')) {
+            const stored = localStorage.getItem(name)
+            if (stored) {
+              console.log(`[Supabase] ⚠️ Cookie '${name}' not in document.cookie, recovered from localStorage`)
+              return stored
+            }
+          }
+          return ''
         },
         set(name: string, value: string, options: any) {
           if (typeof document === 'undefined') return
@@ -129,9 +142,10 @@ export function createClient() {
           
           document.cookie = cookieStr
           
-          // Redundant backup in localStorage for PKCE verifier (this is a lifesaver for mobile)
-          if (name.includes('code-verifier') || name.includes('state')) {
-            localStorage.setItem(name, value)
+          // CRITICAL: Backup ALL auth-related cookies in localStorage
+          // This is essential for PKCE flow recovery when cookies get lost during OAuth redirect
+          if (name.includes('code-verifier') || name.includes('auth-token') || name.includes('state')) {
+            try { localStorage.setItem(name, value) } catch { /* quota */ }
           }
         },
         remove(name: string, options: any) {
@@ -140,8 +154,8 @@ export function createClient() {
           const domain = options?.domain ? `; Domain=${options.domain}` : ''
           document.cookie = `${name}=; Path=${path}; Max-Age=0${domain}`
           
-          if (name.includes('code-verifier') || name.includes('state')) {
-            localStorage.removeItem(name)
+          if (name.includes('code-verifier') || name.includes('auth-token') || name.includes('state')) {
+            try { localStorage.removeItem(name) } catch { /* ok */ }
           }
         }
       },
