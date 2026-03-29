@@ -178,7 +178,7 @@ export default function OrdersPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-muted-foreground">Loading orders...</td>
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground">Loading orders...</td>
                   </tr>
                 ) : filteredOrders.length === 0 ? (
                   <tr>

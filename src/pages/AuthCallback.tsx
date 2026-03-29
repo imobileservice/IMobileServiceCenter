@@ -15,7 +15,7 @@ export default function AuthCallback() {
                 console.log('[AuthCallback] ⏭️ Exchange already started, skipping duplicate run.')
                 return
             }
-            
+
             try {
                 // Determine if there is a code in the URL (PKCE flow)
                 // If there is, redirect the browser entirely to the backend Express route
@@ -25,14 +25,14 @@ export default function AuthCallback() {
                     const supabase = createClient()
                     const params = new URLSearchParams(window.location.search)
                     const code = params.get('code')
-                    
+
                     if (!code) throw new Error('Authorization code missing in URL')
 
                     // EXCHANGE CODE LOCALLY ON FRONTEND
                     console.log('[AuthCallback] ⏳ Starting exchangeCodeForSession...')
                     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
                     console.log('[AuthCallback] 📥 Exchange response received:', { hasSession: !!data?.session, hasError: !!exchangeError })
-                    
+
                     if (exchangeError) {
                         console.error('[AuthCallback] Local exchange failed:', exchangeError)
                         if (exchangeError.message.includes('flow_state')) {
@@ -47,7 +47,7 @@ export default function AuthCallback() {
                         const forwardParams = new URLSearchParams()
                         forwardParams.append('session_token', data.session.access_token)
                         forwardParams.append('refresh_token', data.session.refresh_token)
-                        
+
                         // We also pass any other params from the original redirect
                         params.forEach((val, key) => {
                             if (key !== 'code') forwardParams.append(key, val)
