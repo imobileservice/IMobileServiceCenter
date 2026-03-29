@@ -1,16 +1,24 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 
 interface ProductImageGalleryProps {
   images: string[]
   productName: string
   condition: "new" | "used"
+  externalImageIndex?: number
 }
 
-export default function ProductImageGallery({ images, productName, condition }: ProductImageGalleryProps) {
+export default function ProductImageGallery({ images, productName, condition, externalImageIndex }: ProductImageGalleryProps) {
   const [selectedImage, setSelectedImage] = useState(0)
+
+  // Sync internal state with externalIndex if provided
+  useEffect(() => {
+    if (typeof externalImageIndex === 'number' && externalImageIndex >= 0 && externalImageIndex < images.length) {
+      setSelectedImage(externalImageIndex)
+    }
+  }, [externalImageIndex, images.length])
 
   return (
     <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>

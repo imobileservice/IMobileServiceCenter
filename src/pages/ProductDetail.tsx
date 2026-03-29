@@ -55,6 +55,7 @@ export default function ProductDetailPage() {
   const [selectedRAM, setSelectedRAM] = useState<string>("")
   const [selectedColor, setSelectedColor] = useState<string>("")
   const [currentPrice, setCurrentPrice] = useState<number>(0)
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0)
 
   // Variant structure type
   interface VariantConfig {
@@ -63,6 +64,28 @@ export default function ProductDetailPage() {
     ram?: Array<{ value: string; price_adjustment: number; stock?: number }>
     color?: Array<{ value: string; hex?: string; image?: string; stock?: number }>
   }
+
+  // Get variant configuration
+  const variants = product?.variants as VariantConfig | undefined
+  const hasNewVariants = variants && typeof variants === 'object' && !Array.isArray(variants)
+
+  // Collect all unique images (general product images + color-specific images)
+  const productImages = (() => {
+    if (!product) return ["/placeholder.svg"]
+    
+    const baseImages = product.images && product.images.length > 0
+      ? product.images
+      : product.image
+        ? [product.image]
+        : ["/placeholder.svg"]
+        
+    const variantColorImages = (variants?.color || [])
+      .map((c: { image?: string }) => c.image)
+      .filter((img): img is string => !!img)
+      
+    // Combine and remove duplicates while preserving order
+    return Array.from(new Set([...baseImages, ...variantColorImages]))
+  })()
 
   // Fetch product function
   const fetchProduct = useCallback(async (silent: boolean = false) => {
@@ -175,20 +198,18 @@ export default function ProductDetailPage() {
     }
   }, [id, fetchProduct])
 
-  // Update price when variant changes
+  // Update price and active image index when variant changes
   useEffect(() => {
     if (!product) return
 
     // Check if product has new variant structure
-    const variants = product.variants as VariantConfig | undefined
-
-    if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
+    if (hasNewVariants) {
       // New structure with price adjustments
-      const basePrice = variants.base_price || product.price
+      const basePrice = variants?.base_price || product.price
       let totalPrice = basePrice
 
       // Add storage price adjustment
-      if (selectedStorage && variants.storage) {
+      if (selectedStorage && variants?.storage) {
         const storageOption = variants.storage.find(s => s.value === selectedStorage)
         if (storageOption) {
           totalPrice += storageOption.price_adjustment || 0
@@ -196,8 +217,8 @@ export default function ProductDetailPage() {
       }
 
       // Add RAM price adjustment (only if not Apple)
-      const isApple = (product.brand || '').toLowerCase() === 'apple'
-      if (!isApple && selectedRAM && variants.ram) {
+      const isAppleProduct = (product.brand || '').toLowerCase() === 'apple'
+      if (!isAppleProduct && selectedRAM && variants?.ram) {
         const ramOption = variants.ram.find(r => r.value === selectedRAM)
         if (ramOption) {
           totalPrice += ramOption.price_adjustment || 0
@@ -205,11 +226,22 @@ export default function ProductDetailPage() {
       }
 
       setCurrentPrice(totalPrice)
+
+      // Update active image index when color changes
+      if (selectedColor && variants?.color) {
+        const colorObj = variants.color.find((c: { value: string; image?: string }) => c.value === selectedColor)
+        if (colorObj?.image) {
+          const imageIndex = productImages.findIndex(img => img === colorObj.image)
+          if (imageIndex !== -1) {
+            setActiveImageIndex(imageIndex)
+          }
+        }
+      }
     } else {
-      // Fallback to old structure or base price
+      // Fallback to base price
       setCurrentPrice(product.price)
     }
-  }, [product, selectedStorage, selectedRAM, selectedColor])
+  }, [product, selectedStorage, selectedRAM, selectedColor, productImages, hasNewVariants, variants])
 
   // Initialize variant selections when product loads
   useEffect(() => {
@@ -304,13 +336,6 @@ export default function ProductDetailPage() {
     }
   }
 
-  // Get product images - use images array or single image
-  const productImages = product.images && product.images.length > 0
-    ? product.images
-    : product.image
-      ? [product.image]
-      : ["/placeholder.svg"]
-
   // Default specs if not available
   const productSpecs = product.specs || {}
 
@@ -344,9 +369,7 @@ export default function ProductDetailPage() {
     nameLower.includes('pixel')
   const isApple = brandLower === 'apple' || nameLower.includes('iphone') || nameLower.includes('ipad')
 
-  // Get variant configuration
-  const variants = product.variants as VariantConfig | undefined
-  const hasNewVariants = variants && typeof variants === 'object' && !Array.isArray(variants)
+  const hasNewVariants_redundant = variants && typeof variants === 'object' && !Array.isArray(variants)
 
   // Helper function to extract string value from specs
   const getStringValue = (value: any): string => {
@@ -405,7 +428,7 @@ export default function ProductDetailPage() {
     })()
 
   const colorOptions = hasNewVariants && variants?.color
-    ? variants.color.map(c => ({ value: c.value, hex: c.hex, image: c.image }))
+    ? variants.color.map((c: any) => ({ value: c.value, hex: c.hex, image: c.image }))
     : (() => {
       // Try colorOptions array first
       if (Array.isArray(productSpecs.colorOptions)) {
@@ -435,7 +458,7 @@ export default function ProductDetailPage() {
   // Get current storage/RAM/color from selections or defaults
   const currentStorage = selectedStorage || (storageOptions.length > 0 ? storageOptions[0] : "")
   const currentRAM = selectedRAM || (ramOptions.length > 0 ? ramOptions[0] : "")
-  const currentColorObj = colorOptions.find(c => c.value === selectedColor) || colorOptions[0]
+  const currentColorObj = colorOptions.find((c: any) => c.value === selectedColor) || colorOptions[0]
   const currentColor = currentColorObj?.value || ""
 
   // Remaining specs (excluding storage / ram / color to avoid duplication)
@@ -481,7 +504,12 @@ export default function ProductDetailPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 mb-12">
           {/* Product Images */}
-          <ProductImageGallery images={productImages} productName={product.name} condition={product.condition} />
+          <ProductImageGallery 
+            images={productImages} 
+            productName={product.name} 
+            condition={product.condition} 
+            externalImageIndex={activeImageIndex}
+          />
 
           {/* Product Information */}
           <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>
@@ -520,12 +548,12 @@ export default function ProductDetailPage() {
                 {hasNewVariants && (selectedStorage || selectedRAM) && (
                   <p className="text-sm text-muted-foreground">
                     Base: {formatCurrency(product.price)}
-                    {selectedStorage && variants?.storage?.find(s => s.value === selectedStorage)?.price_adjustment !== 0 && (
+                    {selectedStorage && variants?.storage && variants.storage.find(s => s.value === selectedStorage)?.price_adjustment !== 0 && (
                       <span className="ml-2">
                         + Storage: {formatCurrency(variants.storage.find(s => s.value === selectedStorage)?.price_adjustment || 0)}
                       </span>
                     )}
-                    {selectedRAM && variants?.ram?.find(r => r.value === selectedRAM)?.price_adjustment !== 0 && (
+                    {selectedRAM && variants?.ram && variants.ram.find(r => r.value === selectedRAM)?.price_adjustment !== 0 && (
                       <span className="ml-2">
                         + RAM: {formatCurrency(variants.ram.find(r => r.value === selectedRAM)?.price_adjustment || 0)}
                       </span>
@@ -552,8 +580,8 @@ export default function ProductDetailPage() {
                       <div className="flex flex-wrap gap-2">
                         {storageOptions.map((option: string) => {
                           const isSelected = selectedStorage === option || (!selectedStorage && option === storageOptions[0])
-                          const storageVariant = hasNewVariants && variants?.storage?.find(s => s.value === option)
-                          const priceAdjustment = storageVariant?.price_adjustment || 0
+                          const storageVariant = hasNewVariants ? variants?.storage?.find(s => s.value === option) : null
+                          const priceAdjustment = (storageVariant && typeof storageVariant === 'object') ? (storageVariant as any).price_adjustment : 0
 
                           return (
                             <button
@@ -584,8 +612,8 @@ export default function ProductDetailPage() {
                       <div className="flex flex-wrap gap-2">
                         {ramOptions.map((option: string) => {
                           const isSelected = selectedRAM === option || (!selectedRAM && option === ramOptions[0])
-                          const ramVariant = hasNewVariants && variants?.ram?.find(r => r.value === option)
-                          const priceAdjustment = ramVariant?.price_adjustment || 0
+                          const ramVariant = hasNewVariants ? variants?.ram?.find(r => r.value === option) : null
+                          const priceAdjustment = (ramVariant && typeof ramVariant === 'object') ? (ramVariant as any).price_adjustment : 0
 
                           return (
                             <button
