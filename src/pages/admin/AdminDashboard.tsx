@@ -65,8 +65,9 @@ export default function AdminDashboard() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([])
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = async (silent = false) => {
       try {
+        if (!silent) setStats(prev => ({ ...prev, loading: true }))
         // Try to fetch stats from backend API first
         const { getApiUrl } = await import('@/lib/utils/api')
         let statsData = null
@@ -140,12 +141,26 @@ export default function AdminDashboard() {
         setRecentOrders(recent)
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
-        setStats(prev => ({ ...prev, loading: false }))
-        setRecentOrders([])
+        if (!silent) setStats(prev => ({ ...prev, loading: false }))
       }
     }
 
     fetchDashboardData()
+
+    // Polling fallback
+    const pollingInterval = setInterval(() => fetchDashboardData(true), 30000)
+    
+    // Listen for order updates
+    const handleOrderUpdate = () => fetchDashboardData(true)
+    window.addEventListener('orderUpdated', handleOrderUpdate)
+    window.addEventListener('storage', (e) => {
+      if (e.key?.startsWith('adminUpdate_')) handleOrderUpdate()
+    })
+
+    return () => {
+      clearInterval(pollingInterval)
+      window.removeEventListener('orderUpdated', handleOrderUpdate)
+    }
   }, [])
 
   // Compute STATS array based on current stats state

@@ -21,15 +21,15 @@ export default function ProductsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const data = await productsService.getAll()
       setProducts(data)
     } catch (error) {
       console.error('Failed to fetch products:', error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -38,7 +38,7 @@ export default function ProductsPage() {
     
     // Listen for product updates
     const handleProductUpdate = () => {
-      fetchProducts()
+      fetchProducts(true)
     }
     window.addEventListener('productUpdated', handleProductUpdate)
     

@@ -18,9 +18,9 @@ export default function CategoriesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
 
-  const fetchCategories = async () => {
+  const fetchCategories = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       console.log('[AdminCategories] Fetching categories...')
 
       const data = await categoriesService.getAll()
@@ -29,9 +29,9 @@ export default function CategoriesPage() {
       setCategories(data || [])
     } catch (error: any) {
       console.error('[AdminCategories] Failed to fetch categories:', error)
-      setCategories([])
+      if (!silent) setCategories([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -40,7 +40,7 @@ export default function CategoriesPage() {
 
     // Listen for category updates
     const handleCategoryUpdate = () => {
-      fetchCategories()
+      fetchCategories(true)
     }
     window.addEventListener('categoryUpdated', handleCategoryUpdate)
 

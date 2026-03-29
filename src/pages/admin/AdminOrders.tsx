@@ -21,16 +21,16 @@ export default function OrdersPage() {
   const [filterMethod, setFilterMethod] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null)
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const data = await ordersService.getAll()
       setOrders(data || [])
     } catch (error) {
       console.error('Failed to fetch orders:', error)
-      setOrders([])
+      if (!silent) setOrders([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -45,7 +45,7 @@ export default function OrdersPage() {
         { event: '*', schema: 'public', table: 'orders' },
         (payload: any) => {
           console.log('🔄 AdminOrders: Realtime order update received:', payload)
-          fetchOrders()
+          fetchOrders(true)
         }
       )
       .subscribe()
@@ -53,7 +53,7 @@ export default function OrdersPage() {
     // Listen for order updates (real-time within the same tab)
     const handleOrderUpdate = () => {
       console.log('🔄 AdminOrders: Received order update event, refreshing...')
-      fetchOrders()
+      fetchOrders(true)
     }
 
     // Listen for custom events
@@ -65,7 +65,7 @@ export default function OrdersPage() {
         const { type } = JSON.parse(e.newValue || '{}')
         if (type === 'order') {
           console.log('🔄 AdminOrders: Received localStorage order update, refreshing...')
-          fetchOrders()
+          fetchOrders(true)
         }
       }
     }
@@ -74,7 +74,7 @@ export default function OrdersPage() {
 
     // Polling fallback (every 10 seconds)
     const pollingInterval = setInterval(() => {
-      fetchOrders()
+      fetchOrders(true)
     }, 10000)
 
     return () => {

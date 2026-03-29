@@ -18,16 +18,16 @@ export default function CustomersPage() {
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const data = await customersService.getAll()
       setCustomers(data || [])
     } catch (error) {
       console.error('Failed to fetch customers:', error)
-      setCustomers([])
+      if (!silent) setCustomers([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -36,7 +36,7 @@ export default function CustomersPage() {
     
     // Listen for customer updates
     const handleCustomerUpdate = () => {
-      fetchCustomers()
+      fetchCustomers(true)
     }
     window.addEventListener('customerUpdated', handleCustomerUpdate)
     
