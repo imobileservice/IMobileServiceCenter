@@ -85,10 +85,10 @@ export default function OrdersPage() {
   }, [])
 
   const filteredOrders = orders.filter((order) => {
-    const orderNumber = order.id.substring(0, 8).toUpperCase()
+    const displayId = order.order_number || order.id.substring(0, 8).toUpperCase()
     const searchLower = searchTerm.toLowerCase()
     return (
-      orderNumber.includes(searchLower) ||
+      displayId.toLowerCase().includes(searchLower) ||
       order.shipping_address?.toLowerCase().includes(searchLower) ||
       order.customer_email?.toLowerCase().includes(searchLower)
     )
@@ -174,7 +174,7 @@ export default function OrdersPage() {
                       animate={{ opacity: 1 }}
                       className="border-b border-border hover:bg-muted/50 transition-colors"
                     >
-                      <td className="py-4 px-6 font-semibold">#{order.id.substring(0, 8).toUpperCase()}</td>
+                      <td className="py-4 px-6 font-semibold">#{order.order_number || order.id.substring(0, 8).toUpperCase()}</td>
                       <td className="py-4 px-6">{order.customer_email || 'N/A'}</td>
                       <td className="py-4 px-6 font-semibold">{formatCurrency(order.total || 0)}</td>
                       <td className="py-4 px-6">{new Date(order.created_at).toLocaleDateString()}</td>

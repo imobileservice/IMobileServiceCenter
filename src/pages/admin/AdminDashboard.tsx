@@ -329,7 +329,7 @@ export default function AdminDashboard() {
               <tbody>
                 {recentOrders.map((order) => (
                   <tr key={order.id} className="border-b border-border hover:bg-muted/50 transition-colors">
-                    <td className="py-3 px-4 font-semibold">{order.id.substring(0, 8).toUpperCase()}</td>
+                    <td className="py-3 px-4 font-semibold">#{order.order_number || order.id.substring(0, 8).toUpperCase()}</td>
                     <td className="py-3 px-4">{order.customer_email || order.shipping_address || "N/A"}</td>
                     <td className="py-3 px-4">{formatCurrency(order.total || 0)}</td>
                     <td className="py-3 px-4">

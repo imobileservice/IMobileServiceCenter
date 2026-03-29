@@ -113,7 +113,7 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Order ID</p>
-              <p className="font-semibold">#{order.id.substring(0, 8).toUpperCase()}</p>
+              <p className="font-semibold">#{order.order_number || order.id.substring(0, 8).toUpperCase()}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Date</p>
