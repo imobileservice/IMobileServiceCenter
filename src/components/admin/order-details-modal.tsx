@@ -127,6 +127,10 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
               <p className="text-sm text-muted-foreground">Total</p>
               <p className="font-semibold">{formatCurrency(order.total || 0)}</p>
             </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Payment Method</p>
+              <p className="font-semibold capitalize">{order.payment_method?.replace(/_/g, ' ') || 'N/A'}</p>
+            </div>
           </div>
 
           {/* Customer Info */}

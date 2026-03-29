@@ -18,6 +18,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [filterMethod, setFilterMethod] = useState<string>("all")
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null)
 
   const fetchOrders = async () => {
@@ -87,11 +88,16 @@ export default function OrdersPage() {
   const filteredOrders = orders.filter((order) => {
     const displayId = order.order_number || order.id.substring(0, 8).toUpperCase()
     const searchLower = searchTerm.toLowerCase()
-    return (
+    
+    const matchesSearch = (
       displayId.toLowerCase().includes(searchLower) ||
       order.shipping_address?.toLowerCase().includes(searchLower) ||
       order.customer_email?.toLowerCase().includes(searchLower)
     )
+
+    const matchesMethod = filterMethod === "all" || order.payment_method === filterMethod
+    
+    return matchesSearch && matchesMethod
   })
 
   const getStatusColor = (status: string) => {
@@ -124,17 +130,28 @@ export default function OrdersPage() {
           </div>
         </motion.div>
 
-        {/* Search */}
+        {/* Search & Filter */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="relative">
-            <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search by order number or customer..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by order number or customer..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <select
+              value={filterMethod}
+              onChange={(e) => setFilterMethod(e.target.value)}
+              className="bg-background border border-border rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary min-w-[200px]"
+            >
+              <option value="all">All Payment Methods</option>
+              <option value="cash_on_delivery">Cash on Delivery</option>
+              <option value="visit_shop">Visit Shop & Pay</option>
+            </select>
           </div>
         </motion.div>
 
@@ -152,6 +169,7 @@ export default function OrdersPage() {
                   <th className="text-left py-4 px-6 font-semibold">Order ID</th>
                   <th className="text-left py-4 px-6 font-semibold">Customer</th>
                   <th className="text-left py-4 px-6 font-semibold">Amount</th>
+                  <th className="text-left py-4 px-6 font-semibold">Method</th>
                   <th className="text-left py-4 px-6 font-semibold">Date</th>
                   <th className="text-left py-4 px-6 font-semibold">Status</th>
                   <th className="text-left py-4 px-6 font-semibold">Actions</th>
@@ -164,7 +182,7 @@ export default function OrdersPage() {
                   </tr>
                 ) : filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-muted-foreground">No orders found</td>
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground">No orders found</td>
                   </tr>
                 ) : (
                   filteredOrders.map((order) => (
@@ -177,6 +195,11 @@ export default function OrdersPage() {
                       <td className="py-4 px-6 font-semibold">#{order.order_number || order.id.substring(0, 8).toUpperCase()}</td>
                       <td className="py-4 px-6">{order.customer_email || 'N/A'}</td>
                       <td className="py-4 px-6 font-semibold">{formatCurrency(order.total || 0)}</td>
+                      <td className="py-4 px-6 text-sm">
+                        <span className="capitalize">
+                          {order.payment_method?.replace(/_/g, ' ') || 'N/A'}
+                        </span>
+                      </td>
                       <td className="py-4 px-6">{new Date(order.created_at).toLocaleDateString()}</td>
                       <td className="py-4 px-6">
                         <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status || 'pending')}`}>
