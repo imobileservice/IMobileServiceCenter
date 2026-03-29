@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createOAuthClient } from '../lib/supabase/client'
+import { createClient } from '../lib/supabase/client'
 
 export default function AuthCallback() {
     const navigate = useNavigate()
@@ -19,7 +19,7 @@ export default function AuthCallback() {
             if (window.location.search.includes('code=')) {
                 started.current = true
                 console.log('[AuthCallback] 🧩 Code found in URL, performing local exchange...')
-                const supabase = createOAuthClient()
+                const supabase = createClient()
                 const params = new URLSearchParams(window.location.search)
                 const code = params.get('code')
 

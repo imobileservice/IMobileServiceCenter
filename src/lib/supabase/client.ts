@@ -1,40 +1,4 @@
 import { createBrowserClient } from '@supabase/ssr'
-import { createClient as createSupabaseJsClient } from '@supabase/supabase-js'
-
-/**
- * OAuth-specific client using @supabase/supabase-js directly.
- * 
- * WHY: @supabase/ssr's createBrowserClient uses a custom cookie adapter
- * that does NOT reliably store the PKCE code_verifier during OAuth redirects
- * in a Vite SPA (Cloudflare Pages). The standard @supabase/supabase-js client
- * uses localStorage natively for PKCE state, which survives the Google → app redirect.
- *
- * Use this client ONLY for: signInWithOAuth() and exchangeCodeForSession().
- * Use createClient() for everything else (session checks, DB queries, etc).
- */
-export function createOAuthClient() {
-  const supabaseUrl =
-    import.meta.env.VITE_SUPABASE_URL ||
-    import.meta.env.NEXT_PUBLIC_SUPABASE_URL
-
-  const supabaseAnonKey =
-    import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase environment variables are not configured')
-  }
-
-  return createSupabaseJsClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: false, // We handle callback manually in AuthCallback
-      flowType: 'pkce',          // Explicitly use PKCE
-      storage: window.localStorage, // Reliable localStorage - survives OAuth redirect
-    },
-  })
-}
 
 /**
  * Creates a Supabase client for browser/client-side usage.
@@ -86,7 +50,14 @@ export function clearSupabaseCache() {
   }
 }
 
+// Module-level singleton to prevent "Multiple GoTrueClient instances" warnings and deadlocks
+let supabaseInstance: any = null;
+
 export function createClient() {
+  if (supabaseInstance) {
+    return supabaseInstance;
+  }
+
   // Use import.meta.env — Vite statically replaces these at build time
   const supabaseUrl =
     import.meta.env.VITE_SUPABASE_URL ||
@@ -138,13 +109,13 @@ export function createClient() {
   }
 
   try {
-    return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    supabaseInstance = createBrowserClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         get(name: string) {
           if (typeof document === 'undefined') return ''
           const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
           if (match) return decodeURIComponent(match[2])
-          
+
           // CRITICAL FIX: Fallback to localStorage for PKCE verifier and auth state
           // The cookie can get lost during the Google OAuth redirect chain
           // (browser cookie policies, SameSite restrictions, cross-origin issues)
@@ -160,7 +131,7 @@ export function createClient() {
         },
         set(name: string, value: string, options: any) {
           if (typeof document === 'undefined') return
-          
+
           const cookieOptions = {
             path: options?.path || '/',
             maxAge: options?.maxAge || 60 * 60 * 24 * 30, // Default 30 days
@@ -175,9 +146,9 @@ export function createClient() {
           cookieStr += `; SameSite=${cookieOptions.sameSite}`
           if (cookieOptions.secure) cookieStr += `; Secure`
           if (cookieOptions.domain) cookieStr += `; Domain=${cookieOptions.domain}`
-          
+
           document.cookie = cookieStr
-          
+
           // CRITICAL: Backup ALL auth-related cookies in localStorage
           // This is essential for PKCE flow recovery when cookies get lost during OAuth redirect
           if (name.includes('code-verifier') || name.includes('auth-token') || name.includes('state')) {
@@ -189,7 +160,7 @@ export function createClient() {
           const path = options?.path || '/'
           const domain = options?.domain ? `; Domain=${options.domain}` : ''
           document.cookie = `${name}=; Path=${path}; Max-Age=0${domain}`
-          
+
           if (name.includes('code-verifier') || name.includes('auth-token') || name.includes('state')) {
             try { localStorage.removeItem(name) } catch { /* ok */ }
           }
@@ -208,6 +179,8 @@ export function createClient() {
         detectSessionInUrl: false, // We handle this manually in AuthCallback
       },
     } as any)
+    
+    return supabaseInstance;
   } catch (error: any) {
     console.error('Failed to create Supabase client:', error)
     throw new Error(`Failed to initialize Supabase client: ${error.message}`)
