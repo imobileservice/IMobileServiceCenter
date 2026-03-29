@@ -1,4 +1,4 @@
-import { createClient, clearSupabaseCache } from '../client'
+import { createClient, clearSupabaseCache, createOAuthClient } from '../client'
 import { getApiUrl } from '../../utils/api'
 import { getAuthTokenFast } from '../utils/auth-helpers'
 
@@ -511,48 +511,7 @@ export const authService = {
         )
       }
 
-      // Clear any old/cached Supabase sessions that might have wrong URL
-      console.log('🧹 Clearing old Supabase cache...')
-      clearSupabaseCache()
-
-      // Test if Supabase URL is reachable (quick check)
-      try {
-        const testUrl = `${supabaseUrl}/rest/v1/`
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 3000)
-
-        await fetch(testUrl, {
-          method: 'HEAD',
-          signal: controller.signal,
-          headers: {
-            'apikey': supabaseKey,
-          }
-        }).catch(() => {
-          // Ignore fetch errors - just checking if URL resolves
-        })
-
-        clearTimeout(timeoutId)
-      } catch (testError: any) {
-        if (testError.name === 'AbortError' || testError.message?.includes('Failed to fetch') || testError.message?.includes('ERR_NAME_NOT_RESOLVED')) {
-          throw new Error(
-            `Cannot connect to Supabase: ${supabaseUrl}\n\n` +
-            'Possible causes:\n' +
-            '1. ❌ Wrong Supabase URL in .env file\n' +
-            '2. ❌ Supabase project is paused (free tier pauses after inactivity)\n' +
-            '3. ❌ Supabase project was deleted\n' +
-            '4. ❌ Network/DNS issue\n\n' +
-            'How to fix:\n' +
-            '1. Go to https://supabase.com/dashboard\n' +
-            '2. Check if your project is active (not paused)\n' +
-            '3. If paused, click "Restore project"\n' +
-            '4. Copy the correct URL from Settings → API\n' +
-            '5. Update your .env file\n' +
-            '6. Restart your server'
-          )
-        }
-      }
-
-      const supabase = createClient()
+      const supabase = createOAuthClient()
 
       // Validate Supabase client was created successfully
       if (!supabase || !supabase.auth) {

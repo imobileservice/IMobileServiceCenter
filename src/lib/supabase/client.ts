@@ -1,4 +1,40 @@
 import { createBrowserClient } from '@supabase/ssr'
+import { createClient as createSupabaseJsClient } from '@supabase/supabase-js'
+
+/**
+ * OAuth-specific client using @supabase/supabase-js directly.
+ * 
+ * WHY: @supabase/ssr's createBrowserClient uses a custom cookie adapter
+ * that does NOT reliably store the PKCE code_verifier during OAuth redirects
+ * in a Vite SPA (Cloudflare Pages). The standard @supabase/supabase-js client
+ * uses localStorage natively for PKCE state, which survives the Google → app redirect.
+ *
+ * Use this client ONLY for: signInWithOAuth() and exchangeCodeForSession().
+ * Use createClient() for everything else (session checks, DB queries, etc).
+ */
+export function createOAuthClient() {
+  const supabaseUrl =
+    import.meta.env.VITE_SUPABASE_URL ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_URL
+
+  const supabaseAnonKey =
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase environment variables are not configured')
+  }
+
+  return createSupabaseJsClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false, // We handle callback manually in AuthCallback
+      flowType: 'pkce',          // Explicitly use PKCE
+      storage: window.localStorage, // Reliable localStorage - survives OAuth redirect
+    },
+  })
+}
 
 /**
  * Creates a Supabase client for browser/client-side usage.
