@@ -33,22 +33,26 @@ export default function AdminSidebar() {
 
   return (
     <>
-      {/* Mobile Menu Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-4 left-4 z-50 lg:hidden p-2 hover:bg-muted rounded-lg bg-background border"
-      >
-        {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-      </button>
+      {/* Mobile Menu Button - Fixed position */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-40 flex items-center px-4">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-2 hover:bg-muted rounded-lg border transition-colors"
+          aria-label="Toggle Menu"
+        >
+          {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+        <span className="ml-4 font-bold text-lg">I Mobile Admin</span>
+      </div>
 
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:flex-col w-64 bg-card border-r border-border h-screen">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold">I Mobile</h1>
-          <p className="text-sm text-muted-foreground">Admin Panel</p>
+      {/* Desktop Sidebar - Fixed position */}
+      <aside className="hidden lg:flex lg:flex-col w-64 bg-card border-r border-border h-screen fixed left-0 top-0 z-50 overflow-y-auto scrollbar-thin">
+        <div className="p-8">
+          <h1 className="text-2xl font-bold tracking-tight">I Mobile</h1>
+          <p className="text-xs text-muted-foreground uppercase tracking-widest mt-1">Admin Panel</p>
         </div>
 
-        <nav className="px-4 space-y-2 flex-1">
+        <nav className="px-4 space-y-1.5 flex-1">
           {MENU_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
@@ -56,59 +60,72 @@ export default function AdminSidebar() {
               <Link key={item.href} to={item.href}>
                 <motion.button
                   whileHover={{ x: 4 }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                  whileTap={{ scale: 0.98 }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive 
+                      ? "bg-primary text-primary-foreground shadow-md font-medium" 
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <Icon className={`w-5 h-5 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                  <span className="text-sm">{item.label}</span>
                 </motion.button>
               </Link>
             )
           })}
         </nav>
 
-        <div className="p-4">
-          <Button onClick={handleLogout} variant="outline" className="w-full gap-2 bg-transparent">
+        <div className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
+          <Button 
+            onClick={handleLogout} 
+            variant="ghost" 
+            className="w-full justify-start gap-3 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+          >
             <LogOut className="w-4 h-4" />
-            Logout
+            <span className="text-sm font-medium">Logout</span>
           </Button>
         </div>
       </aside>
 
-      {/* Mobile Sidebar */}
+      {/* Mobile Sidebar - Slide-over style */}
       <motion.aside
-        initial={{ x: -300 }}
-        animate={{ x: isOpen ? 0 : -300 }}
-        transition={{ duration: 0.3 }}
-        className="lg:hidden fixed left-0 top-0 h-screen w-64 bg-card border-r border-border z-40 flex flex-col"
+        initial={{ x: -256 }}
+        animate={{ x: isOpen ? 0 : -256 }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        className="lg:hidden fixed left-0 top-0 h-screen w-64 bg-card border-r border-border z-50 flex flex-col shadow-2xl"
       >
-        <div className="p-6">
-          <h1 className="text-2xl font-bold">I Mobile</h1>
-          <p className="text-sm text-muted-foreground">Admin Panel</p>
+        <div className="p-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold">I Mobile</h1>
+            <p className="text-xs text-muted-foreground">Admin Panel</p>
+          </div>
+          <button onClick={() => setIsOpen(false)} className="p-2 lg:hidden rounded-full hover:bg-muted">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <nav className="px-4 space-y-2 flex-1">
+        <nav className="px-4 space-y-1.5 flex-1 overflow-y-auto pt-4">
           {MENU_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (
-              <Link key={item.href} to={item.href}>
+              <Link key={item.href} to={item.href} onClick={() => setIsOpen(false)}>
                 <motion.button
-                  whileHover={{ x: 4 }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+                  whileTap={{ scale: 0.98 }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive 
+                      ? "bg-primary text-primary-foreground shadow-lg" 
+                      : "text-muted-foreground hover:bg-muted"
                     }`}
-                  onClick={() => setIsOpen(false)}
                 >
                   <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <span className="font-medium">{item.label}</span>
                 </motion.button>
               </Link>
             )
           })}
         </nav>
 
-        <div className="p-4">
-          <Button onClick={handleLogout} variant="outline" className="w-full gap-2 bg-transparent">
+        <div className="p-4 border-t border-border">
+          <Button onClick={handleLogout} variant="destructive" className="w-full gap-2 rounded-xl">
             <LogOut className="w-4 h-4" />
             Logout
           </Button>
@@ -116,7 +133,14 @@ export default function AdminSidebar() {
       </motion.aside>
 
       {/* Mobile Overlay */}
-      {isOpen && <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={() => setIsOpen(false)} />}
+      {isOpen && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" 
+          onClick={() => setIsOpen(false)} 
+        />
+      )}
     </>
   )
 }

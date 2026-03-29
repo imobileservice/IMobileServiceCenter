@@ -220,12 +220,12 @@ export default function AdminHeroSlidesPage() {
       <div className="space-y-6">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-4xl font-bold">Hero Slides</h1>
-              <p className="text-muted-foreground mt-2">Manage hero slider content on the home page</p>
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Hero Slides</h1>
+              <p className="text-muted-foreground mt-1">Manage promotional content on the home page</p>
             </div>
-            <Button onClick={handleAdd} className="gap-2">
+            <Button onClick={handleAdd} className="gap-2 self-start sm:self-auto shadow-md">
               <Plus className="w-4 h-4" />
               Add Slide
             </Button>

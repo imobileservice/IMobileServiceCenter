@@ -97,7 +97,7 @@ export default function AdminDashboard() {
         ])
 
         // Calculate revenue
-        const revenue = (orders || []).reduce((sum, order) => sum + Number(order.total || 0), 0)
+        const revenue = (orders || []).reduce((sum: number, order: any) => sum + Number(order.total || 0), 0)
 
         // Get last 6 months sales data
         const now = new Date()
@@ -107,14 +107,14 @@ export default function AdminDashboard() {
           const monthStart = date.toISOString()
           const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString()
           
-          const monthOrders = (orders || []).filter(o => {
+          const monthOrders = (orders || []).filter((o: any) => {
             const orderDate = new Date(o.created_at)
             return orderDate >= new Date(monthStart) && orderDate <= new Date(monthEnd)
           })
 
           monthlyData.push({
             month: date.toLocaleDateString('en-US', { month: 'short' }),
-            sales: monthOrders.reduce((sum, o) => sum + Number(o.total || 0), 0),
+            sales: monthOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0),
             orders: monthOrders.length,
           })
         }
@@ -204,8 +204,8 @@ export default function AdminDashboard() {
       <div className="space-y-8">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <h1 className="text-4xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">Welcome back! Here's your business overview.</p>
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground mt-1">Welcome back! Here's your business overview.</p>
       </motion.div>
 
       {/* Stats Grid */}
