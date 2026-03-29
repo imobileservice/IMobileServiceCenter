@@ -310,11 +310,15 @@ export const authService = {
         // Also delete from database if we have a token
         if (storedToken) {
           // Call backend to delete session from database
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 5000)
+          
           await fetch(getApiUrl('/api/auth/signout'), {
             method: 'POST',
             headers: { 'x-session-token': storedToken },
             credentials: 'include',
-          }).catch(() => { }) // Ignore errors
+            signal: controller.signal,
+          }).catch(() => { }).finally(() => clearTimeout(timeoutId))
         }
       }
     } catch (e) {
@@ -322,12 +326,16 @@ export const authService = {
       console.warn('Error clearing localStorage during signout:', e)
     }
 
-    // Try to sign out from Supabase, but don't fail if it errors (e.g., network issues)
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
-      if (error && !error.message?.includes('Failed to fetch') && !error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
-        // Only throw if it's not a network error (network errors are expected if Supabase is down)
+      const signOutPromise = supabase.auth.signOut()
+      const timeoutPromise = new Promise<{error: any}>((_, reject) => 
+        setTimeout(() => reject(new Error('Signout timeout')), 5000)
+      )
+      
+      const { error } = await Promise.race([signOutPromise, timeoutPromise]) as any
+      if (error && !error.message?.includes('Failed to fetch') && !error.message?.includes('ERR_NAME_NOT_RESOLVED') && !error.message?.includes('timeout')) {
+        // Only throw if it's not a network error or timeout
         throw error
       }
     } catch (e: any) {

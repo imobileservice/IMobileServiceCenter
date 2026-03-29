@@ -189,7 +189,7 @@ export const cartService = {
               headers,
               credentials: 'include',
               body: JSON.stringify({ productId, quantity, variantSelected }),
-              signal: AbortSignal.timeout(10000),
+              signal: AbortSignal.timeout(15000),
             })
 
             console.log('[cartService] Backend API response:', { status: response.status, ok: response.ok })
@@ -325,7 +325,7 @@ export const cartService = {
         console.log('[cartService] Supabase insert success:', data)
         return data
       }
-    }, 2, 500, 10000) // Reduced retries, shorter timeout
+    }, 2, 1000, 20000) // Increased retries delay and timeout
   },
 
   // Update cart item quantity

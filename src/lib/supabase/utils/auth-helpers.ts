@@ -66,10 +66,10 @@ export async function getAuthTokenFast(silent: boolean = false) {
     const supabase = createClient();
     const getSessionPromise = supabase.auth.getSession();
     const timeoutMsg = 'Token refresh timeout';
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(timeoutMsg)), 2000));
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error(timeoutMsg)), 5000));
 
     try {
-        console.log('[getAuthTokenFast] 🔄 Attempting session refresh/retrieval (2s timeout)...');
+        console.log('[getAuthTokenFast] 🔄 Attempting session refresh/retrieval (5s timeout)...');
         const { data } = await Promise.race([getSessionPromise, timeoutPromise]) as any;
         const freshToken = data?.session?.access_token || null;
         

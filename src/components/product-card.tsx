@@ -38,7 +38,7 @@ function ProductCard({ id, name, price, image, condition, discount, specs, onQui
       try {
         // Use a shorter timeout for quantity check (non-critical)
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Quantity check timeout')), 5000)
+          setTimeout(() => reject(new Error('Quantity check timeout')), 10000)
         )
         
         const itemsPromise = cartService.getCartItems(user.id)
@@ -84,7 +84,7 @@ function ProductCard({ id, name, price, image, condition, discount, specs, onQui
       // Use a timeout for add to cart operation
       const addItemPromise = cartService.addItem(user.id, id, 1)
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Add to cart timeout - please try again')), 10000)
+        setTimeout(() => reject(new Error('Add to cart timeout - please try again')), 20000)
       )
       
       const result = await Promise.race([addItemPromise, timeoutPromise])

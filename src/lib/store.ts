@@ -166,6 +166,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       // This avoids hanging on getSession() which might timeout
 
       console.log('[AuthStore] Checking backend database for session...')
+      let verifiedByBackend = false
       try {
         // CRITICAL: Check if we just got redirected from OAuth callback with tokens in URL
         if (typeof window !== 'undefined') {
@@ -318,6 +319,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               })()
             }
 
+            verifiedByBackend = true
             return // Exit early - user is authenticated
           }
         } else if (response.status === 401) {
@@ -331,7 +333,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       // Check if we are already authenticated from backend or URL tokens
       // If so, we MUST NOT proceed to the fallback check which might clear the session
-      if (get().isAuthenticated) {
+      // Check if we are already authenticated from backend or URL tokens in THIS run
+      if (verifiedByBackend) {
         console.log('[AuthStore] ✅ Already authenticated via backend source, skipping localStorage fallback.')
         return
       }

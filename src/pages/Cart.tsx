@@ -48,7 +48,7 @@ export default function CartPage() {
         // Use a timeout for cart loading
         const cartItemsPromise = cartService.getCartItems(user.id)
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Cart loading timeout')), 10000)
+          setTimeout(() => reject(new Error('Cart loading timeout')), 20000)
         )
 
         const cartItems = await Promise.race([cartItemsPromise, timeoutPromise])
