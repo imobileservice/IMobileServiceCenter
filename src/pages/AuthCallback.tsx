@@ -29,7 +29,9 @@ export default function AuthCallback() {
                     if (!code) throw new Error('Authorization code missing in URL')
 
                     // EXCHANGE CODE LOCALLY ON FRONTEND
+                    console.log('[AuthCallback] ⏳ Starting exchangeCodeForSession...')
                     const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+                    console.log('[AuthCallback] 📥 Exchange response received:', { hasSession: !!data?.session, hasError: !!exchangeError })
                     
                     if (exchangeError) {
                         console.error('[AuthCallback] Local exchange failed:', exchangeError)
