@@ -1,59 +1,12 @@
-import nodemailer from 'nodemailer' // Updated for Railway Redeployment
-import dns from 'dns'
-
-const getTransport = async () => {
-    const host = process.env.SMTP_HOST
-    const portStr = process.env.SMTP_PORT
-    const user = process.env.SMTP_USER
-    const pass = process.env.SMTP_PASS
-
-    // Fail loudly if SMTP is not configured - prevents silent failures
-    if (!host || !user || !pass) {
-        const missing = [!host && 'SMTP_HOST', !user && 'SMTP_USER', !pass && 'SMTP_PASS'].filter(Boolean).join(', ')
-        throw new Error(`[Email] SMTP not configured. Missing environment variables: ${missing}. Check your .env file or Railway environment variables.`)
-    }
-
-    const port = parseInt(portStr || '587')
-    const secure = port === 465 // true for SSL (465), false for STARTTLS (587)
-
-    console.log(`[Email] Configuring SMTP: host=${host}, port=${port}, secure=${secure}, user=${user}`)
-
-    // FORCE IPv4: Manually resolve hostname to avoid IPv6 connectivity issues
-    let resolvedHost = host
-    try {
-        const addresses = await new Promise<string[]>((resolve, reject) => {
-            dns.resolve4(host, (err, addresses) => {
-                if (err || !addresses.length) reject(err || new Error('No IPv4 addresses found'))
-                else resolve(addresses)
-            })
-        })
-        resolvedHost = addresses[0]
-        console.log(`[Email] Resolved ${host} → IPv4: ${resolvedHost}`)
-    } catch (dnsError: any) {
-        console.warn(`[Email] DNS resolve4 failed for ${host}: ${dnsError.message}. Using original hostname.`)
-    }
-
-    return nodemailer.createTransport({
-        host: resolvedHost,
-        port,
-        secure,
-        auth: { user, pass },
-        tls: {
-            rejectUnauthorized: false,
-            minVersion: 'TLSv1.2',
-            servername: host  // Use original hostname for SNI (not the resolved IP)
-        },
-        connectionTimeout: 30000,
-        greetingTimeout: 30000,
-        socketTimeout: 60000,
-        family: 4,
-        lookup: (hostname: string, options: any, callback: any) => {
-            dns.lookup(hostname, { family: 4 }, callback)
-        },
-        debug: process.env.NODE_ENV !== 'production',
-        logger: process.env.NODE_ENV !== 'production',
-    } as any)
-}
+/**
+ * Brevo REST API Email Service
+ * 
+ * Uses HTTPS (port 443) instead of SMTP ports (587/465/2525)
+ * to bypass Railway's outbound SMTP port blocking.
+ * 
+ * Required env variable: BREVO_API_KEY (starts with 'xkeysib-')
+ * Fallback env variable: SMTP_PASS (for backward compatibility)
+ */
 
 export const sendEmail = async ({
     to,
@@ -72,31 +25,77 @@ export const sendEmail = async ({
         contentType?: string
     }>
 }) => {
-    const transport = await getTransport()
+    // Prefer BREVO_API_KEY, fall back to SMTP_PASS for backward compatibility
+    const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS
 
-    const from = process.env.SMTP_FROM || `IMobile Service & Repair Center <no-reply@imobileservicecenter.lk>`
-    console.log(`[Email] Sending to: ${to} | Subject: ${subject} | From: ${from}`)
+    const fromEmail = process.env.SMTP_FROM_EMAIL || 'no-reply@imobileservicecenter.lk'
+    const fromName = process.env.SMTP_FROM_NAME || 'IMobile Service & Repair Center'
 
-    // Verify SMTP connection before sending - catches auth/connection errors early
-    try {
-        await transport.verify()
-        console.log('[Email] ✅ SMTP connection verified successfully')
-    } catch (verifyError: any) {
-        console.error('[Email] ❌ SMTP connection FAILED during verify:', verifyError.message)
-        console.error('[Email] Check: 1) SMTP_PASS is correct/not expired, 2) SMTP_HOST and SMTP_PORT are right, 3) Sender is verified in Brevo')
-        throw new Error(`SMTP connection failed: ${verifyError.message}`)
+    if (!apiKey) {
+        throw new Error('[Email] Missing BREVO_API_KEY environment variable. Get one from https://app.brevo.com → SMTP & API → API Keys')
     }
 
-    const info = await transport.sendMail({
-        from,
-        to,
-        subject,
-        text,
-        html,
-        attachments,
-    })
+    console.log(`[Email] Sending via Brevo REST API to: ${to} | Subject: ${subject}`)
+    console.log(`[Email] From: ${fromName} <${fromEmail}>`)
+    console.log(`[Email] API Key prefix: ${apiKey.substring(0, 12)}...`)
 
-    console.log(`[Email] ✅ Message sent! ID: ${info.messageId} | Response: ${info.response}`)
-    return info
+    // Format attachments for Brevo API if present
+    const formattedAttachments = attachments?.map(att => ({
+        content: typeof att.content === 'string'
+            ? Buffer.from(att.content).toString('base64')
+            : att.content.toString('base64'),
+        name: att.filename
+    }))
+
+    const payload: any = {
+        sender: {
+            name: fromName,
+            email: fromEmail
+        },
+        to: [{ email: to }],
+        subject: subject,
+    }
+
+    // Add content - at least one must be present
+    if (html) payload.htmlContent = html
+    if (text) payload.textContent = text
+    if (!html && !text) payload.textContent = subject // fallback
+
+    if (formattedAttachments?.length) {
+        payload.attachment = formattedAttachments
+    }
+
+    try {
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'api-key': apiKey,
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+            console.error('[Email] ❌ Brevo API Error Response:', JSON.stringify(data))
+            console.error(`[Email] Status: ${response.status} ${response.statusText}`)
+            throw new Error(`Brevo API Error (${response.status}): ${data.message || data.code || response.statusText}`)
+        }
+
+        console.log(`[Email] ✅ Email sent successfully! Message ID: ${data.messageId}`)
+        return {
+            messageId: data.messageId,
+            response: `Brevo API OK (${response.status})`
+        }
+    } catch (fetchError: any) {
+        // If it's already our formatted error, re-throw
+        if (fetchError.message?.startsWith('Brevo API Error')) {
+            throw fetchError
+        }
+        // Network-level errors
+        console.error('[Email] ❌ Network error calling Brevo API:', fetchError.message)
+        throw new Error(`Email delivery failed (network): ${fetchError.message}`)
+    }
 }
-
