@@ -1,11 +1,13 @@
 /**
- * Brevo REST API Email Service
+ * Resend Email Service
  * 
- * Uses HTTPS (port 443) instead of SMTP ports (587/465/2525)
- * to bypass Railway's outbound SMTP port blocking.
+ * Uses Resend REST API over HTTPS (port 443).
+ * Works perfectly on Railway, Cloudflare, Vercel, etc.
  * 
- * Required env variable: BREVO_API_KEY (starts with 'xkeysib-')
- * Fallback env variable: SMTP_PASS (for backward compatibility)
+ * Free tier: 100 emails/day, 3,000/month
+ * Sign up: https://resend.com
+ * 
+ * Required env variable: RESEND_API_KEY
  */
 
 export const sendEmail = async ({
@@ -25,53 +27,44 @@ export const sendEmail = async ({
         contentType?: string
     }>
 }) => {
-    // Prefer BREVO_API_KEY, fall back to SMTP_PASS for backward compatibility
-    const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS
+    const apiKey = process.env.RESEND_API_KEY
 
-    const fromEmail = process.env.SMTP_FROM_EMAIL || 'no-reply@imobileservicecenter.lk'
-    const fromName = process.env.SMTP_FROM_NAME || 'IMobile Service & Repair Center'
+    // Default sender - use 'onboarding@resend.dev' for testing before domain verification
+    const fromEmail = process.env.EMAIL_FROM || 'IMobile Service Center <onboarding@resend.dev>'
 
     if (!apiKey) {
-        throw new Error('[Email] Missing BREVO_API_KEY environment variable. Get one from https://app.brevo.com → SMTP & API → API Keys')
+        throw new Error('[Email] Missing RESEND_API_KEY. Get one free at https://resend.com')
     }
 
-    console.log(`[Email] Sending via Brevo REST API to: ${to} | Subject: ${subject}`)
-    console.log(`[Email] From: ${fromName} <${fromEmail}>`)
-    console.log(`[Email] API Key prefix: ${apiKey.substring(0, 12)}...`)
+    console.log(`[Email] Sending via Resend API to: ${to} | Subject: ${subject}`)
 
-    // Format attachments for Brevo API if present
-    const formattedAttachments = attachments?.map(att => ({
-        content: typeof att.content === 'string'
-            ? Buffer.from(att.content).toString('base64')
-            : att.content.toString('base64'),
-        name: att.filename
-    }))
-
+    // Build request payload
     const payload: any = {
-        sender: {
-            name: fromName,
-            email: fromEmail
-        },
-        to: [{ email: to }],
+        from: fromEmail,
+        to: [to],
         subject: subject,
     }
 
-    // Add content - at least one must be present
-    if (html) payload.htmlContent = html
-    if (text) payload.textContent = text
-    if (!html && !text) payload.textContent = subject // fallback
+    if (html) payload.html = html
+    if (text) payload.text = text
+    if (!html && !text) payload.text = subject
 
-    if (formattedAttachments?.length) {
-        payload.attachment = formattedAttachments
+    // Format attachments for Resend API
+    if (attachments?.length) {
+        payload.attachments = attachments.map(att => ({
+            filename: att.filename,
+            content: typeof att.content === 'string'
+                ? Buffer.from(att.content).toString('base64')
+                : att.content.toString('base64'),
+        }))
     }
 
     try {
-        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        const response = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
-                'accept': 'application/json',
-                'api-key': apiKey,
-                'content-type': 'application/json'
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
         })
@@ -79,23 +72,18 @@ export const sendEmail = async ({
         const data = await response.json()
 
         if (!response.ok) {
-            console.error('[Email] ❌ Brevo API Error Response:', JSON.stringify(data))
-            console.error(`[Email] Status: ${response.status} ${response.statusText}`)
-            throw new Error(`Brevo API Error (${response.status}): ${data.message || data.code || response.statusText}`)
+            console.error('[Email] ❌ Resend API Error:', JSON.stringify(data))
+            throw new Error(`Resend Error (${response.status}): ${data.message || data.name || response.statusText}`)
         }
 
-        console.log(`[Email] ✅ Email sent successfully! Message ID: ${data.messageId}`)
+        console.log(`[Email] ✅ Email sent! ID: ${data.id}`)
         return {
-            messageId: data.messageId,
-            response: `Brevo API OK (${response.status})`
+            messageId: data.id,
+            response: `Resend OK (${response.status})`
         }
-    } catch (fetchError: any) {
-        // If it's already our formatted error, re-throw
-        if (fetchError.message?.startsWith('Brevo API Error')) {
-            throw fetchError
-        }
-        // Network-level errors
-        console.error('[Email] ❌ Network error calling Brevo API:', fetchError.message)
-        throw new Error(`Email delivery failed (network): ${fetchError.message}`)
+    } catch (err: any) {
+        if (err.message?.startsWith('Resend Error')) throw err
+        console.error('[Email] ❌ Network error:', err.message)
+        throw new Error(`Email delivery failed: ${err.message}`)
     }
 }
