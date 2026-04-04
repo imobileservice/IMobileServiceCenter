@@ -41,6 +41,10 @@ router.use((req, res, next) => {
 router.post('/login/init', initAdminLoginHandler)
 router.post('/login/verify', verifyAdminLoginHandler)
 
+// Diagnostic SMTP test (Admin only)
+import { testEmailHandler } from './test-email'
+router.get('/test-email', testEmailHandler)
+
 // Old OTP routes - Deprecated/Removed
 // router.post('/otp/generate', generateOtpHandler)
 // router.post('/otp/verify', verifyOtpHandler)

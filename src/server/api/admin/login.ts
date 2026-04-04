@@ -170,20 +170,19 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
             `
             })
             console.log(`[Email] ✅ Admin OTP email sent successfully to ${normalizedEmail}`)
+
+            return res.json({
+                success: true,
+                message: 'Credentials valid. Verification code sent.',
+                otp: process.env.NODE_ENV === 'development' ? otp : undefined
+            })
         } catch (emailError: any) {
             console.error(`[Email] ❌ FAILED to send OTP email to ${normalizedEmail}:`, emailError.message)
-            // Still return success - OTP is stored in DB, admin can retry
-            // But include warning in response
+            return res.status(500).json({
+                error: 'Failed to send verification email. Check server configuration (SMTP).',
+                details: emailError.message
+            })
         }
-
-        // Return success immediately - the OTP is stored in DB so verify step will work
-        // even if the email arrives a few seconds late or fails (can retry)
-        return res.json({
-            success: true,
-            message: 'Credentials valid. Verification code sent.',
-            // In development, send OTP in response for testing
-            otp: process.env.NODE_ENV === 'development' ? otp : undefined
-        })
 
     } catch (e: any) {
         console.error('Login Init Error:', e)
