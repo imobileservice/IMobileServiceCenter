@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer'
+import nodemailer from 'nodemailer' // Updated for Railway Redeployment
 import dns from 'dns'
 
 const getTransport = async () => {
