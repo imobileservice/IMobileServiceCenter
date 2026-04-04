@@ -56,13 +56,17 @@ const itemVariants = {
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
     totalRevenue: 0,
+    webRevenue: 0,
+    posRevenue: 0,
     totalOrders: 0,
+    webOrdersCount: 0,
+    posOrdersCount: 0,
     totalProducts: 0,
     totalCustomers: 0,
     loading: true,
   })
-  const [salesData, setSalesData] = useState(SALES_DATA)
-  const [recentOrders, setRecentOrders] = useState<Order[]>([])
+  const [salesData, setSalesData] = useState<any[]>([])
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([])
 
   useEffect(() => {
     const fetchDashboardData = async (silent = false) => {
@@ -82,10 +86,14 @@ export default function AdminDashboard() {
         }
 
         // Fetch all data in parallel
-        const [orders, productStats, customers] = await Promise.all([
+        const [orders, posSalesResult, productStats, customers] = await Promise.all([
           ordersService.getAll().catch(err => {
             console.error('Error fetching orders:', err)
             return []
+          }),
+          fetch(getApiUrl('/api/inventory/sales')).then(res => res.json()).catch(err => {
+            console.error('Error fetching POS sales:', err)
+            return { data: [] }
           }),
           productsServiceEnhanced.getStats().catch(err => {
             console.error('Error fetching product stats:', err)
@@ -97,48 +105,69 @@ export default function AdminDashboard() {
           }),
         ])
 
-        // Calculate revenue
-        const revenue = (orders || []).reduce((sum: number, order: any) => sum + Number(order.total || 0), 0)
+        const posSales = posSalesResult.data || []
 
-        // Get last 6 months sales data
+        // Calculate revenue
+        const webRevenue = (orders || []).reduce((sum: number, order: any) => sum + Number(order.total || 0), 0)
+        const posRevenue = (posSales || []).reduce((sum: number, sale: any) => sum + Number(sale.net_amount || 0), 0)
+        const totalRevenue = webRevenue + posRevenue
+
+        // Get last 6 months sales data breakdown
         const now = new Date()
         const monthlyData = []
         for (let i = 5; i >= 0; i--) {
           const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-          const monthStart = date.toISOString()
-          const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString()
+          const monthStart = date.getTime()
+          const nextMonthDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
+          const monthEnd = nextMonthDate.getTime()
           
           const monthOrders = (orders || []).filter((o: any) => {
-            const orderDate = new Date(o.created_at)
-            return orderDate >= new Date(monthStart) && orderDate <= new Date(monthEnd)
+            const orderDate = new Date(o.created_at).getTime()
+            return orderDate >= monthStart && orderDate < monthEnd
+          })
+
+          const monthPosSales = (posSales || []).filter((s: any) => {
+            const saleDate = new Date(s.created_at).getTime()
+            return saleDate >= monthStart && saleDate < monthEnd
           })
 
           monthlyData.push({
             month: date.toLocaleDateString('en-US', { month: 'short' }),
-            sales: monthOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0),
-            orders: monthOrders.length,
+            webSales: monthOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0),
+            posSales: monthPosSales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0),
+            totalSales: monthOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0) + 
+                       monthPosSales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0),
+            orders: monthOrders.length + monthPosSales.length,
           })
         }
 
         // Use stats from API if available, otherwise use calculated values
         const finalStats = {
-          totalRevenue: statsData?.totalRevenue ?? revenue,
-          totalOrders: statsData?.totalOrders ?? (orders || []).length,
+          totalRevenue: statsData?.totalRevenue ?? totalRevenue,
+          webRevenue: statsData?.webRevenue ?? webRevenue,
+          posRevenue: statsData?.posRevenue ?? posRevenue,
+          totalOrders: statsData?.totalOrders ?? (orders.length + posSales.length),
+          webOrdersCount: statsData?.webOrdersCount ?? orders.length,
+          posOrdersCount: statsData?.posOrdersCount ?? posSales.length,
           totalProducts: statsData?.totalProducts ?? (productStats?.total || 0),
           totalCustomers: statsData?.totalCustomers ?? (customers || []).length,
           loading: false,
         }
         
-        console.log('[AdminDashboard] Setting stats:', finalStats)
-        console.log('[AdminDashboard] Stats from API:', statsData)
-        console.log('[AdminDashboard] Calculated values:', { revenue, orders: (orders || []).length, products: productStats?.total, customers: (customers || []).length })
+        console.log('[AdminDashboard] Updated unified stats:', finalStats)
         
         setStats(finalStats)
         setSalesData(monthlyData.length > 0 ? monthlyData : SALES_DATA)
         
-        // Get recent orders (last 5)
-        const recent = (orders || []).slice(0, 5)
-        setRecentOrders(recent)
+        // Combine and sort recent transactions (Website Orders + POS Sales)
+        const combinedTransactions = [
+          ...(orders || []).map((o: any) => ({ ...o, transactionType: 'Website', displayId: o.order_number, displayAmount: o.total, displayStatus: o.status })),
+          ...(posSales || []).map((s: any) => ({ ...s, transactionType: 'POS', displayId: s.invoice_number, displayAmount: s.net_amount, displayStatus: 'Completed' }))
+        ]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 10)
+
+        setRecentTransactions(combinedTransactions)
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
         if (!silent) setStats(prev => ({ ...prev, loading: false }))
@@ -170,31 +199,31 @@ export default function AdminDashboard() {
       icon: DollarSign,
       label: "Total Revenue",
       value: formatCurrency(stats.totalRevenue, { showDecimals: false }),
-      change: "+12.5%",
+      subtext: `Web: ${formatCurrency(stats.webRevenue, { showDecimals: false })} | POS: ${formatCurrency(stats.posRevenue, { showDecimals: false })}`,
       color: "bg-blue-500",
     },
     {
       icon: ShoppingCart,
       label: "Total Orders",
       value: stats.totalOrders.toLocaleString(),
-      change: "+8.2%",
+      subtext: `Web: ${stats.webOrdersCount} | POS: ${stats.posOrdersCount}`,
       color: "bg-green-500",
     },
     {
       icon: Package,
       label: "Products",
       value: stats.totalProducts.toString(),
-      change: "+2.1%",
+      subtext: "In stock",
       color: "bg-purple-500",
     },
     {
       icon: Users,
       label: "Customers",
       value: stats.totalCustomers.toString(),
-      change: "+5.3%",
+      subtext: "Registered users",
       color: "bg-orange-500",
     },
-  ], [stats.totalRevenue, stats.totalOrders, stats.totalProducts, stats.totalCustomers])
+  ], [stats])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -251,11 +280,12 @@ export default function AdminDashboard() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-muted-foreground text-sm font-medium">{stat.label}</p>
-                    <h3 className="text-3xl font-bold mt-2 text-foreground break-words">{stat.value}</h3>
-                    <p className="text-green-600 dark:text-green-400 text-sm mt-2 flex items-center gap-1">
-                      <TrendingUp className="w-4 h-4 flex-shrink-0" />
-                      <span>{stat.change}</span>
-                    </p>
+                    <h3 className="text-2xl font-bold mt-2 text-foreground break-words">{stat.value}</h3>
+                    {stat.subtext && (
+                      <p className="text-muted-foreground text-xs mt-2 truncate">
+                        {stat.subtext}
+                      </p>
+                    )}
                   </div>
                   <div className={`${stat.color} p-3 rounded-lg text-white flex-shrink-0 ml-4`}>
                     <Icon className="w-6 h-6" />
@@ -292,10 +322,28 @@ export default function AdminDashboard() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="sales"
-                  stroke="var(--primary)"
+                  dataKey="webSales"
+                  name="Website Sales"
+                  stroke="#3b82f6"
                   strokeWidth={2}
-                  dot={{ fill: "var(--primary)" }}
+                  dot={{ fill: "#3b82f6" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="posSales"
+                  name="POS Sales"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  dot={{ fill: "#10b981" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="totalSales"
+                  name="Total Sales"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ fill: "#8b5cf6" }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -325,31 +373,49 @@ export default function AdminDashboard() {
         </motion.div>
       </motion.div>
 
-      {/* Recent Orders */}
+      {/* Recent Transactions */}
       <motion.div variants={itemVariants} className="bg-card border border-border rounded-lg p-6">
-        <h3 className="text-lg font-bold mb-4">Recent Orders</h3>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold">Recent Transactions</h3>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="flex items-center gap-1.5 text-blue-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span> Website
+            </span>
+            <span className="flex items-center gap-1.5 text-green-500 font-medium">
+              <span className="w-2 h-2 rounded-full bg-green-500"></span> POS
+            </span>
+          </div>
+        </div>
         <div className="overflow-x-auto">
-          {recentOrders.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">No orders found</div>
+          {recentTransactions.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">No transactions found</div>
           ) : (
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 font-semibold">Order ID</th>
+                  <th className="text-left py-3 px-4 font-semibold">Transaction ID</th>
+                  <th className="text-left py-3 px-4 font-semibold">Channel</th>
                   <th className="text-left py-3 px-4 font-semibold">Customer</th>
                   <th className="text-left py-3 px-4 font-semibold">Amount</th>
                   <th className="text-left py-3 px-4 font-semibold">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-border hover:bg-muted/50 transition-colors">
-                    <td className="py-3 px-4 font-semibold">#{order.order_number || order.id.substring(0, 8).toUpperCase()}</td>
-                    <td className="py-3 px-4">{order.customer_email || order.shipping_address || "N/A"}</td>
-                    <td className="py-3 px-4">{formatCurrency(order.total || 0)}</td>
+                {recentTransactions.map((tx) => (
+                  <tr key={tx.id} className="border-b border-border hover:bg-muted/50 transition-colors">
+                    <td className="py-3 px-4 font-semibold">#{tx.displayId || tx.id.substring(0, 8).toUpperCase()}</td>
                     <td className="py-3 px-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status || "Pending")}`}>
-                        {order.status || "Pending"}
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                        tx.transactionType === 'Website' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                      }`}>
+                        {tx.transactionType}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 truncate max-w-[200px]">{tx.customer_name || tx.customer_email || "Walk-in Customer"}</td>
+                    <td className="py-3 px-4 font-bold">{formatCurrency(tx.displayAmount || 0)}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(tx.displayStatus || "Pending")}`}>
+                        {tx.displayStatus || "Completed"}
                       </span>
                     </td>
                   </tr>

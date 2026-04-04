@@ -421,7 +421,7 @@ export const productsService = {
 
       // Load from categories table (primary method)
       try {
-        const categoriesResponse = await fetch(`${supabaseUrl}/rest/v1/categories?select=id,name,slug,sort_order&is_active=eq.true&order=sort_order.asc`, {
+        const categoriesResponse = await fetch(`${supabaseUrl}/rest/v1/categories?select=id,name,slug,sort_order,field_config&is_active=eq.true&order=sort_order.asc`, {
           headers: {
             'apikey': supabaseAnonKey,
             'Authorization': `Bearer ${supabaseAnonKey}`,
@@ -431,7 +431,7 @@ export const productsService = {
         })
 
         if (categoriesResponse.ok) {
-          const dbCategories: Array<{ id: string; name: string; slug: string; sort_order: number }> = await categoriesResponse.json()
+          const dbCategories: Array<{ id: string; name: string; slug: string; sort_order: number; field_config?: any }> = await categoriesResponse.json()
 
           // Load products to count - use category_id
           const { data: products, error } = await supabase
@@ -472,10 +472,28 @@ export const productsService = {
               if (dbCat.slug === 'mobile-phones') name = 'Mobile Phone'
               if (dbCat.slug === 'used-items') name = 'Used Phone'
 
+              // Extract brands from field_config to create dynamic subcategories
+              let subcategories: Array<{ id: string; name: string; count: number; isBrand?: boolean }> | undefined
+              
+              const noDropdownSlugs = ['accessories', 'smart-watch', 'tempered-glass']
+              
+              if (dbCat.field_config?.fields && !noDropdownSlugs.includes(dbCat.slug)) {
+                const brandField = dbCat.field_config.fields.find((f: any) => f.key === 'brand')
+                if (brandField && brandField.options && Array.isArray(brandField.options)) {
+                   subcategories = brandField.options.map((brand: string) => ({
+                     id: brand.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                     name: brand,
+                     count: 0,
+                     isBrand: true
+                   }))
+                }
+              }
+
               categoriesMap.set(dbCat.slug, {
                 id: dbCat.slug,
                 name: name,
                 count,
+                subcategories
               })
             }
           })
@@ -585,8 +603,8 @@ export const productsService = {
             subcategories?: Array<{ id: string; name: string; count: number }>
           }>()
 
-          categories.forEach((cat: { slug: string | string[]; id: string; name: any }) => {
-            const isSubcategory = cat.slug.includes('-') &&
+          categories.forEach((cat: { slug: string; id: string; name: any }) => {
+            const isSubcategory = typeof cat.slug === 'string' && cat.slug.includes('-') &&
               (cat.slug.startsWith('mobile-phones-') ||
                 cat.slug.startsWith('accessories-') ||
                 cat.slug.startsWith('used-items-'))
@@ -603,7 +621,7 @@ export const productsService = {
 
           // Add subcategories
           categories.forEach((cat: { slug: string; name: any; id: string }) => {
-            if (cat.slug.startsWith('mobile-phones-') && cat.slug !== 'mobile-phones') {
+            if (typeof cat.slug === 'string' && cat.slug.startsWith('mobile-phones-') && cat.slug !== 'mobile-phones') {
               const parent = categoriesMap.get('mobile-phones')
               if (parent) {
                 if (!parent.subcategories) parent.subcategories = []
@@ -614,7 +632,7 @@ export const productsService = {
                   count,
                 })
               }
-            } else if (cat.slug.startsWith('accessories-') && cat.slug !== 'accessories') {
+            } else if (typeof cat.slug === 'string' && cat.slug.startsWith('accessories-') && cat.slug !== 'accessories') {
               const parent = categoriesMap.get('accessories')
               if (parent) {
                 if (!parent.subcategories) parent.subcategories = []
@@ -625,7 +643,7 @@ export const productsService = {
                   count,
                 })
               }
-            } else if (cat.slug.startsWith('used-items-') && cat.slug !== 'used-items') {
+            } else if (typeof cat.slug === 'string' && cat.slug.startsWith('used-items-') && cat.slug !== 'used-items') {
               const parent = categoriesMap.get('used-items')
               if (parent) {
                 if (!parent.subcategories) parent.subcategories = []

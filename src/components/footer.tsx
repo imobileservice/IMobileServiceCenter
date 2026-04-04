@@ -73,7 +73,7 @@ export default function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <motion.li className="flex items-center gap-2" whileHover={{ x: 5 }} transition={{ duration: 0.2 }}>
                 <Phone className="w-4 h-4" />
-                <span>+94 70 558 8789</span>
+                <span>+94 77 034 4273</span>
               </motion.li>
               <motion.li className="flex items-center gap-2" whileHover={{ x: 5 }} transition={{ duration: 0.2 }}>
                 <Mail className="w-4 h-4" />
@@ -118,9 +118,20 @@ export default function Footer() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.3 }}
-          className="border-t border-border pt-8 text-center text-sm text-muted-foreground"
+          className="border-t border-border pt-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-2"
         >
           <p>&copy; 2025 IMobile Service Center. All rights reserved.</p>
+          <p>
+            Powered by{" "}
+            <a
+              href="https://dexlanka.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-primary transition-colors font-medium"
+            >
+              DexLanka Software Solution
+            </a>
+          </p>
         </motion.div>
       </div>
     </motion.footer>

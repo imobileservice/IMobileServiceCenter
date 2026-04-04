@@ -94,29 +94,48 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
     } else {
       console.log('[Orders API] Order items created successfully')
       
-      // Reduce stock for each item
-      console.log('[Orders API] Reducing stock for items...')
+      // Reduce stock for each item in consolidated inventory
+      console.log('[Orders API] Reducing stock for items in inventory...')
       for (const item of items) {
         if (item.product_id) {
-          // Get current stock first to decrement safely
-          const { data: product, error: fetchError } = await adminClient
-            .from('products')
-            .select('name, stock')
-            .eq('id', item.product_id)
-            .single()
-            
-          if (!fetchError && product) {
-            const newStock = Math.max(0, (product.stock || 0) - (item.quantity || 1))
-            const { error: updateError } = await adminClient
-              .from('products')
-              .update({ stock: newStock })
-              .eq('id', item.product_id)
+          try {
+            // 1. Get current stock from inv_stock
+            const { data: invStock, error: fetchError } = await adminClient
+              .from('inv_stock')
+              .select('quantity')
+              .eq('product_id', item.product_id)
+              .single()
               
-            if (updateError) {
-              console.error(`[Orders API] Failed to update stock for ${product.name}:`, updateError)
+            if (!fetchError && invStock) {
+              const newQuantity = Math.max(0, (invStock.quantity || 0) - (item.quantity || 1))
+              
+              // 2. Update inv_stock
+              await adminClient
+                .from('inv_stock')
+                .update({ 
+                  quantity: newQuantity, 
+                  updated_at: new Date().toISOString() 
+                })
+                .eq('product_id', item.product_id)
+                
+              // 3. Log movement in inv_stock_movements (audit trail)
+              await adminClient
+                .from('inv_stock_movements')
+                .insert({
+                  product_id: item.product_id,
+                  type: 'sale',
+                  quantity: -(item.quantity || 1),
+                  reference_id: orderData.id,
+                  notes: `Website Order: ${orderData.order_number}`,
+                  created_by: 'system'
+                })
+              
+              console.log(`[Orders API] Stock reduced: ${invStock.quantity} -> ${newQuantity} for product ${item.product_id}`)
             } else {
-              console.log(`[Orders API] Stock updated for ${product.name}: ${product.stock} -> ${newStock}`)
+              console.warn(`[Orders API] Could not find inv_stock record for product ${item.product_id}`)
             }
+          } catch (err) {
+            console.error(`[Orders API] Error syncing stock for product ${item.product_id}:`, err)
           }
         }
       }

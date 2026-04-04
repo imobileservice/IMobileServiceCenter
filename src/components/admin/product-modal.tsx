@@ -11,14 +11,18 @@ import { categoriesService, type Category } from "@/lib/supabase/services/catego
 import { storageService } from "@/lib/supabase/services/storage"
 import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import { toast } from "sonner"
+import { MODELS_BY_BRAND, BRANDS } from "@/constants/models"
+
+const EXCLUDED_CATEGORIES = ["accessories", "tempered-glass", "smart-watch"]
 
 interface ProductModalProps {
   isOpen: boolean
   onClose: () => void
   editingProductId?: string | null
+  onProductSaved?: (product: { name: string; barcode: string; price: number }) => void
 }
 
-export default function ProductModal({ isOpen, onClose, editingProductId }: ProductModalProps) {
+export default function ProductModal({ isOpen, onClose, editingProductId, onProductSaved }: ProductModalProps) {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -47,6 +51,16 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
     },
   })
 
+  // Determine if the current category should use the Brand -> Model selection flow
+  const isModelRequired = useMemo(() => {
+    return !!(formData.category && !EXCLUDED_CATEGORIES.includes(formData.category))
+  }, [formData.category])
+
+  // Get available models for the selected brand
+  const availableModels = useMemo(() => {
+    return formData.brand ? MODELS_BY_BRAND[formData.brand] || [] : []
+  }, [formData.brand])
+
   // Fetch categories when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -65,13 +79,23 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
   // Get category-specific fields from database
   const categoryFields = useMemo(() => {
     if (!formData.category) return null
-    const category = categories.find(c => c.slug === formData.category)
+    const category = categories.find((c) => c.slug === formData.category)
     if (!category || !category.field_config) return null
+
+    // Filter out brand and model since they are now handled globally in the modal
+    const fields = (category.field_config.fields || []).filter(
+      (field) => field.key !== "brand" && field.key !== "model"
+    )
+
+    if (fields.length === 0) return null
+
     return {
-      label: `${category.name} Specifications`,
-      fields: category.field_config.fields || [],
+      label: `${category.name} Details`,
+      fields: fields,
     }
   }, [formData.category, categories])
+
+  const IS_PHONE_CATEGORY = formData.category === "brand-new-phone" || formData.category === "used-mobile-phone"
 
   useEffect(() => {
     // Reset loading state when modal opens/closes
@@ -186,22 +210,58 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
 
-    // Clear specs when category changes
-    if (name === 'category') {
-      setFormData((prev) => ({ ...prev, [name]: value, specs: {} }))
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }))
-    }
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: value }
+
+      // Clear specs when category changes
+      if (name === "category") {
+        newData.specs = {}
+        // Enforce "New" condition for repair parts categories (those requiring models)
+        if (!EXCLUDED_CATEGORIES.includes(value) && value !== "used-mobile-phone") {
+          newData.condition = "new"
+        }
+      }
+
+      // Auto-generate Name for model-required categories
+      if ((name === "brand" || name === "category" || name === "specs") && !EXCLUDED_CATEGORIES.includes(newData.category)) {
+        const brand = newData.brand || ""
+        const model = newData.specs.model || ""
+        const categoryObj = categories.find((c) => c.slug === newData.category)
+        const categoryName = categoryObj ? categoryObj.name.replace(/\(main\)/i, "").trim() : ""
+
+        if (brand || model) {
+          newData.name = `${brand} ${model} ${categoryName}`.trim()
+        }
+      }
+
+      return newData
+    })
   }
 
   const handleSpecChange = (key: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      specs: {
-        ...prev.specs,
-        [key]: value,
-      },
-    }))
+    setFormData((prev) => {
+      const newData = {
+        ...prev,
+        specs: {
+          ...prev.specs,
+          [key]: value,
+        },
+      }
+
+      // Re-generate Name if model changes
+      if (!EXCLUDED_CATEGORIES.includes(newData.category)) {
+        const brand = newData.brand || ""
+        const model = newData.specs.model || ""
+        const categoryObj = categories.find((c) => c.slug === newData.category)
+        const categoryName = categoryObj ? categoryObj.name.replace(/\(main\)/i, "").trim() : ""
+
+        if (brand || model) {
+          newData.name = `${brand} ${model} ${categoryName}`.trim().replace(/\s+/g, " ")
+        }
+      }
+
+      return newData
+    })
   }
 
   const handleImageAdd = () => {
@@ -542,12 +602,21 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
       if (editingProductId) {
         await productsService.update(editingProductId, productData)
         toast.success('Product updated successfully')
+        onClose()
       } else {
-        await productsService.create(productData)
-        toast.success('Product created successfully')
+        const created = await productsService.create(productData)
+        toast.success('Product created! Opening barcode label...')
+        onClose()
+        // Notify parent with created product so barcode modal auto-opens
+        if (onProductSaved && created) {
+          const barcode = (created as any).barcode || (created as any).data?.barcode
+          const price = (created as any).price ?? (created as any).data?.price ?? basePrice
+          const name = (created as any).name ?? (created as any).data?.name ?? formData.name
+          if (barcode) {
+            setTimeout(() => onProductSaved({ name, barcode, price }), 200)
+          }
+        }
       }
-
-      onClose()
       // Notify all pages about the product update (real-time refresh)
       setTimeout(() => {
         notifyUpdate('product')
@@ -661,7 +730,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
                   onChange={handleChange}
                   placeholder="iPhone 15 Pro Max"
                   required
+                  readOnly={isModelRequired}
+                  className={isModelRequired ? "bg-muted cursor-not-allowed opacity-80" : ""}
                 />
+                {isModelRequired && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Name is automatically generated from Brand, Model, and Category.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -687,16 +763,74 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">Brand</label>
-                  <Input
-                    type="text"
-                    name="brand"
-                    value={formData.brand}
-                    onChange={handleChange}
-                    placeholder="Apple, Samsung, etc."
-                  />
+                  <label className="block text-sm font-semibold mb-2">Brand {isModelRequired && "*"}</label>
+                  {isModelRequired ? (
+                    <select
+                      name="brand"
+                      value={formData.brand}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                      required={!!isModelRequired}
+                    >
+                      <option value="">Select Brand</option>
+                      {BRANDS.map((brand) => (
+                        <option key={brand} value={brand}>
+                          {brand}
+                        </option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  ) : (
+                    <Input
+                      type="text"
+                      name="brand"
+                      value={formData.brand}
+                      onChange={handleChange}
+                      placeholder="Apple, Samsung, etc."
+                    />
+                  )}
                 </div>
               </div>
+
+              {isModelRequired && (
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Model *</label>
+                    <div className="flex gap-2">
+                      <select
+                        name="model"
+                        value={formData.specs.model || ""}
+                        onChange={(e) => handleSpecChange("model", e.target.value)}
+                        className="flex-1 px-3 py-2 border border-border rounded-lg bg-background"
+                        required
+                        disabled={!formData.brand}
+                      >
+                        <option value="">{formData.brand ? "Select Model" : "Select Brand First"}</option>
+                        {availableModels.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                        <option value="Custom">Other / Custom Model</option>
+                      </select>
+
+                      {formData.specs.model === "Custom" && (
+                        <Input
+                          type="text"
+                          placeholder="Type model name..."
+                          className="flex-1"
+                          onChange={(e) => handleSpecChange("custom_model", e.target.value)}
+                          onBlur={(e) => {
+                            if (e.target.value.trim()) {
+                              handleSpecChange("model", e.target.value.trim())
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -706,8 +840,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
                     name="condition"
                     value={formData.condition}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                    className={`w-full px-3 py-2 border border-border rounded-lg bg-background ${isModelRequired && formData.category !== 'used-mobile-phone' ? 'opacity-70 cursor-not-allowed' : ''}`}
                     required
+                    disabled={isModelRequired && formData.category !== 'used-mobile-phone'}
                     aria-label="Select product condition"
                   >
                     <option value="new">New</option>
@@ -751,71 +886,66 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
               </div>
             </div>
 
-            {/* Product Variants */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-border pb-2">
-                <h3 className="text-lg font-semibold">Product Variants</h3>
-                <span className="text-xs text-muted-foreground">Use "Auto Search & Fill" above to auto-populate</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Configure storage, RAM (non-iPhone), and color options with price adjustments. Base price + adjustments = final price.
-              </p>
-
-              {/* Storage Options */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-semibold">Storage Options</label>
-                  <Button type="button" variant="outline" size="sm" onClick={addStorageOption} className="gap-1">
-                    <Plus className="w-3 h-3" />
-                    Add Storage
-                  </Button>
+            {/* Product Variants - Only for Phones */}
+            {IS_PHONE_CATEGORY && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <h3 className="text-lg font-semibold">Product Variants</h3>
+                  <span className="text-xs text-muted-foreground">Use "Auto Search & Fill" above to auto-populate</span>
                 </div>
-                <div className="space-y-2">
-                  {(formData.variants?.storage || []).map((storage, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <Input
-                        type="text"
-                        placeholder="128GB"
-                        value={storage.value}
-                        onChange={(e) => updateStorageOption(index, 'value', e.target.value)}
-                        className="flex-1"
-                      />
-                      <div className="relative w-32">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">Rs.</span>
+                <p className="text-xs text-muted-foreground">
+                  Configure storage, RAM (non-iPhone), and color options with price adjustments. Base price + adjustments = final price.
+                </p>
+
+                {/* Storage Options */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-semibold">Storage Options</label>
+                    <Button type="button" variant="outline" size="sm" onClick={addStorageOption} className="gap-1">
+                      <Plus className="w-3 h-3" />
+                      Add Storage
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {(formData.variants?.storage || []).map((storage, index) => (
+                      <div key={index} className="flex gap-2 items-center">
                         <Input
-                          type="number"
-                          placeholder="Price"
-                          value={((Number.parseFloat(formData.price) || 0) + (storage.price_adjustment || 0))}
-                          onChange={(e) => {
-                            const newPrice = Number.parseFloat(e.target.value) || 0
-                            const basePrice = Number.parseFloat(formData.price) || 0
-                            updateStorageOption(index, 'price_adjustment', newPrice - basePrice)
-                          }}
-                          className="pl-8"
-                          step="0.01"
+                          type="text"
+                          placeholder="128GB"
+                          value={storage.value}
+                          onChange={(e) => updateStorageOption(index, "value", e.target.value)}
+                          className="flex-1"
                         />
+                        <div className="relative w-32">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">Rs.</span>
+                          <Input
+                            type="number"
+                            placeholder="Price"
+                            value={(Number.parseFloat(formData.price) || 0) + (storage.price_adjustment || 0)}
+                            onChange={(e) => {
+                              const newPrice = Number.parseFloat(e.target.value) || 0
+                              const basePrice = Number.parseFloat(formData.price) || 0
+                              updateStorageOption(index, "price_adjustment", newPrice - basePrice)
+                            }}
+                            className="pl-8"
+                            step="0.01"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => removeStorageOption(index)}
+                          className="text-destructive h-10 w-10 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeStorageOption(index)}
-                        className="text-red-500 hover:text-red-700"
-                        aria-label={`Remove storage option ${index + 1}`}
-                        title="Remove storage option"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  {(formData.variants?.storage || []).length === 0 && (
-                    <p className="text-xs text-muted-foreground">No storage options added. Click "Add Storage" to add options.</p>
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* RAM Options (Hidden for Apple) */}
-              {formData.brand.trim().toLowerCase() !== 'apple' && (
+                {/* RAM Options */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-semibold">RAM Options</label>
@@ -831,105 +961,78 @@ export default function ProductModal({ isOpen, onClose, editingProductId }: Prod
                           type="text"
                           placeholder="8GB"
                           value={ram.value}
-                          onChange={(e) => updateRAMOption(index, 'value', e.target.value)}
+                          onChange={(e) => updateRAMOption(index, "value", e.target.value)}
                           className="flex-1"
                         />
-                        <Input
-                          type="number"
-                          placeholder="Price adjustment"
-                          value={ram.price_adjustment}
-                          onChange={(e) => updateRAMOption(index, 'price_adjustment', Number.parseFloat(e.target.value) || 0)}
-                          className="w-32"
-                          step="0.01"
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Stock"
-                          value={ram.stock || 0}
-                          onChange={(e) => updateRAMOption(index, 'stock', Number.parseInt(e.target.value) || 0)}
-                          className="w-24"
-                          min="0"
-                        />
+                        <div className="relative w-32">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">Rs.</span>
+                          <Input
+                            type="number"
+                            placeholder="Price"
+                            value={(Number.parseFloat(formData.price) || 0) + (ram.price_adjustment || 0)}
+                            onChange={(e) => {
+                              const newPrice = Number.parseFloat(e.target.value) || 0
+                              const basePrice = Number.parseFloat(formData.price) || 0
+                              updateRAMOption(index, "price_adjustment", newPrice - basePrice)
+                            }}
+                            className="pl-8"
+                            step="0.01"
+                          />
+                        </div>
                         <Button
                           type="button"
                           variant="outline"
-                          size="sm"
+                          size="icon"
                           onClick={() => removeRAMOption(index)}
-                          className="text-red-500 hover:text-red-700"
-                          aria-label={`Remove RAM option ${index + 1}`}
-                          title="Remove RAM option"
+                          className="text-destructive h-10 w-10 shrink-0"
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     ))}
-                    {(formData.variants?.ram || []).length === 0 && (
-                      <p className="text-xs text-muted-foreground">No RAM options added. Click "Add RAM" to add options.</p>
-                    )}
                   </div>
                 </div>
-              )}
 
-              {/* Color Options */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-semibold">Color Options</label>
-                  <Button type="button" variant="outline" size="sm" onClick={addColorOption} className="gap-1">
-                    <Plus className="w-3 h-3" />
-                    Add Color
-                  </Button>
-                </div>
-                <div className="space-y-2">
-                  {(formData.variants?.color || []).map((color, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <Input
-                        type="text"
-                        placeholder="Color name (e.g., Black)"
-                        value={color.value}
-                        onChange={(e) => updateColorOption(index, 'value', e.target.value)}
-                        className="flex-1"
-                      />
-                      <Input
-                        type="color"
-                        value={color.hex || '#000000'}
-                        onChange={(e) => updateColorOption(index, 'hex', e.target.value)}
-                        className="w-16 h-10"
-                        title="Color"
-                      />
-                      <Input
-                        type="text"
-                        placeholder="Image URL (optional)"
-                        value={color.image || ''}
-                        onChange={(e) => updateColorOption(index, 'image', e.target.value)}
-                        className="flex-1"
-                      />
-                      <Input
-                        type="number"
-                        placeholder="Stock"
-                        value={color.stock || 0}
-                        onChange={(e) => updateColorOption(index, 'stock', Number.parseInt(e.target.value) || 0)}
-                        className="w-24"
-                        min="0"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeColorOption(index)}
-                        className="text-red-500 hover:text-red-700"
-                        aria-label={`Remove color option ${index + 1}`}
-                        title="Remove color option"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                  {(formData.variants?.color || []).length === 0 && (
-                    <p className="text-xs text-muted-foreground">No color options added. Click "Add Color" to add options.</p>
-                  )}
+                {/* Color Options */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-semibold">Color Options</label>
+                    <Button type="button" variant="outline" size="sm" onClick={addColorOption} className="gap-1">
+                      <Plus className="w-3 h-3" />
+                      Add Color
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {(formData.variants?.color || []).map((color, index) => (
+                      <div key={index} className="flex gap-2 items-center">
+                        <Input
+                          type="text"
+                          placeholder="Silver"
+                          value={color.value}
+                          onChange={(e) => updateColorOption(index, "value", e.target.value)}
+                          className="flex-1"
+                        />
+                        <Input
+                          type="color"
+                          value={color.hex || "#000000"}
+                          onChange={(e) => updateColorOption(index, "hex", e.target.value)}
+                          className="w-12 h-10 p-1 bg-transparent"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => removeColorOption(index)}
+                          className="text-destructive h-10 w-10 shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Category-Specific Specifications */}
             {categoryFields && (

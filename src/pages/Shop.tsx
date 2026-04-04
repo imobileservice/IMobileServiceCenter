@@ -202,8 +202,6 @@ export default function ShopPage() {
     }, 200)
   }, [loadProducts])
 
-  // All filtering is done server-side via loadProducts
-  // This just ensures we have the latest filtered products
   const filteredProducts = useMemo(() => {
     if (loading) return []
 
@@ -370,6 +368,7 @@ export default function ShopPage() {
                       brand: product.brand || undefined,
                       specs: product.specs ? JSON.stringify(product.specs) : undefined,
                       discount: discount,
+                      stock: product.stock,
                     }
                     return (
                       <motion.div key={product.id} variants={itemVariants}>

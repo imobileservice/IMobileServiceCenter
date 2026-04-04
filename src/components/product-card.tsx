@@ -17,10 +17,11 @@ interface ProductCardProps {
   condition: "new" | "used"
   discount?: number
   specs?: string
+  stock?: number
   onQuickView?: () => void
 }
 
-function ProductCard({ id, name, price, image, condition, discount, specs, onQuickView }: ProductCardProps) {
+function ProductCard({ id, name, price, image, condition, discount, specs, stock, onQuickView }: ProductCardProps) {
   const navigate = useNavigate()
   const [isHovered, setIsHovered] = useState(false)
   const [quantity, setQuantity] = useState(0)
@@ -360,15 +361,17 @@ function ProductCard({ id, name, price, image, condition, discount, specs, onQui
                   handleAddToCart(e)
                 }
               }}
-              disabled={loading}
+              disabled={loading || (stock !== undefined && stock <= 0)}
               type="button"
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-4 py-2.5 flex items-center justify-center gap-2 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed relative z-30 shadow-sm hover:shadow-md"
+              className={`w-full ${stock !== undefined && stock <= 0 ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'} text-primary-foreground rounded-full px-4 py-2.5 flex items-center justify-center gap-2 transition-colors duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed relative z-30 shadow-sm hover:shadow-md`}
             >
               {loading ? (
                 <>
                   <span className="text-sm">Adding...</span>
                   <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                 </>
+              ) : stock !== undefined && stock <= 0 ? (
+                <span className="text-sm font-bold text-red-100">Out of Stock</span>
               ) : (
                 <>
                   <Plus className="w-4 h-4" strokeWidth={2.5} />

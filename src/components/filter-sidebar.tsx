@@ -13,6 +13,7 @@ interface ExtendedCategory extends Category {
     id: string
     name: string
     count: number
+    isBrand?: boolean
   }>
 }
 
@@ -250,7 +251,8 @@ export default function FilterSidebar({
               const isSelected = selectedCategory === category.id
               const isSubSelected = category.subcategories?.some(sub =>
                 selectedCategory === `${category.id}-${sub.id}` || // if slug is constructed like logical-slug
-                selectedCategory === sub.id // if using direct subcategory slug
+                selectedCategory === sub.id || // if using direct subcategory slug
+                (sub.isBrand && selectedCategory === category.id && selectedBrand === sub.name)
               )
               // We'll expand if it's selected, sub-selected, or user manually toggled
               const isExpanded = expandedSections[`cat-${category.id}`] || isSelected || isSubSelected
@@ -306,12 +308,19 @@ export default function FilterSidebar({
                         // For 'used-items' sub 'iphone', the slug is 'used-items-iphone'
 
                         const fullSlug = `${category.id}-${sub.id}`
-                        const isSubActive = selectedCategory === fullSlug
+                        const isSubActive = selectedCategory === fullSlug || (sub.isBrand && selectedCategory === category.id && selectedBrand === sub.name)
 
                         return (
                           <button
                             key={sub.id}
-                            onClick={() => handleCategoryClick(fullSlug)}
+                            onClick={() => {
+                              if (sub.isBrand) {
+                                onCategoryChange(category.slug || category.id)
+                                onBrandChange(sub.name)
+                              } else {
+                                handleCategoryClick(fullSlug)
+                              }
+                            }}
                             className={`flex items-center justify-between w-full text-left py-1.5 px-2 rounded transition-colors text-sm ${isSubActive
                               ? "text-primary font-medium bg-primary/5"
                               : "text-gray-600 dark:text-gray-400 hover:text-primary hover:bg-gray-50 dark:hover:bg-gray-800"

@@ -50,14 +50,7 @@ export function clearSupabaseCache() {
   }
 }
 
-// Module-level singleton to prevent "Multiple GoTrueClient instances" warnings and deadlocks
-let supabaseInstance: any = null;
-
 export function createClient() {
-  if (supabaseInstance) {
-    return supabaseInstance;
-  }
-
   // Use import.meta.env — Vite statically replaces these at build time
   const supabaseUrl =
     import.meta.env.VITE_SUPABASE_URL ||
@@ -109,7 +102,7 @@ export function createClient() {
   }
 
   try {
-    supabaseInstance = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    return createBrowserClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         get(name: string) {
           if (typeof document === 'undefined') return ''
@@ -179,8 +172,6 @@ export function createClient() {
         detectSessionInUrl: false, // We handle this manually in AuthCallback
       },
     } as any)
-    
-    return supabaseInstance;
   } catch (error: any) {
     console.error('Failed to create Supabase client:', error)
     throw new Error(`Failed to initialize Supabase client: ${error.message}`)

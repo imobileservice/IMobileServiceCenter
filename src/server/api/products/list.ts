@@ -77,7 +77,7 @@ export async function listHandler(req: Request, res: Response) {
     }
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,specs->>model.ilike.%${search}%`)
     }
 
     if (minPrice) {

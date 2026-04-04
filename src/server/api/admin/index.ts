@@ -93,5 +93,11 @@ router.delete('/hero-slides/:id', deleteSlideHandler)
 import { filtersRouter } from './filters'
 router.use('/filters', filtersRouter)
 
+// Admin Cashiers management endpoints
+import { getCashiersHandler, createCashierHandler, deleteCashierHandler } from './cashiers'
+router.get('/cashiers', getCashiersHandler)
+router.post('/cashiers', createCashierHandler)
+router.delete('/cashiers/:id', deleteCashierHandler)
+
 export default router
 

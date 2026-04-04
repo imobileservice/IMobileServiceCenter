@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Plus, Edit2, Trash2, Search } from "lucide-react"
+import { Plus, Edit2, Trash2, Search, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -11,6 +11,7 @@ import ProductModal from "@/components/admin/product-modal"
 import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
+import BarcodeLabelModal from "@/components/admin/barcode-label-modal"
 
 type Product = Database['public']['Tables']['products']['Row']
 
@@ -20,6 +21,8 @@ export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
+  const [printingProducts, setPrintingProducts] = useState<any[] | null>(null)
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
 
   const fetchProducts = async (silent = false) => {
     try {
@@ -65,7 +68,7 @@ export default function ProductsPage() {
       }, 300)
     } catch (error) {
       console.error('Failed to delete product:', error)
-      alert('Failed to delete product')
+      alert(error instanceof Error ? error.message : 'Failed to delete product')
     }
   }
 
@@ -75,11 +78,49 @@ export default function ProductsPage() {
     // Products will be refetched via the event listener
   }
 
+  const handleProductSaved = (product: { name: string; barcode: string; price: number }) => {
+    // Auto-open barcode print modal for newly created products
+    setPrintingProducts([{ name: product.name, barcode: product.barcode, price: product.price }])
+    // Refresh product list
+    fetchProducts(true)
+  }
+
+  const toggleSelection = (id: string) => {
+    setSelectedProductIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const toggleAll = () => {
+    if (selectedProductIds.length === filteredProducts.length) {
+      setSelectedProductIds([])
+    } else {
+      setSelectedProductIds(filteredProducts.map(p => p.id))
+    }
+  }
+
+  const handleBulkPrint = () => {
+    const selected = products.filter(p => selectedProductIds.includes(p.id));
+    setPrintingProducts(selected.map(p => ({
+      id: p.id,
+      name: getDisplayName(p),
+      barcode: (p as any).barcode,
+      price: p.price
+    })));
+  }
+
   const handleEdit = (id: string) => {
     setEditingProduct(id)
     setIsModalOpen(true)
   }
 
+  const getDisplayName = (product: any) => {
+    const model = product.specs?.model;
+    if (model && !product.name.includes(model)) {
+      return `${product.name} (${model})`;
+    }
+    return product.name;
+  }
 
   return (
     <AdminLayout>
@@ -91,10 +132,18 @@ export default function ProductsPage() {
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Products</h1>
             <p className="text-muted-foreground mt-1">Manage your product inventory and stock levels</p>
           </div>
-          <Button onClick={() => setIsModalOpen(true)} className="gap-2 self-start sm:self-auto shadow-md">
-            <Plus className="w-4 h-4" />
-            Add Product
-          </Button>
+          <div className="flex items-center gap-3 self-start sm:self-auto">
+            {selectedProductIds.length > 0 && (
+              <Button onClick={handleBulkPrint} variant="secondary" className="gap-2 shadow-md bg-primary text-primary-foreground hover:bg-primary/90 font-bold border-2 border-primary">
+                <Tag className="w-4 h-4" />
+                Bulk Print ({selectedProductIds.length})
+              </Button>
+            )}
+            <Button onClick={() => setIsModalOpen(true)} className="gap-2 shadow-md">
+              <Plus className="w-4 h-4" />
+              Add Product
+            </Button>
+          </div>
         </div>
       </motion.div>
 
@@ -116,7 +165,7 @@ export default function ProductsPage() {
               </p>
               <ul className="mt-2 list-disc list-inside text-red-600 font-medium">
                 {products.filter(p => p.stock < 5).map(p => (
-                  <li key={p.id}>{p.name} ({p.stock} units left)</li>
+                  <li key={p.id}>{getDisplayName(p)} ({p.stock} units left)</li>
                 ))}
               </ul>
             </div>
@@ -154,6 +203,14 @@ export default function ProductsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
+                  <th className="py-4 px-6 w-12 text-center">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-border"
+                      checked={selectedProductIds.length > 0 && selectedProductIds.length === filteredProducts.length}
+                      onChange={toggleAll}
+                    />
+                  </th>
                   <th className="text-left py-4 px-6 font-semibold">Product Name</th>
                   <th className="text-left py-4 px-6 font-semibold">Category</th>
                   <th className="text-left py-4 px-6 font-semibold">Price</th>
@@ -169,14 +226,22 @@ export default function ProductsPage() {
                   animate={{ opacity: 1 }}
                   className="border-b border-border hover:bg-muted/50 transition-colors"
                 >
+                  <td className="py-4 px-6 w-12 text-center">
+                    <input 
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-border"
+                      checked={selectedProductIds.includes(product.id)}
+                      onChange={() => toggleSelection(product.id)}
+                    />
+                  </td>
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-10 h-10 rounded object-cover"
+                        className="w-10 h-10 rounded object-cover border border-border"
                       />
-                      <span className="font-semibold">{product.name}</span>
+                      <span className="font-semibold">{getDisplayName(product)}</span>
                     </div>
                   </td>
                   <td className="py-4 px-6">{product.category}</td>
@@ -209,6 +274,17 @@ export default function ProductsPage() {
                         <Trash2 className="w-4 h-4" />
                         Delete
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => (product as any).barcode && setPrintingProducts([{ id: product.id, name: getDisplayName(product), barcode: (product as any).barcode, price: product.price }])}
+                        disabled={!(product as any).barcode}
+                        className="gap-2"
+                        title={(product as any).barcode ? "Print Barcode Label" : "No barcode generated"}
+                      >
+                        <Tag className="w-4 h-4" />
+                        Label
+                      </Button>
                     </div>
                   </td>
                 </motion.tr>
@@ -220,7 +296,19 @@ export default function ProductsPage() {
       </motion.div>
 
       {/* Product Modal */}
-      <ProductModal isOpen={isModalOpen} onClose={handleModalClose} editingProductId={editingProduct} />
+      <ProductModal
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        editingProductId={editingProduct}
+        onProductSaved={handleProductSaved}
+      />
+
+      {/* Barcode Print Modal */}
+      <BarcodeLabelModal
+        isOpen={!!printingProducts}
+        onClose={() => setPrintingProducts(null)}
+        products={printingProducts}
+      />
       </div>
     </AdminLayout>
   )

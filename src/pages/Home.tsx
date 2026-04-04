@@ -69,7 +69,7 @@ export default function Home() {
   }, [])
 
   // Real-time updates for featured products
-  useRealtimeUpdates('products', 'is_featured=eq.true', () => loadFeaturedProducts(true))
+  useRealtimeUpdates(() => loadFeaturedProducts(true))
 
   // Listen for custom events
   useEffect(() => {
@@ -224,17 +224,31 @@ export default function Home() {
                   }
                 }
 
+                // Calculate discount if original_price exists
+                let calculatedDiscount: number | undefined = undefined
+                // @ts-ignore
+                const originalPrice = product.original_price as number | null
+                const currentPrice = Number(product.price)
+                
+                if (originalPrice && originalPrice > currentPrice) {
+                  calculatedDiscount = Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+                }
+
+                // @ts-ignore
+                const backendDiscount = product.discount as number | null
+
                 return (
                   <motion.div key={product.id} variants={itemVariants}>
                     <Suspense fallback={<LoadingPlaceholder />}>
                       <ProductCard
                         id={product.id}
                         name={product.name}
-                        price={Number(product.price)}
+                        price={currentPrice}
                         image={product.image || "/placeholder.svg"}
                         condition={product.condition as "new" | "used"}
                         specs={specsText}
-                        discount={product.discount || undefined}
+                        discount={backendDiscount || calculatedDiscount || undefined}
+                        stock={product.stock}
                       />
                     </Suspense>
                   </motion.div>

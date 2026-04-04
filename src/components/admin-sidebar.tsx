@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { motion } from "framer-motion"
-import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen } from "lucide-react"
+import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen, Database, Barcode } from "lucide-react"
 import { useAdminStore } from "@/lib/admin-store"
 import { Button } from "@/components/ui/button"
 
@@ -11,12 +11,14 @@ const MENU_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
   { icon: Package, label: "Products", href: "/admin/products" },
   { icon: FolderTree, label: "Categories", href: "/admin/categories" },
-  { icon: FilterIcon, label: "Filters", href: "/admin/filters" },
+  { icon: Database, label: "Inventory", href: "/admin/inventory", color: "text-green-500" },
+  { icon: Barcode, label: "Sales History", href: "/admin/sales", color: "text-purple-500" },
   { icon: ShoppingCart, label: "Orders", href: "/admin/orders" },
   { icon: Users, label: "Customers", href: "/admin/customers" },
   { icon: MessageSquare, label: "Messages", href: "/admin/messages" },
   { icon: Image, label: "Hero Slides", href: "/admin/hero-slides" },
   { icon: Settings, label: "Settings", href: "/admin/settings" },
+  { icon: Users, label: "Cashier Mgmt", href: "/admin/cashiers", color: "text-orange-500" },
   { icon: BookOpen, label: "Guide", href: "/admin/guide" },
 ]
 

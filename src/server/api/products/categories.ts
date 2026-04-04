@@ -40,7 +40,7 @@ export async function categoriesHandler(req: Request, res: Response) {
     try {
       const { data: dbCategories, error: categoriesError } = await supabase
         .from('categories')
-        .select('id, name, slug, sort_order')
+        .select('id, name, slug, sort_order, field_config')
         .eq('is_active', true)
         .order('sort_order', { ascending: true })
 
@@ -72,7 +72,7 @@ export async function categoriesHandler(req: Request, res: Response) {
         }>()
 
         // First pass: create parent categories
-        dbCategories.forEach((dbCat: { id: string; name: string; slug: string; sort_order: number }) => {
+        dbCategories.forEach((dbCat: { id: string; name: string; slug: string; sort_order: number; field_config?: any }) => {
           const isSubcategory = dbCat.slug.includes('-') && 
             (dbCat.slug.startsWith('mobile-phones-') || 
              dbCat.slug.startsWith('accessories-') || 
@@ -80,10 +80,29 @@ export async function categoriesHandler(req: Request, res: Response) {
 
           if (!isSubcategory) {
             const count = categoryCounts.get(dbCat.id) || 0
+            
+            // Extract brands from field_config to create dynamic subcategories
+            let subcategories: Array<{ id: string; name: string; count: number; isBrand?: boolean }> | undefined
+            
+            const noDropdownSlugs = ['accessories', 'smart-watch', 'tempered-glass']
+            
+            if (dbCat.field_config?.fields && !noDropdownSlugs.includes(dbCat.slug)) {
+              const brandField = dbCat.field_config.fields.find((f: any) => f.key === 'brand')
+              if (brandField && brandField.options && Array.isArray(brandField.options)) {
+                 subcategories = brandField.options.map((brand: string) => ({
+                   id: brand.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+                   name: brand,
+                   count: 0,
+                   isBrand: true
+                 }))
+              }
+            }
+
             categoriesMap.set(dbCat.slug, {
               id: dbCat.slug,
               name: dbCat.name,
               count,
+              subcategories
             })
           }
         })

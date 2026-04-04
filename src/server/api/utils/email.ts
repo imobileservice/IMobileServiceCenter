@@ -2,16 +2,23 @@ import nodemailer from 'nodemailer'
 import dns from 'dns'
 
 const getTransport = async () => {
-    // Read SMTP Settings from envor fallback
-    const host = process.env.SMTP_HOST || 'smtp.resend.com'
-    const port = parseInt(process.env.SMTP_PORT || '465') // Use 465 for SSL/TLS, 587 for STARTTLS
-    const secure = port === 465 // true for 465, false for other ports
-    const user = process.env.SMTP_USER || 'resend' 
-    const pass = process.env.SMTP_PASS || 're_3xuwxa4h_NfsCkF8p26UdRvigiMk2eW4Y'
+    const host = process.env.SMTP_HOST
+    const portStr = process.env.SMTP_PORT
+    const user = process.env.SMTP_USER
+    const pass = process.env.SMTP_PASS
 
-    console.log(`[Email] Configuring SMTP Transport for ${host}:${port}`)
+    // Fail loudly if SMTP is not configured - prevents silent failures
+    if (!host || !user || !pass) {
+        const missing = [!host && 'SMTP_HOST', !user && 'SMTP_USER', !pass && 'SMTP_PASS'].filter(Boolean).join(', ')
+        throw new Error(`[Email] SMTP not configured. Missing environment variables: ${missing}. Check your .env file or Railway environment variables.`)
+    }
 
-    // FORCE IPv4: Manually resolve hostname to an IPv4 address (especially needed for Resend, optional for Gmail)
+    const port = parseInt(portStr || '587')
+    const secure = port === 465 // true for SSL (465), false for STARTTLS (587)
+
+    console.log(`[Email] Configuring SMTP: host=${host}, port=${port}, secure=${secure}, user=${user}`)
+
+    // FORCE IPv4: Manually resolve hostname to avoid IPv6 connectivity issues
     let resolvedHost = host
     try {
         const addresses = await new Promise<string[]>((resolve, reject) => {
@@ -21,33 +28,30 @@ const getTransport = async () => {
             })
         })
         resolvedHost = addresses[0]
-        console.log(`[Email] Host ${host} resolved to IPv4: ${resolvedHost}`)
+        console.log(`[Email] Resolved ${host} → IPv4: ${resolvedHost}`)
     } catch (dnsError: any) {
-        console.warn(`[Email] DNS Resolve failed for ${host}: ${dnsError.message}.`)
+        console.warn(`[Email] DNS resolve4 failed for ${host}: ${dnsError.message}. Using original hostname.`)
     }
 
     return nodemailer.createTransport({
         host: resolvedHost,
         port,
         secure,
-        auth: {
-            user,
-            pass,
-        },
+        auth: { user, pass },
         tls: {
             rejectUnauthorized: false,
             minVersion: 'TLSv1.2',
-            servername: host
+            servername: host  // Use original hostname for SNI (not the resolved IP)
         },
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
-        socketTimeout: 45000,
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000,
         family: 4,
         lookup: (hostname: string, options: any, callback: any) => {
-            dns.lookup(hostname, { family: 4 }, callback);
+            dns.lookup(hostname, { family: 4 }, callback)
         },
-        debug: true,
-        logger: true
+        debug: process.env.NODE_ENV !== 'production',
+        logger: process.env.NODE_ENV !== 'production',
     } as any)
 }
 
@@ -69,10 +73,20 @@ export const sendEmail = async ({
     }>
 }) => {
     const transport = await getTransport()
-    
-    // Domain is now verified on Resend!
-    const from = process.env.SMTP_FROM || 'IMobile Service Center <info@imobileservicecenter.lk>'
-    console.log('[Email] Using From Address:', from)
+
+    const from = process.env.SMTP_FROM || `IMobile Service & Repair Center <no-reply@imobileservicecenter.lk>`
+    console.log(`[Email] Sending to: ${to} | Subject: ${subject} | From: ${from}`)
+
+    // Verify SMTP connection before sending - catches auth/connection errors early
+    try {
+        await transport.verify()
+        console.log('[Email] ✅ SMTP connection verified successfully')
+    } catch (verifyError: any) {
+        console.error('[Email] ❌ SMTP connection FAILED during verify:', verifyError.message)
+        console.error('[Email] Check: 1) SMTP_PASS is correct/not expired, 2) SMTP_HOST and SMTP_PORT are right, 3) Sender is verified in Brevo')
+        throw new Error(`SMTP connection failed: ${verifyError.message}`)
+    }
+
     const info = await transport.sendMail({
         from,
         to,
@@ -82,7 +96,7 @@ export const sendEmail = async ({
         attachments,
     })
 
-    console.log('[Email] Message sent successfully! ID:', info.messageId, '| Response:', info.response)
+    console.log(`[Email] ✅ Message sent! ID: ${info.messageId} | Response: ${info.response}`)
     return info
 }
 

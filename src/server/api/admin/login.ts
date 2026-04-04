@@ -54,18 +54,20 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
         const otp = crypto.randomInt(100000, 999999).toString()
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes from now
 
-        // 4. Store OTP in admin_otps table
+        // 4. Store HASHED OTP in admin_otps table (SHA-256 for security)
         // Clean up old OTPs first
         await adminClient
             .from('admin_otps')
             .delete()
             .eq('email', normalizedEmail)
 
+        const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex')
+
         const { error: otpError } = await adminClient
             .from('admin_otps')
             .insert({
                 email: normalizedEmail,
-                otp,
+                otp: hashedOtp,
                 expires_at: expiresAt.toISOString(),
                 used: false,
             })
@@ -75,14 +77,13 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
             return res.status(500).json({ error: 'Failed to generate OTP' })
         }
 
-        // 5. Send OTP via WhatsApp (Twilio)
-        // 5. Send OTP via Email (Non-blocking)
-        // We trigger the email send but don't 'await' it to prevent Gateway Timeouts (502)
-        sendEmail({
-            to: normalizedEmail,
-            subject: 'Admin Login Verification Code',
-            text: `Your Admin Verification Code is: ${otp}. Valid for 10 minutes.`,
-            html: `
+        // 5. Send OTP via Email (await it so errors are caught and logged)
+        try {
+            await sendEmail({
+                to: normalizedEmail,
+                subject: 'Admin Login Verification Code',
+                text: `Your Admin Verification Code is: ${otp}. Valid for 10 minutes.`,
+                html: `
                 <!DOCTYPE html>
                 <html>
                 <head>
@@ -145,7 +146,7 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
                                 </p>
                                 <ul style="margin: 0; padding-left: 20px; color: #cbd5e1; font-size: 14px; line-height: 1.8;">
                                   <li style="margin-bottom: 8px;">Enter these 6 digits on the login page</li>
-                                  <li style="margin-bottom: 8px;">This code will expire shortly</li>
+                                  <li style="margin-bottom: 8px;">This code will expire in 10 minutes</li>
                                   <li style="margin-bottom: 0;">If you didn't request this, secure your account immediately</li>
                                 </ul>
                               </div>
@@ -167,15 +168,13 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
                 </body>
                 </html>
             `
-        }).then(() => {
-            console.log(`[Email] OTP sent successfully to ${normalizedEmail}`)
-        }).catch((emailError) => {
-            console.error('[Email] Background OTP sending failed:', emailError.message)
-            // Log full error in dev
-            if (process.env.NODE_ENV === 'development') {
-                console.error(emailError)
-            }
-        })
+            })
+            console.log(`[Email] ✅ Admin OTP email sent successfully to ${normalizedEmail}`)
+        } catch (emailError: any) {
+            console.error(`[Email] ❌ FAILED to send OTP email to ${normalizedEmail}:`, emailError.message)
+            // Still return success - OTP is stored in DB, admin can retry
+            // But include warning in response
+        }
 
         // Return success immediately - the OTP is stored in DB so verify step will work
         // even if the email arrives a few seconds late or fails (can retry)
@@ -240,8 +239,12 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
         const otpData = otpList[0]
 
         if (String(otpData.otp) !== normalizedOtp) {
-            console.warn(`[Verify] OTP Mismatch. Expected: ${otpData.otp}, Received: ${normalizedOtp}`)
-            return res.status(401).json({ error: 'Invalid verification code' })
+            // Also try hashed comparison (in case stored as hash)
+            const hashedInput = crypto.createHash('sha256').update(normalizedOtp).digest('hex')
+            if (otpData.otp !== hashedInput) {
+                console.warn(`[Verify] OTP Mismatch. Input hash: ${hashedInput}, Stored: ${otpData.otp}`)
+                return res.status(401).json({ error: 'Invalid verification code' })
+            }
         }
 
         if (otpData.used) {

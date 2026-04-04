@@ -13,13 +13,13 @@ const LOCATIONS = [
   {
     name: "IMobile Service Center - Main",
     address: "DexLanka Software Solution, Meegoda, Sri Lanka",
-    phone: "+94 70 558 8789",
+    phone: "+94 77 034 4273",
     hours: "Mon-Sat: 10AM-8PM, Sun: 12PM-6PM",
   },
   {
     name: "IMobile Service Center - Branch",
     address: "Meegoda, Sri Lanka",
-    phone: "+94 70 558 8789",
+    phone: "+94 77 034 4273",
     hours: "Mon-Sat: 10AM-8PM, Sun: 12PM-6PM",
   },
 ]
@@ -58,7 +58,7 @@ Sent from I Mobile Contact Form`
 
     // Encode message for WhatsApp URL
     const encodedMessage = encodeURIComponent(whatsappMessage)
-    const whatsappNumber = "94705588789" // Your WhatsApp number
+    const whatsappNumber = "94770344273" // Your WhatsApp number
     const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodedMessage}`
 
     // Open WhatsApp with pre-filled message
@@ -145,8 +145,8 @@ Sent from I Mobile Contact Form`
               </div>
               <h3 className="text-xl font-bold mb-2">Phone</h3>
               <p className="text-muted-foreground mb-4">Call us during business hours</p>
-              <a href="tel:+94705588789" className="text-primary font-semibold hover:underline">
-                +94 70 558 8789
+              <a href="tel:+94770344273" className="text-primary font-semibold hover:underline">
+                +94 77 034 4273
               </a>
             </motion.div>
 
@@ -157,7 +157,7 @@ Sent from I Mobile Contact Form`
               </div>
               <h3 className="text-xl font-bold mb-2">WhatsApp</h3>
               <p className="text-white/90 mb-4">Chat with us on WhatsApp</p>
-              <a href="https://wa.me/94705588789" className="text-white font-bold hover:underline flex items-center gap-2">
+              <a href="https://wa.me/94770344273" className="text-white font-bold hover:underline flex items-center gap-2">
                 Start Chat <ArrowRight className="w-4 h-4" />
               </a>
             </motion.div>

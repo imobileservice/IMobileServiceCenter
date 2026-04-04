@@ -59,6 +59,31 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
     delete productData.category
   }
 
+  // Auto-generate a sequential 6-digit barcode (000001, 000002, ...)
+  if (!productData.barcode) {
+    // Find the highest existing numeric barcode and add 1
+    const { data: barcodeRows } = await supabase
+      .from('products')
+      .select('barcode')
+      .not('barcode', 'is', null)
+      .order('barcode', { ascending: false })
+      .limit(100)
+
+    let nextNumber = 1
+    if (barcodeRows && barcodeRows.length > 0) {
+      // Filter only purely numeric barcodes and find the max
+      const numericBarcodes = barcodeRows
+        .map((r: any) => parseInt(r.barcode, 10))
+        .filter((n: number) => !isNaN(n))
+      if (numericBarcodes.length > 0) {
+        nextNumber = Math.max(...numericBarcodes) + 1
+      }
+    }
+    // Zero-pad to 6 digits: 000001, 000002 ... 999999
+    productData.barcode = String(nextNumber).padStart(6, '0')
+    console.log(`[Admin] Auto-generated barcode: ${productData.barcode}`)
+  }
+
   // Insert product (without image fields)
   const { data, error } = await supabase
     .from('products')
@@ -69,6 +94,22 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   if (error) {
     console.error('Error creating product:', error)
     return res.status(500).json({ error: error.message })
+  }
+
+  // Initialize stock in inv_stock so it appears in Inventory
+  if (data?.id) {
+    const { error: stockError } = await supabase
+      .from('inv_stock')
+      .insert({
+        product_id: data.id,
+        quantity: productData.stock || 0,
+        low_stock_threshold: 5
+      })
+
+    if (stockError) {
+      console.error('Error initializing inv_stock:', stockError)
+      // Non-fatal, keep going
+    }
   }
 
   // Insert images into product_images table
@@ -152,6 +193,30 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
     return res.status(500).json({ error: error.message })
   }
 
+  // Sync inventory stock if stock was updated
+  if (updateData.stock !== undefined && data?.id) {
+    console.log(`[Admin CRUD] Syncing manual stock update for product ${id}: ${updateData.stock}`)
+    const { error: invStockError } = await supabase
+      .from('inv_stock')
+      .update({ 
+        quantity: updateData.stock,
+        updated_at: new Date().toISOString()
+      })
+      .eq('product_id', data.id)
+
+    if (invStockError) {
+      console.error('[Admin CRUD] Error syncing inv_stock:', invStockError)
+      // Fallback: Try to insert if it somehow doesn't exist
+      await supabase
+        .from('inv_stock')
+        .upsert({
+          product_id: data.id,
+          quantity: updateData.stock,
+          low_stock_threshold: 5
+        })
+    }
+  }
+
   // Update images in product_images table if provided
   if (imageUrls !== undefined && data?.id) {
     // Delete existing images
@@ -209,6 +274,9 @@ export const deleteProductHandler = asyncHandler(async (req: Request, res: Respo
 
   if (error) {
     console.error('Error deleting product:', error)
+    if (error.code === '23503') {
+      return res.status(409).json({ error: 'Cannot delete product because it exists in past sales/receipts. Please update its stock to 0 instead to discontinue it.' })
+    }
     return res.status(500).json({ error: error.message })
   }
 

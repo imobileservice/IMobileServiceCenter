@@ -11,6 +11,7 @@ const ScrollToTop = lazy(() => import("@/components/scroll-to-top"))
 const ScrollToTopOnNavigation = lazy(() => import("@/components/scroll-to-top-on-navigation"))
 const PerformanceMonitor = lazy(() => import("@/components/performance-monitor"))
 const BottomNavigation = lazy(() => import("@/components/bottom-navigation"))
+const FloatingContactButtons = lazy(() => import("@/components/floating-contact-buttons"))
 
 interface ConditionalLayoutProps {
   children: React.ReactNode
@@ -19,8 +20,8 @@ interface ConditionalLayoutProps {
 export default function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const location = useLocation()
 
-  // For admin pages, only render the children (no navbar/footer)
-  if (location.pathname.startsWith('/admin')) {
+  // For admin and cashier pages, only render the children (no navbar/footer/floating buttons)
+  if (location.pathname.startsWith('/admin') || location.pathname.startsWith('/cashier')) {
     return <>{children}</>
   }
 
@@ -40,7 +41,10 @@ export default function ConditionalLayout({ children }: ConditionalLayoutProps) 
       </Suspense>
 
 
-      {/* Floating Contact Button removed - now using email for communications */}
+      {/* Floating Contact Buttons (Call & WhatsApp) */}
+      <Suspense fallback={null}>
+        <FloatingContactButtons />
+      </Suspense>
 
       {/* Bottom Navigation - Mobile Only */}
       <div className="lg:hidden">

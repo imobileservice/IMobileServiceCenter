@@ -43,7 +43,7 @@ export default function HeroSection() {
   }, [])
 
   // Real-time updates
-  useRealtimeUpdates('hero_slides', 'is_active=eq.true', () => loadSlides(true))
+  useRealtimeUpdates(() => loadSlides(true))
 
   // Listen for custom events
   useEffect(() => {

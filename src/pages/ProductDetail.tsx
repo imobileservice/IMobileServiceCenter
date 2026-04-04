@@ -23,6 +23,7 @@ interface Product {
   image?: string
   images?: string[]
   condition: "new" | "used"
+  stock?: number
   category: string
   brand?: string
   description?: string
@@ -749,10 +750,11 @@ export default function ProductDetailPage() {
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
                   <label className="text-sm font-medium">Quantity:</label>
-                  <div className="flex items-center border border-border rounded-lg">
+                  <div className={`flex items-center border border-border rounded-lg ${product.stock !== undefined && product.stock <= 0 ? 'opacity-50 pointer-events-none' : ''}`}>
                     <button
                       onClick={() => setQuantity(Math.max(1, quantity - 1))}
                       className="px-4 py-2 hover:bg-muted transition-colors"
+                      disabled={product.stock !== undefined && product.stock <= 0}
                     >
                       −
                     </button>
@@ -760,6 +762,7 @@ export default function ProductDetailPage() {
                     <button
                       onClick={() => setQuantity(quantity + 1)}
                       className="px-4 py-2 hover:bg-muted transition-colors"
+                      disabled={product.stock !== undefined && product.stock <= 0 || (product.stock !== undefined && quantity >= product.stock)}
                     >
                       +
                     </button>
@@ -769,10 +772,12 @@ export default function ProductDetailPage() {
                 <div className="flex gap-3">
                   <Button
                     onClick={handleAddToCart}
-                    disabled={addingToCart || !product}
-                    className="flex-1 gap-2 text-base py-6"
+                    disabled={addingToCart || !product || (product.stock !== undefined && product.stock <= 0)}
+                    className={`flex-1 gap-2 text-base py-6 ${product.stock !== undefined && product.stock <= 0 ? 'bg-red-500 hover:bg-red-600 text-white' : ''}`}
                   >
-                    {addingToCart ? (
+                    {product.stock !== undefined && product.stock <= 0 ? (
+                      <span className="font-bold">Out of Stock</span>
+                    ) : addingToCart ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
                         Adding...

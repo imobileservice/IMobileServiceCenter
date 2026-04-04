@@ -30,6 +30,11 @@ const AdminFilters = lazy(() => import('./pages/admin/AdminFilters'))
 const AdminHeroSlides = lazy(() => import('./pages/admin/AdminHeroSlides'))
 const AdminLogin = lazy(() => import('./pages/admin/AdminLogin'))
 const AdminGuide = lazy(() => import('./pages/admin/Guide'))
+const AdminCashiers = lazy(() => import('./pages/admin/AdminCashiers'))
+const AdminInventory = lazy(() => import('./pages/admin/inventory/InventoryPage'))
+const AdminSales = lazy(() => import('./pages/admin/inventory/SalesPage'))
+const CashierLogin = lazy(() => import('./pages/cashier/CashierLogin'))
+const CashierPOS = lazy(() => import('./pages/cashier/CashierPOS'))
 
 // Loading component
 const PageLoading = () => (
@@ -70,6 +75,11 @@ export default function App() {
         <Route path="/admin/filters" element={<AdminFilters />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/guide" element={<AdminGuide />} />
+        <Route path="/admin/inventory" element={<AdminInventory />} />
+        <Route path="/admin/sales" element={<AdminSales />} />
+        <Route path="/admin/cashiers" element={<AdminCashiers />} />
+        <Route path="/cashier/login" element={<CashierLogin />} />
+        <Route path="/cashier/pos" element={<CashierPOS />} />
       </Routes>
     </Suspense>
   )
