@@ -155,52 +155,10 @@ export async function signupHandler(req: Request, res: Response) {
             await sendEmail({
               to: data.user.email!,
               subject: 'Confirm Your Signup - IMobile Service Center',
-              html: `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <meta charset="utf-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                </head>
-                <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh;">
-                  <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 40px 20px;">
-                    <tr>
-                      <td align="center">
-                        <table width="600" cellpadding="0" cellspacing="0" style="background: #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); border: 1px solid #334155;">
-                          <!-- Header -->
-                          <tr>
-                            <td style="background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
-                              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);">IMOBILE</h1>
-                              <p style="margin: 8px 0 0 0; color: #e0f2fe; font-size: 14px; font-weight: 500;">IMobile Service Center</p>
-                            </td>
-                          </tr>
-                          <!-- Content -->
-                          <tr>
-                            <td style="padding: 50px 40px; background: #1e293b;">
-                              <h2 style="margin: 0 0 20px 0; color: #f1f5f9; font-size: 24px; font-weight: 600; text-align: center;">Confirm Your Signup</h2>
-                              <p style="margin: 0 0 30px 0; color: #cbd5e1; font-size: 16px; line-height: 1.6; text-align: center;">Welcome! Use the verification code below to complete your registration.</p>
-                              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 40px 0;">
-                                <tr>
-                                  <td align="center">
-                                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 35px 20px;">
-                                      <p style="margin: 0 0 15px 0; color: #94a3b8; font-size: 13px; font-weight: 500; text-transform: uppercase;">Verification Code</p>
-                                      <div style="background: #0f172a; border-radius: 8px; padding: 25px; border: 1px solid #334155;">
-                                        <p style="margin: 0; color: #3b82f6; font-size: 42px; font-weight: 700; letter-spacing: 12px; font-family: 'Courier New', monospace;">${otp}</p>
-                                      </div>
-                                    </div>
-                                  </td>
-                                </tr>
-                              </table>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </body>
-                </html>
-              `,
-              text: `Your IMobile verification code is: ${otp}`
+              templateId: 'verification-code',
+              templateVariables: {
+                token: otp
+              }
             })
             console.log(`[api/auth/signup] [BKG] ✅ Email sent for ${userId}`)
           } catch (mailErr: any) {

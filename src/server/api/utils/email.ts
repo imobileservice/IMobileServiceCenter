@@ -15,12 +15,16 @@ export const sendEmail = async ({
     subject,
     text,
     html,
+    templateId,
+    templateVariables,
     attachments,
 }: {
     to: string
-    subject: string
+    subject?: string
     text?: string
     html?: string
+    templateId?: string
+    templateVariables?: Record<string, any>
     attachments?: Array<{
         filename: string
         content: Buffer | string
@@ -36,18 +40,26 @@ export const sendEmail = async ({
         throw new Error('[Email] Missing RESEND_API_KEY. Get one free at https://resend.com')
     }
 
-    console.log(`[Email] Sending via Resend API to: ${to} | Subject: ${subject}`)
+    console.log(`[Email] Sending via Resend API to: ${to} | Subject: ${subject || templateId}`)
 
     // Build request payload
     const payload: any = {
         from: fromEmail,
         to: [to],
-        subject: subject,
     }
 
-    if (html) payload.html = html
-    if (text) payload.text = text
-    if (!html && !text) payload.text = subject
+    if (subject) payload.subject = subject
+
+    if (templateId) {
+        payload.template = {
+            id: templateId,
+            variables: templateVariables || {}
+        }
+    } else {
+        if (html) payload.html = html
+        if (text) payload.text = text
+        if (!html && !text && subject) payload.text = subject
+    }
 
     // Format attachments for Resend API
     if (attachments?.length) {
