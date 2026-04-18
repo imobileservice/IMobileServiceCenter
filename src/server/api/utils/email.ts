@@ -40,7 +40,7 @@ export const sendEmail = async ({
         throw new Error('[Email] Missing RESEND_API_KEY. Get one free at https://resend.com')
     }
 
-    console.log(`[Email] Sending via Resend API to: ${to} | Subject: ${subject || templateId}`)
+    console.log(`[Email] Sending via Resend API to: ${to} | From: ${fromEmail} | Subject: ${subject || templateId}`)
 
     // Build request payload
     const payload: any = {
