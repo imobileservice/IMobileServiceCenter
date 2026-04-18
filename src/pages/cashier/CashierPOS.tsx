@@ -562,32 +562,30 @@ export default function CashierPOS() {
                     </div>
 
                     {/* Table Headers */}
-                    <div className="grid grid-cols-6 gap-1 border-b border-dashed border-black pb-1 mb-2 font-bold">
-                      <div className="col-span-3">#Item</div>
-                      <div className="col-span-1 text-center">Net</div>
-                      <div className="col-span-1 text-center">Qty</div>
-                      <div className="col-span-1 text-right">Total</div>
+                    <div className="flex justify-between border-b border-dashed border-black pb-1 mb-2 font-bold text-[11px]">
+                      <div className="flex-1">#Item</div>
+                      <div className="w-[60px] text-right">Net</div>
+                      <div className="w-[30px] text-center">Qty</div>
+                      <div className="w-[65px] text-right">Total</div>
                     </div>
 
                     {/* Items List */}
-                    <div className="space-y-3 mb-2 border-b border-dashed border-black pb-3">
+                    <div className="space-y-2 mb-2 border-b border-dashed border-black pb-3">
                        {lastSale?.items?.map((item: any, idx: number) => (
-                          <div key={idx} className="flex flex-col">
-                             <div className="font-bold mb-1">
+                          <div key={idx}>
+                             <div className="font-bold text-[11px] mb-0.5">
                                {idx + 1}) {item.product_name?.toUpperCase() || 'PRODUCT'}
                              </div>
-                             <div className="grid grid-cols-6 gap-1 text-[10px]">
-                                <div className="col-span-3 text-gray-700">
-                                   {formatCurrency(item.price).replace('Rs. ', '')}
+                             <div className="flex justify-between text-[10px]">
+                                <div className="flex-1"></div>
+                                <div className="w-[60px] text-right text-gray-700">
+                                   {Number(item.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
-                                <div className="col-span-1 text-center font-semibold">
-                                   {formatCurrency(item.price).replace('Rs. ', '')}
+                                <div className="w-[30px] text-center font-bold">
+                                   {item.quantity}
                                 </div>
-                                <div className="col-span-1 text-center font-semibold">
-                                   {item.quantity.toFixed(3)}
-                                </div>
-                                <div className="col-span-1 text-right font-bold">
-                                   {formatCurrency(item.total_price || (item.price * item.quantity)).replace('Rs. ', '')}
+                                <div className="w-[65px] text-right font-bold">
+                                   {Number(item.total_price || (item.price * item.quantity)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </div>
                              </div>
                           </div>

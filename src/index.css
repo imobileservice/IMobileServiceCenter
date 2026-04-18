@@ -19,3 +19,57 @@ code {
   min-height: 100vh;
 }
 
+/* ========== PRINT STYLES ========== */
+/* When printing, ONLY show the receipt (#pos-receipt) */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Reset body styles for clean print */
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Show only the receipt and its children */
+  #pos-receipt,
+  #pos-receipt * {
+    visibility: visible !important;
+  }
+
+  /* Position receipt at top-left for thermal printer */
+  #pos-receipt {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 4mm !important;
+    background: white !important;
+    color: black !important;
+    font-size: 11px !important;
+    z-index: 99999 !important;
+  }
+
+  /* Remove all page margins for thermal paper */
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  /* Hide toasts, modals backdrop, navigation, etc */
+  [data-sonner-toaster],
+  .print\\:hidden,
+  nav,
+  header,
+  footer,
+  aside {
+    display: none !important;
+  }
+}
