@@ -102,7 +102,9 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                 </div>
 
                 {/* The label preview — matches physical sticker style */}
-                {previewProduct && previewProduct.barcode && (
+                {previewProduct && previewProduct.barcode && (() => {
+                  const isDisplay = previewProduct.name?.toLowerCase().includes('display');
+                  return (
                   <div className="bg-white border-2 border-dashed border-border rounded-xl p-6 flex items-center justify-center shadow-inner w-full flex-shrink-0">
                     <div
                       className="bg-white text-black border border-gray-400 shadow-sm"
@@ -142,14 +144,20 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                       <p style={{ fontSize: '7.5px', fontWeight: 700, textAlign: 'center', margin: '2px 0 0', lineHeight: 1.1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {previewProduct.name}
                       </p>
-                      {previewProduct.price !== undefined && (
+                      {!isDisplay && previewProduct.price !== undefined && (
                         <p style={{ fontSize: '7px', fontWeight: 800, textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
                           Rs. {previewProduct.price.toLocaleString()}
                         </p>
                       )}
+                      {isDisplay && (
+                        <p style={{ fontSize: '6px', fontWeight: 600, textAlign: 'center', margin: '1px 0 0', lineHeight: 1, color: '#666' }}>
+                          Display Part
+                        </p>
+                      )}
                     </div>
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Print Mode Selector */}
                 <div className="w-full flex gap-3 flex-shrink-0">
@@ -185,26 +193,62 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
 
                 {/* Quantity List Mapping */}
                 <div className="w-full bg-muted/30 border border-border rounded-xl p-3 flex-shrink-0">
-                  <p className="font-bold text-xs uppercase text-muted-foreground mb-3 px-2">Copy Count Config</p>
-                  <div className="w-full flex flex-col gap-1 max-h-[160px] overflow-y-auto px-2">
+                  <p className="font-bold text-xs uppercase text-muted-foreground mb-3 px-2">Label Copies Per Product</p>
+                  <div className="w-full flex flex-col gap-1 max-h-[220px] overflow-y-auto px-2">
                      {products.map(p => {
                        const id = p.id || p.barcode || '';
                        if (!id) return null;
+                       const isDisplay = p.name?.toLowerCase().includes('display');
                        return (
-                         <div key={id} className="flex items-center justify-between border-b border-border/50 last:border-0 pb-2 mb-2 last:pb-0 last:mb-0">
+                         <div key={id} className="flex items-center justify-between border-b border-border/50 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
                            <div className="flex-1 min-w-0 pr-4">
                              <p className="font-semibold text-xs truncate leading-tight">{p.name}</p>
-                             <p className="text-[10px] text-muted-foreground font-mono truncate">{p.barcode}</p>
+                             <div className="flex items-center gap-2 mt-0.5">
+                               <p className="text-[10px] text-muted-foreground font-mono truncate">{p.barcode}</p>
+                               {isDisplay && (
+                                 <span className="text-[9px] bg-amber-500/15 text-amber-600 font-bold px-1.5 py-0.5 rounded">NO PRICE</span>
+                               )}
+                             </div>
                            </div>
-                           <div className="flex items-center gap-2 flex-shrink-0">
+                           <div className="flex items-center gap-1.5 flex-shrink-0">
+                             <button onClick={() => updateQuantity(id, -10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">-10</button>
                              <button onClick={() => updateQuantity(id, -1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Minus className="w-3 h-3"/></button>
-                             <span className="w-6 text-center font-bold text-sm select-none">{quantities[id] || 0}</span>
+                             <input
+                               type="number"
+                               min="0"
+                               max="200"
+                               value={quantities[id] || 0}
+                               onChange={(e) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Math.min(200, parseInt(e.target.value) || 0)) }))}
+                               className="w-12 h-7 text-center font-bold text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                             />
                              <button onClick={() => updateQuantity(id, 1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Plus className="w-3 h-3"/></button>
+                             <button onClick={() => updateQuantity(id, 10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">+10</button>
                            </div>
                          </div>
                        )
                      })}
                   </div>
+                  {/* Quick Set Buttons */}
+                  {products.length === 1 && (
+                    <div className="mt-3 px-2 flex gap-2">
+                      {[5, 10, 25, 50, 100].map(n => (
+                        <button
+                          key={n}
+                          onClick={() => {
+                            const id = products[0].id || products[0].barcode || '';
+                            setQuantities(prev => ({ ...prev, [id]: n }));
+                          }}
+                          className={`flex-1 py-1.5 rounded-lg border text-xs font-bold transition-all ${
+                            quantities[products[0].id || products[0].barcode || ''] === n
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-border bg-background text-muted-foreground hover:bg-muted'
+                          }`}
+                        >
+                          ×{n}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -344,7 +388,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                    <p style={{ fontSize: '5pt', fontWeight: 700, margin: '0', lineHeight: 1.1, maxWidth: '46mm', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                      {prod.name}
                    </p>
-                   {prod.price !== undefined && (
+                   {!prod.name?.toLowerCase().includes('display') && prod.price !== undefined && (
                      <p style={{ fontSize: '4.5pt', fontWeight: 800, margin: '0.5mm 0 0', lineHeight: 1 }}>
                        Rs. {prod.price.toLocaleString()}
                      </p>
