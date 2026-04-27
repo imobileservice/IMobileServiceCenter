@@ -93,31 +93,33 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
       return res.status(500).json({ error: `Failed to create order items: ${itemsError.message}` })
     } else {
       console.log('[Orders API] Order items created successfully')
-      
-      // Reduce stock for each item in consolidated inventory
-      console.log('[Orders API] Reducing stock for items in inventory...')
-      for (const item of items) {
-        if (item.product_id) {
-          try {
-            // 1. Get current stock from inv_stock
+
+      // Reduce stock for each item in consolidated inventory (unless it's COD)
+      if (payment_method !== 'cash_on_delivery') {
+        console.log('[Orders API] Reducing stock for items in inventory...')
+        for (const item of items) {
+          if (item.product_id) {
+            try {
+            // 1. Get current stock from inv_stock for Meegoda branch
             const { data: invStock, error: fetchError } = await adminClient
               .from('inv_stock')
-              .select('quantity')
+              .select('qty_meegoda')
               .eq('product_id', item.product_id)
               .single()
-              
+
             if (!fetchError && invStock) {
-              const newQuantity = Math.max(0, (invStock.quantity || 0) - (item.quantity || 1))
-              
-              // 2. Update inv_stock
+              const currentQty = invStock.qty_meegoda || 0
+              const newQty = Math.max(0, currentQty - (item.quantity || 1))
+
+              // 2. Update inv_stock Meegoda column
               await adminClient
                 .from('inv_stock')
-                .update({ 
-                  quantity: newQuantity, 
-                  updated_at: new Date().toISOString() 
+                .update({
+                  qty_meegoda: newQty,
+                  updated_at: new Date().toISOString()
                 })
                 .eq('product_id', item.product_id)
-                
+
               // 3. Log movement in inv_stock_movements (audit trail)
               await adminClient
                 .from('inv_stock_movements')
@@ -126,11 +128,11 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
                   type: 'sale',
                   quantity: -(item.quantity || 1),
                   reference_id: orderData.id,
-                  notes: `Website Order: ${orderData.order_number}`,
+                  notes: `Website Order (Meegoda): ${orderData.order_number}`,
                   created_by: 'system'
                 })
-              
-              console.log(`[Orders API] Stock reduced: ${invStock.quantity} -> ${newQuantity} for product ${item.product_id}`)
+
+              console.log(`[Orders API] Meegoda stock reduced: ${currentQty} -> ${newQty} for product ${item.product_id}`)
             } else {
               console.warn(`[Orders API] Could not find inv_stock record for product ${item.product_id}`)
             }
@@ -141,6 +143,7 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
       }
     }
   }
+}
 
   // Send Invoice Email in background (non-blocking - don't hold up the response)
   setImmediate(async () => {

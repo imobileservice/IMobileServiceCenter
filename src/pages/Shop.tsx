@@ -358,9 +358,25 @@ export default function ShopPage() {
                     }
 
                     // Convert database product to ProductCard format
+                    // Build display name: "Brand Model Name" — same logic as the admin panel auto-generate
+                    const specsObj = product.specs
+                      ? (typeof product.specs === 'string' ? JSON.parse(product.specs) : product.specs) as Record<string, string>
+                      : {}
+                    const modelName: string = specsObj?.model || specsObj?.Model || ""
+                    // Construct: prepend brand if missing, inject model if not already in name
+                    let displayName = product.name
+                    if (product.brand && !displayName.toLowerCase().startsWith(product.brand.toLowerCase())) {
+                      displayName = `${product.brand} ${displayName}`
+                    }
+                    if (modelName && !displayName.toLowerCase().includes(modelName.toLowerCase())) {
+                      // Insert model right after the brand
+                      const brandPrefix = product.brand ? `${product.brand} ` : ""
+                      const rest = displayName.startsWith(brandPrefix) ? displayName.slice(brandPrefix.length) : displayName
+                      displayName = `${brandPrefix}${modelName} ${rest}`.trim().replace(/\s+/g, " ")
+                    }
                     const productCardProps = {
                       id: product.id,
-                      name: product.name,
+                      name: displayName,
                       price: Number(product.price),
                       image: product.image || product.images?.[0] || "/placeholder.svg",
                       condition: product.condition,

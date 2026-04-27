@@ -11,9 +11,9 @@ interface ProductQuickViewProps {
     id: string
     name: string
     price: number
-    image: string
+    image: string | null
     condition: "new" | "used"
-    brand: string
+    brand: string | null
   }
   onClose: () => void
 }
@@ -26,7 +26,7 @@ export default function ProductQuickView({ product, onClose }: ProductQuickViewP
       id: product.id,
       name: product.name,
       price: product.price,
-      image: product.image,
+      image: product.image ?? "/placeholder.svg",
       quantity: 1,
       condition: product.condition,
     }
@@ -81,7 +81,7 @@ export default function ProductQuickView({ product, onClose }: ProductQuickViewP
                   >
                     {product.condition === "new" ? "New" : "Used"}
                   </span>
-                  <span className="text-sm text-muted-foreground">{product.brand}</span>
+                  <span className="text-sm text-muted-foreground">{product.brand ?? "Unknown"}</span>
                 </div>
 
                 <h2 className="text-3xl font-bold mb-4">{product.name}</h2>

@@ -6,6 +6,7 @@ interface CashierUser {
   email: string
   name: string
   role: string
+  shop: string
 }
 
 interface CashierState {
@@ -28,6 +29,7 @@ export const useCashierStore = create<CashierState>()(
               email: userData.email || email,
               name: userData.name || "Cashier",
               role: userData.role || "cashier",
+              shop: userData.shop || "Meegoda",
             },
             isAuthenticated: true,
           })

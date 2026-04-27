@@ -11,7 +11,7 @@ export async function getCashiersHandler(req: Request, res: Response) {
         const supabase = createClient(supabaseUrl, supabaseKey)
         const { data, error } = await supabase
             .from('admins')
-            .select('id, email, name, role, created_at')
+            .select('id, email, name, role, created_at, shop')
             .eq('role', 'cashier')
             .order('created_at', { ascending: false })
 
@@ -25,7 +25,7 @@ export async function getCashiersHandler(req: Request, res: Response) {
 
 export async function createCashierHandler(req: Request, res: Response) {
     try {
-        const { email, password, name } = req.body
+        const { email, password, name, shop } = req.body
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
         const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
         
@@ -46,9 +46,10 @@ export async function createCashierHandler(req: Request, res: Response) {
                 email: email.toLowerCase(),
                 password: password,
                 name: name || 'New Cashier',
-                role: 'cashier'
+                role: 'cashier',
+                shop: shop || 'Meegoda'
             })
-            .select('id, email, name, role, created_at')
+            .select('id, email, name, role, created_at, shop')
             .single()
 
         if (error) throw error
@@ -77,3 +78,30 @@ export async function deleteCashierHandler(req: Request, res: Response) {
         res.status(500).json({ error: error.message })
     }
 }
+
+export async function updateCashierHandler(req: Request, res: Response) {
+    try {
+        const { id } = req.params
+        const { shop } = req.body
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+        if (!supabaseUrl || !supabaseKey) { return res.status(500).json({ error: 'Server config error' }) }
+
+        const supabase = createClient(supabaseUrl, supabaseKey)
+        const { data, error } = await supabase
+            .from('admins')
+            .update({ shop })
+            .eq('id', id)
+            .eq('role', 'cashier')
+            .select('id, email, name, role, created_at, shop')
+            .single()
+
+        if (error) throw error
+        res.json({ data })
+    } catch (error: any) {
+        console.error('[Admin] Update Cashier Error:', error)
+        res.status(500).json({ error: error.message })
+    }
+}
+

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Search, Plus, Trash2, Shield, User, Mail, Calendar } from "lucide-react"
+import { Search, Plus, Trash2, Shield, User, Mail, Calendar, MapPin, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import AdminLayout from "@/components/admin-layout"
@@ -15,7 +15,9 @@ export default function AdminCashiers() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
+  const [shop, setShop] = useState("Meegoda")
   const [isAdding, setIsAdding] = useState(false)
+  const [updatingShopId, setUpdatingShopId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchCashiers()
@@ -43,7 +45,7 @@ export default function AdminCashiers() {
       const res = await fetch(getApiUrl('/api/admin/cashiers'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name })
+        body: JSON.stringify({ email, password, name, shop })
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error)
@@ -51,6 +53,7 @@ export default function AdminCashiers() {
       setEmail("")
       setPassword("")
       setName("")
+      setShop("Meegoda")
       fetchCashiers()
     } catch (err: any) {
       toast.error(err.message || 'Failed to create cashier')
@@ -71,6 +74,25 @@ export default function AdminCashiers() {
       setCashiers(prev => prev.filter(c => c.id !== id))
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete cashier')
+    }
+  }
+
+  const handleUpdateShop = async (id: string, newShop: string) => {
+    try {
+      setUpdatingShopId(id)
+      const res = await fetch(getApiUrl(`/api/admin/cashiers/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop: newShop })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error)
+      toast.success('Cashier shop updated successfully')
+      fetchCashiers()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update shop')
+    } finally {
+      setUpdatingShopId(null)
     }
   }
 
@@ -126,6 +148,21 @@ export default function AdminCashiers() {
                   required 
                 />
               </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Assigned Shop</label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" />
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9"
+                    value={shop}
+                    onChange={e => setShop(e.target.value)}
+                  >
+                    <option value="Meegoda">Meegoda</option>
+                    <option value="Padukka">Padukka</option>
+                    <option value="Padukka new">Padukka new</option>
+                  </select>
+                </div>
+              </div>
               <Button type="submit" className="w-full mt-2" disabled={isAdding}>
                 {isAdding ? "Creating..." : "Create Account"}
               </Button>
@@ -160,9 +197,24 @@ export default function AdminCashiers() {
                       <div>
                         <h3 className="font-bold text-foreground">{c.name || 'Unnamed'}</h3>
                         <p className="text-sm text-muted-foreground">{c.email}</p>
-                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1 font-mono uppercase">
-                          <Shield className="w-3 h-3 text-green-500" />
-                          Role: {c.role}
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-1 font-mono uppercase">
+                          <span className="flex items-center gap-1"><Shield className="w-3 h-3 text-green-500" /> Role: {c.role}</span>
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-blue-500" /> Shop: 
+                            {updatingShopId === c.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <select 
+                                className="bg-transparent border-b border-dashed border-muted-foreground/50 focus:outline-none cursor-pointer hover:text-foreground text-[10px] ml-1"
+                                value={c.shop || 'Meegoda'}
+                                onChange={(e) => handleUpdateShop(c.id, e.target.value)}
+                              >
+                                <option value="Meegoda">Meegoda</option>
+                                <option value="Padukka">Padukka</option>
+                                <option value="Padukka new">Padukka new</option>
+                              </select>
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>

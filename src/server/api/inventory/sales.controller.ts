@@ -44,6 +44,7 @@ router.post('/', async (req: Request, res: Response) => {
       p_notes: notes || null,
       p_created_by: created_by || 'cashier',
       p_items: items,
+      p_shop: req.body.shop || 'Meegoda',
     })
 
     if (error) {
@@ -66,7 +67,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
-    const { from_date, to_date, source, payment_method, limit: queryLimit } = req.query
+    const { from_date, to_date, source, payment_method, shop, limit: queryLimit } = req.query
 
     let query = supabase
       .from('inv_sales')
@@ -90,6 +91,9 @@ router.get('/', async (req: Request, res: Response) => {
     }
     if (payment_method && typeof payment_method === 'string') {
       query = query.eq('payment_method', payment_method)
+    }
+    if (shop && typeof shop === 'string') {
+      query = query.eq('shop', shop)
     }
 
     const { data, error } = await query
@@ -166,14 +170,21 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.get('/today/summary', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
+    const { shop } = req.query
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const todayStr = today.toISOString()
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('inv_sales')
-      .select('id, net_amount, payment_method, source')
+      .select('id, net_amount, payment_method, source, shop')
       .gte('created_at', todayStr)
+
+    if (shop && typeof shop === 'string') {
+      query = query.eq('shop', shop)
+    }
+
+    const { data, error } = await query
 
     if (error) throw error
 

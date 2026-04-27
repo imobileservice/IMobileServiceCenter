@@ -35,6 +35,8 @@ const AdminInventory = lazy(() => import('./pages/admin/inventory/InventoryPage'
 const AdminSales = lazy(() => import('./pages/admin/inventory/SalesPage'))
 const CashierLogin = lazy(() => import('./pages/cashier/CashierLogin'))
 const CashierPOS = lazy(() => import('./pages/cashier/CashierPOS'))
+const CashierDashboard = lazy(() => import('./pages/cashier/CashierDashboard'))
+const CashierInventory = lazy(() => import('./pages/cashier/CashierInventory'))
 
 // Loading component
 const PageLoading = () => (
@@ -79,7 +81,10 @@ export default function App() {
         <Route path="/admin/sales" element={<AdminSales />} />
         <Route path="/admin/cashiers" element={<AdminCashiers />} />
         <Route path="/cashier/login" element={<CashierLogin />} />
+        <Route path="/cashier" element={<CashierPOS />} />
         <Route path="/cashier/pos" element={<CashierPOS />} />
+        <Route path="/cashier/dashboard" element={<CashierDashboard />} />
+        <Route path="/cashier/inventory" element={<CashierInventory />} />
       </Routes>
     </Suspense>
   )

@@ -340,6 +340,19 @@ export default function ProductDetailPage() {
   // Default specs if not available
   const productSpecs = product.specs || {}
 
+  // Build display name: "Brand Model Name" — same logic as the admin panel auto-generate
+  // The model is stored in specs.model; older products may only have "Brand Category" as name.
+  const specsModelName: string = productSpecs?.model || productSpecs?.Model || ""
+  let displayName = product.name
+  if (product.brand && !displayName.toLowerCase().startsWith(product.brand.toLowerCase())) {
+    displayName = `${product.brand} ${displayName}`
+  }
+  if (specsModelName && !displayName.toLowerCase().includes(specsModelName.toLowerCase())) {
+    const brandPrefix = product.brand ? `${product.brand} ` : ""
+    const rest = displayName.startsWith(brandPrefix) ? displayName.slice(brandPrefix.length) : displayName
+    displayName = `${brandPrefix}${specsModelName} ${rest}`.trim().replace(/\s+/g, " ")
+  }
+
   // Check if product is mobile phone or tablet (needs variant selectors)
   // More flexible category check - handle both slug format and display format
   // Include all mobile phone subcategories (mobile-phones-iphone, mobile-phones-samsung, etc.)
@@ -475,8 +488,9 @@ export default function ProductDetailPage() {
   // Breadcrumbs
   const breadcrumbs = [
     { label: "Home", path: "/" },
+    { label: "Shop", path: "/shop" },
     ...(product.brand ? [{ label: product.brand, path: `/shop?brand=${encodeURIComponent(product.brand)}` }] : []),
-    { label: product.name, path: "" }
+    { label: displayName, path: "" }
   ]
 
   return (
@@ -507,7 +521,7 @@ export default function ProductDetailPage() {
           {/* Product Images */}
           <ProductImageGallery 
             images={productImages} 
-            productName={product.name} 
+            productName={displayName} 
             condition={product.condition} 
             externalImageIndex={activeImageIndex}
           />
@@ -517,7 +531,7 @@ export default function ProductDetailPage() {
             <div className="space-y-6">
               {/* Product Name */}
               <div>
-                <h1 className="text-3xl sm:text-4xl font-bold mb-3">{product.name}</h1>
+                <h1 className="text-3xl sm:text-4xl font-bold mb-3">{displayName}</h1>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex items-center gap-1">
                     {[...Array(5)].map((_, i) => (

@@ -162,11 +162,17 @@ export default function CashierPOS() {
   }, [searchTerm])
 
   const addToCart = (product: any) => {
+    const shopName = cashier?.shop || 'Meegoda'
+    let availableStock = 0
+    if (shopName === 'Padukka') availableStock = product.qty_padukka || 0
+    else if (shopName === 'Padukka new') availableStock = product.qty_padukka_new || 0
+    else availableStock = product.qty_meegoda || 0
+
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id)
       if (existing) {
-        if (existing.quantity >= product.stock_quantity) {
-          toast.error("Not enough stock available")
+        if (existing.quantity >= availableStock) {
+          toast.error("Not enough stock available in your shop")
           return prev
         }
         return prev.map(item => 
@@ -178,7 +184,7 @@ export default function CashierPOS() {
         name: getDisplayName(product),
         price: product.price,
         quantity: 1,
-        stock: product.stock_quantity,
+        stock: availableStock,
         image: product.image
       }]
     })
@@ -218,6 +224,7 @@ export default function CashierPOS() {
         payment_method: paymentMethod,
         source: 'pos' as const,
         created_by: cashier?.email || 'cashier',
+        shop: cashier?.shop || 'Meegoda',
         items: cart.map(item => ({
           product_id: item.id,
           quantity: item.quantity,
@@ -338,9 +345,19 @@ export default function CashierPOS() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="font-black text-primary text-sm">{formatCurrency(product.price)}</p>
-                        <p className={`text-[10px] font-bold ${product.stock_quantity > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {product.stock_quantity > 0 ? `Stock: ${product.stock_quantity}` : 'OUT OF STOCK'}
-                        </p>
+                        {(() => {
+                           const shopName = cashier?.shop || 'Meegoda'
+                           let availableStock = 0
+                           if (shopName === 'Padukka') availableStock = product.qty_padukka || 0
+                           else if (shopName === 'Padukka new') availableStock = product.qty_padukka_new || 0
+                           else availableStock = product.qty_meegoda || 0
+
+                           return (
+                             <p className={`text-[10px] font-bold ${availableStock > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                               {availableStock > 0 ? `Stock: ${availableStock}` : 'OUT OF STOCK'}
+                             </p>
+                           )
+                        })()}
                       </div>
                     </button>
                   ))}

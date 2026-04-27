@@ -52,6 +52,9 @@ export async function detailHandler(req: Request, res: Response) {
           id,
           name,
           slug
+        ),
+        inv_stock (
+          quantity
         )
       `)
       .eq('id', id)
@@ -81,13 +84,17 @@ export async function detailHandler(req: Request, res: Response) {
     const images = imagesData?.map((img: any) => img.url) || []
     const primaryImage = imagesData?.find((img: any) => img.is_primary)?.url || images[0]
 
+    // Resolve stock from join
+    const stockRec = Array.isArray(product.inv_stock) ? product.inv_stock[0] : product.inv_stock;
+
     // Combine product data with images
     const productWithImages = {
       ...product,
       image: primaryImage || product.image, // Fallback to old field if exists
       images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
       category: product.categories?.slug || product.category, // Use category slug from join or fallback
-    }
+      stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
+    };
 
     return res.json({ data: productWithImages })
   } catch (e: any) {

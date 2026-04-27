@@ -252,8 +252,12 @@ export default function InventoryPage() {
                         </div>
                       </td>
                       <td className="p-4 text-center">
-                        <span className="text-2xl font-black">{item.quantity}</span>
-                        <p className="text-[10px] text-muted-foreground">Min. Threshold: {item.low_stock_threshold}</p>
+                        <span className="text-2xl font-black">{item.quantity || 0}</span>
+                        <div className="flex flex-col mt-2 text-[10px] text-muted-foreground bg-muted/30 p-1.5 rounded-lg text-left max-w-[120px] mx-auto border border-border/50">
+                          <div className="flex justify-between gap-2"><span>Meegoda:</span> <span className="font-bold text-foreground">{item.qty_meegoda || 0}</span></div>
+                          <div className="flex justify-between gap-2"><span>Padukka:</span> <span className="font-bold text-foreground">{item.qty_padukka || 0}</span></div>
+                          <div className="flex justify-between gap-2"><span>Padukka New:</span> <span className="font-bold text-foreground">{item.qty_padukka_new || 0}</span></div>
+                        </div>
                       </td>
                       <td className="p-4">
                          {item.is_low_stock ? (

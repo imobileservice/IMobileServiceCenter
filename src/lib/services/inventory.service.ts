@@ -93,6 +93,7 @@ export interface CreateSalePayload {
   tax?: number
   notes?: string
   created_by?: string
+  shop?: string
   items: SaleItem[]
 }
 
@@ -107,6 +108,7 @@ export const inventorySalesService = {
     to_date?: string
     source?: string
     payment_method?: string
+    shop?: string
     limit?: number
   }) => {
     const qs = new URLSearchParams()
@@ -114,6 +116,7 @@ export const inventorySalesService = {
     if (params?.to_date) qs.set('to_date', params.to_date)
     if (params?.source) qs.set('source', params.source)
     if (params?.payment_method) qs.set('payment_method', params.payment_method)
+    if (params?.shop) qs.set('shop', params.shop)
     if (params?.limit) qs.set('limit', String(params.limit))
     const query = qs.toString() ? `?${qs.toString()}` : ''
     return apiFetch(`/sales${query}`)
@@ -123,7 +126,10 @@ export const inventorySalesService = {
 
   getByInvoiceNumber: (invoice: string) => apiFetch(`/sales/invoice/${invoice}`),
 
-  getTodaySummary: () => apiFetch('/sales/today/summary'),
+  getTodaySummary: (shop?: string) => {
+    const query = shop ? `?shop=${encodeURIComponent(shop)}` : ''
+    return apiFetch(`/sales/today/summary${query}`)
+  },
 }
 
 // ─── PURCHASES ───────────────────────────────────────

@@ -29,7 +29,7 @@ export async function initCashierLoginHandler(req: Request, res: Response) {
         const adminClient = createClient(supabaseUrl, supabaseServiceKey)
         const { data: admin, error: adminError } = await adminClient
             .from('admins')
-            .select('id, name, password, role')
+            .select('id, name, password, role, shop')
             .eq('email', normalizedEmail)
             .single()
 
@@ -181,7 +181,7 @@ export async function verifyCashierLoginHandler(req: Request, res: Response) {
         // 2. Fetch admin details
         const { data: admin, error: adminError } = await adminClient
             .from('admins')
-            .select('id, email, name, role, password')
+            .select('id, email, name, role, password, shop')
             .eq('email', normalizedEmail)
             .single()
 
@@ -202,7 +202,8 @@ export async function verifyCashierLoginHandler(req: Request, res: Response) {
                 id: admin.id,
                 email: admin.email,
                 name: admin.name || 'Cashier',
-                role: admin.role
+                role: admin.role,
+                shop: admin.shop || 'Meegoda'
             },
             message: 'Login successful'
         })

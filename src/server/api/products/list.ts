@@ -38,7 +38,7 @@ export async function listHandler(req: Request, res: Response) {
 
     const { category, brand, condition, search, minPrice, maxPrice } = req.query
 
-    // Build query - join with categories for filtering
+    // Build query - join with categories and inventory stock
     let query = supabase
       .from('products')
       .select(`
@@ -47,6 +47,9 @@ export async function listHandler(req: Request, res: Response) {
           id,
           name,
           slug
+        ),
+        inv_stock (
+          quantity
         )
       `)
 
@@ -101,7 +104,7 @@ export async function listHandler(req: Request, res: Response) {
     // Load images from product_images table for each product
     if (data && data.length > 0) {
       const productIds = data.map((p: any) => p.id)
-      
+
       const { data: imagesData } = await supabase
         .from('product_images')
         .select('product_id, url, display_order, is_primary')
@@ -119,16 +122,20 @@ export async function listHandler(req: Request, res: Response) {
 
       // Attach images to products
       const productsWithImages = data.map((product: any) => {
-        const images = imagesMap.get(product.id) || []
-        const primaryImage = imagesData?.find((img: any) => img.product_id === product.id && img.is_primary)?.url || images[0]
-        
+        const images = imagesMap.get(product.id) || [];
+        const primaryImage = imagesData?.find((img: any) => img.product_id === product.id && img.is_primary)?.url || images[0];
+
+        // Resolve stock from join
+        const stockRec = Array.isArray(product.inv_stock) ? product.inv_stock[0] : product.inv_stock;
+
         return {
           ...product,
           image: primaryImage || product.image, // Fallback to old field if exists
           images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
           category: product.categories?.slug || product.category, // Use category slug from join or fallback
-        }
-      })
+          stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
+        };
+      });
 
       return res.json({ data: productsWithImages })
     }

@@ -36,9 +36,17 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   let productData: any = { ...req.body }
   const imageUrls = productData.images || (productData.image ? [productData.image] : [])
 
-  // Remove old image fields (they're stored in product_images table now)
+  // Extract shop-specific stock quantities
+  const qty_meegoda = productData.qty_meegoda || 0
+  const qty_padukka = productData.qty_padukka || 0
+  const qty_padukka_new = productData.qty_padukka_new || 0
+
+  // Remove non-product table fields
   delete productData.image
   delete productData.images
+  delete productData.qty_meegoda
+  delete productData.qty_padukka
+  delete productData.qty_padukka_new
 
   if (productData.category && !productData.category_id) {
     // Get category_id from slug
@@ -102,7 +110,9 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
       .from('inv_stock')
       .insert({
         product_id: data.id,
-        quantity: productData.stock || 0,
+        qty_meegoda: qty_meegoda,
+        qty_padukka: qty_padukka,
+        qty_padukka_new: qty_padukka_new,
         low_stock_threshold: 5
       })
 
@@ -157,9 +167,17 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
   let updateData: any = { ...req.body }
   const imageUrls = updateData.images || (updateData.image ? [updateData.image] : undefined)
 
-  // Remove old image fields (they're stored in product_images table now)
+  // Extract shop-specific stock quantities
+  const qty_meegoda = updateData.qty_meegoda
+  const qty_padukka = updateData.qty_padukka
+  const qty_padukka_new = updateData.qty_padukka_new
+
+  // Remove old image fields and stock fields (they're stored in other tables)
   delete updateData.image
   delete updateData.images
+  delete updateData.qty_meegoda
+  delete updateData.qty_padukka
+  delete updateData.qty_padukka_new
 
   if (updateData.category && !updateData.category_id) {
     // Get category_id from slug
@@ -194,14 +212,17 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   // Sync inventory stock if stock was updated
-  if (updateData.stock !== undefined && data?.id) {
-    console.log(`[Admin CRUD] Syncing manual stock update for product ${id}: ${updateData.stock}`)
+  if (qty_meegoda !== undefined || qty_padukka !== undefined || qty_padukka_new !== undefined) {
+    console.log(`[Admin CRUD] Syncing manual stock update for product ${id}`)
+    
+    const updatePayload: any = { updated_at: new Date().toISOString() }
+    if (qty_meegoda !== undefined) updatePayload.qty_meegoda = qty_meegoda
+    if (qty_padukka !== undefined) updatePayload.qty_padukka = qty_padukka
+    if (qty_padukka_new !== undefined) updatePayload.qty_padukka_new = qty_padukka_new
+
     const { error: invStockError } = await supabase
       .from('inv_stock')
-      .update({ 
-        quantity: updateData.stock,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('product_id', data.id)
 
     if (invStockError) {
@@ -211,7 +232,9 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
         .from('inv_stock')
         .upsert({
           product_id: data.id,
-          quantity: updateData.stock,
+          qty_meegoda: qty_meegoda || 0,
+          qty_padukka: qty_padukka || 0,
+          qty_padukka_new: qty_padukka_new || 0,
           low_stock_threshold: 5
         })
     }
@@ -323,6 +346,62 @@ export const updateOrderStatusHandler = asyncHandler(async (req: Request, res: R
   if (!data) {
     console.error(`[Admin] Order not found for update: ${id}`)
     return res.status(404).json({ error: 'Order not found' })
+  }
+
+  // Handle stock reduction for Cash on Delivery orders ONLY when shipped
+  if (status === 'shipped' && data.payment_method === 'cash_on_delivery') {
+    console.log(`[Admin] COD order ${id} marked as Shipped. Reducing stock...`)
+    
+    // Fetch items for this order
+    const { data: items, error: itemsError } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', id)
+      
+    if (!itemsError && items) {
+      for (const item of items) {
+        if (item.product_id) {
+          try {
+            // Get current Meegoda stock
+            const { data: invStock } = await supabase
+              .from('inv_stock')
+              .select('qty_meegoda')
+              .eq('product_id', item.product_id)
+              .single()
+            
+            if (invStock) {
+              const currentQty = invStock.qty_meegoda || 0
+              const newQty = Math.max(0, currentQty - (item.quantity || 1))
+              
+              // 1. Update Meegoda stock
+              await supabase
+                .from('inv_stock')
+                .update({ 
+                  qty_meegoda: newQty,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('product_id', item.product_id)
+              
+              // 2. Log movement
+              await supabase
+                .from('inv_stock_movements')
+                .insert({
+                  product_id: item.product_id,
+                  type: 'sale',
+                  quantity: -(item.quantity || 1),
+                  reference_id: id,
+                  notes: `Website COD Order Shipped: ${data.order_number}`,
+                  created_by: 'admin'
+                })
+                
+              console.log(`[Admin] Stock reduced for item ${item.product_id} in COD order ${data.order_number}`)
+            }
+          } catch (err) {
+            console.error(`[Admin] Error reducing stock for COD item:`, err)
+          }
+        }
+      }
+    }
   }
 
   return res.json({ data })

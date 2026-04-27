@@ -12,6 +12,7 @@ import { storageService } from "@/lib/supabase/services/storage"
 import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import { toast } from "sonner"
 import { MODELS_BY_BRAND, BRANDS } from "@/constants/models"
+import { createClient } from "@/lib/supabase/client"
 
 const EXCLUDED_CATEGORIES = ["accessories", "tempered-glass", "smart-watch"]
 
@@ -37,6 +38,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     brand: "",
     price: "",
     stock: "",
+    qty_meegoda: "0",
+    qty_padukka: "0",
+    qty_padukka_new: "0",
     image: "",
     images: [] as string[],
     description: "",
@@ -170,9 +174,28 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               specs: specs,
               is_featured: Boolean((product as any).is_featured),
               variants: variants,
+              qty_meegoda: "0",
+              qty_padukka: "0",
+              qty_padukka_new: "0",
             })
             // Initialize search query with product name
             setSearchQuery(product.name || "")
+
+            // Fetch specific shop quantities
+            try {
+              const supabase = createClient()
+              const { data: stockData } = await supabase.from('inv_stock').select('*').eq('product_id', editingProductId).single()
+              if (stockData) {
+                setFormData(prev => ({
+                  ...prev,
+                  qty_meegoda: stockData.qty_meegoda?.toString() || "0",
+                  qty_padukka: stockData.qty_padukka?.toString() || "0",
+                  qty_padukka_new: stockData.qty_padukka_new?.toString() || "0",
+                }))
+              }
+            } catch (err) {
+              console.error('Failed to fetch shop stock:', err)
+            }
           }
         } catch (error) {
           console.error('Failed to fetch product:', error)
@@ -190,6 +213,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         brand: "",
         price: "",
         stock: "",
+        qty_meegoda: "0",
+        qty_padukka: "0",
+        qty_padukka_new: "0",
         image: "",
         images: [],
         description: "",
@@ -570,6 +596,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         brand: formData.brand || null,
         price: basePrice, // Base price
         stock: Number.parseInt(formData.stock) || 0,
+        qty_meegoda: Number.parseInt(formData.qty_meegoda) || 0,
+        qty_padukka: Number.parseInt(formData.qty_padukka) || 0,
+        qty_padukka_new: Number.parseInt(formData.qty_padukka_new) || 0,
         description: formData.description || null,
         condition: formData.condition,
         specs: Object.keys(formData.specs).length > 0 ? formData.specs : null,
@@ -849,17 +878,43 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     <option value="used">Used</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold mb-2">Stock *</label>
-                  <Input
-                    type="number"
-                    name="stock"
-                    value={formData.stock}
-                    onChange={handleChange}
-                    placeholder="10"
-                    min="0"
-                    required
-                  />
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Meegoda Stock *</label>
+                    <Input
+                      type="number"
+                      name="qty_meegoda"
+                      value={formData.qty_meegoda}
+                      onChange={handleChange}
+                      placeholder="0"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Padukka Stock *</label>
+                    <Input
+                      type="number"
+                      name="qty_padukka"
+                      value={formData.qty_padukka}
+                      onChange={handleChange}
+                      placeholder="0"
+                      min="0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold mb-2">Padukka New Stock *</label>
+                    <Input
+                      type="number"
+                      name="qty_padukka_new"
+                      value={formData.qty_padukka_new}
+                      onChange={handleChange}
+                      placeholder="0"
+                      min="0"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
             </div>

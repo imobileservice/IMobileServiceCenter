@@ -34,10 +34,6 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
 
   if (!products || products.length === 0) return null
 
-  const handlePrint = () => {
-    window.print()
-  }
-
   const updateQuantity = (id: string, delta: number) => {
     setQuantities(prev => ({
       ...prev,
@@ -56,6 +52,96 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
   // Preview the first product for visual representation
   const previewProduct = products[0] || null
 
+  const handlePrint = () => {
+    if (printItems.length === 0) return
+
+    const isA4 = printMode === 'a4'
+
+    const pageStyle = isA4
+      ? `@page { size: A4 portrait; margin: 5mm; }`
+      : `@page { size: 50mm 25mm; margin: 0; }`
+
+    const labelsHtml = printItems.map((prod, i) => {
+      const isDisplay = prod.name?.toLowerCase().includes('display')
+      const pageBreak = !isA4 && i < printItems.length - 1
+        ? 'page-break-after: always;'
+        : ''
+
+      return `
+        <div style="
+          width:50mm; height:25mm;
+          background:#fff; color:#000;
+          display:flex; flex-direction:column;
+          align-items:center; justify-content:center;
+          padding:1mm 2mm; box-sizing:border-box;
+          overflow:hidden;
+          font-family: Arial, sans-serif;
+          ${isA4 ? 'border:0.1mm dashed #ccc;' : ''}
+          ${pageBreak}
+        ">
+          <p style="font-size:5.5pt;font-weight:800;margin:0;text-align:center;line-height:1.1;letter-spacing:0.01em;width:100%;">
+            IMobile Service &amp; Repair Center
+          </p>
+
+          <p style="font-size:9pt;font-weight:900;letter-spacing:0.15em;margin:1.5mm 0 0;text-align:center;line-height:1;font-family:monospace;">
+            ${prod.barcode || ''}
+          </p>
+
+          <p style="font-size:5pt;font-weight:700;margin:1mm 0 0;line-height:1.1;max-width:46mm;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;">
+            ${(prod.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+          </p>
+
+          ${!isDisplay && prod.price !== undefined
+            ? `<p style="font-size:4.5pt;font-weight:800;margin:0.5mm 0 0;line-height:1;">Rs. ${prod.price.toLocaleString()}</p>`
+            : ''
+          }
+          ${isDisplay
+            ? `<p style="font-size:4pt;font-weight:600;margin:0.5mm 0 0;line-height:1;color:#555;">Display Part</p>`
+            : ''
+          }
+        </div>
+      `
+    }).join('')
+
+    const gridStyle = isA4
+      ? `display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:0;padding:0;margin:0;`
+      : `display:block;`
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Barcode Labels — IMobile</title>
+  <style>
+    ${pageStyle}
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #fff; font-family: Arial, sans-serif; }
+    .grid { ${gridStyle} }
+  </style>
+</head>
+<body>
+  <div class="grid">${labelsHtml}</div>
+</body>
+</html>`
+
+    const win = window.open('', '_blank', 'width=800,height=600')
+    if (!win) {
+      alert('Please allow popups for this site to print labels.')
+      return
+    }
+    win.document.write(html)
+    win.document.close()
+    win.onload = () => {
+      win.focus()
+      win.print()
+      setTimeout(() => win.close(), 500)
+    }
+    // Fallback if onload doesn't fire
+    setTimeout(() => {
+      try { win.focus(); win.print(); setTimeout(() => win.close(), 500) } catch (_) {}
+    }, 900)
+  }
+
   return (
     <>
       {/* ── Screen Modal ── */}
@@ -65,7 +151,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={onClose}
           >
             <motion.div
@@ -84,7 +170,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                   </div>
                   <div>
                     <h2 className="text-lg font-bold">Print Bulk Barcode Labels</h2>
-                    <p className="text-xs text-muted-foreground">High Res (300DPI) Vector Export</p>
+                    <p className="text-xs text-muted-foreground">Opens a clean print window</p>
                   </div>
                 </div>
                 <button
@@ -101,61 +187,59 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                   Label Preview Size (50mm × 25mm)
                 </div>
 
-                {/* The label preview — matches physical sticker style */}
+                {/* The label preview */}
                 {previewProduct && previewProduct.barcode && (() => {
                   const isDisplay = previewProduct.name?.toLowerCase().includes('display');
                   return (
-                  <div className="bg-white border-2 border-dashed border-border rounded-xl p-6 flex items-center justify-center shadow-inner w-full flex-shrink-0">
-                    <div
-                      className="bg-white text-black border border-gray-400 shadow-sm"
-                      style={{
-                        width: '188px',   /* ~50mm at 96dpi screen display */
-                        height: '94px',   /* ~25mm at 96dpi */
-                        padding: '4px 6px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start', marginBottom: '1px' }}>
-                        <p style={{ fontSize: '8px', fontWeight: 800, margin: 0, lineHeight: 1.1, letterSpacing: '0.01em', textAlign: 'center', flex: 1 }}>
+                    <div className="bg-white border-2 border-dashed border-border rounded-xl p-6 flex items-center justify-center shadow-inner w-full flex-shrink-0">
+                      <div
+                        className="bg-white text-black border border-gray-400 shadow-sm"
+                        style={{
+                          width: '188px',
+                          height: '94px',
+                          padding: '4px 6px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <p style={{ fontSize: '8px', fontWeight: 800, margin: 0, lineHeight: 1.1, letterSpacing: '0.01em', textAlign: 'center', width: '100%' }}>
                           IMobile Service &amp; Repair Center
                         </p>
-                      </div>
 
-                      <div style={{ margin: '0', padding: 0, lineHeight: 0, transform: 'scale(0.95)', transformOrigin: 'center' }}>
-                        <Barcode
-                          value={previewProduct.barcode}
-                          displayValue={false}
-                          height={26}
-                          width={1.3}
-                          margin={0}
-                          background="#ffffff"
-                          lineColor="#000000"
-                        />
-                      </div>
+                        <div style={{ margin: '0', padding: 0, lineHeight: 0, transform: 'scale(0.95)', transformOrigin: 'center' }}>
+                          <Barcode
+                            value={previewProduct.barcode}
+                            displayValue={false}
+                            height={26}
+                            width={1.3}
+                            margin={0}
+                            background="#ffffff"
+                            lineColor="#000000"
+                          />
+                        </div>
 
-                      <p style={{ fontSize: '13px', fontWeight: 900, letterSpacing: '0.12em', textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
-                        {previewProduct.barcode}
-                      </p>
-
-                      <p style={{ fontSize: '7.5px', fontWeight: 700, textAlign: 'center', margin: '2px 0 0', lineHeight: 1.1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {previewProduct.name}
-                      </p>
-                      {!isDisplay && previewProduct.price !== undefined && (
-                        <p style={{ fontSize: '7px', fontWeight: 800, textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
-                          Rs. {previewProduct.price.toLocaleString()}
+                        <p style={{ fontSize: '13px', fontWeight: 900, letterSpacing: '0.12em', textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
+                          {previewProduct.barcode}
                         </p>
-                      )}
-                      {isDisplay && (
-                        <p style={{ fontSize: '6px', fontWeight: 600, textAlign: 'center', margin: '1px 0 0', lineHeight: 1, color: '#666' }}>
-                          Display Part
+
+                        <p style={{ fontSize: '7.5px', fontWeight: 700, textAlign: 'center', margin: '2px 0 0', lineHeight: 1.1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {previewProduct.name}
                         </p>
-                      )}
+                        {!isDisplay && previewProduct.price !== undefined && (
+                          <p style={{ fontSize: '7px', fontWeight: 800, textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
+                            Rs. {previewProduct.price.toLocaleString()}
+                          </p>
+                        )}
+                        {isDisplay && (
+                          <p style={{ fontSize: '6px', fontWeight: 600, textAlign: 'center', margin: '1px 0 0', lineHeight: 1, color: '#666' }}>
+                            Display Part
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
                   );
                 })()}
 
@@ -164,8 +248,8 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                   <button
                     onClick={() => setPrintMode('thermal')}
                     className={`flex-1 flex flex-col items-center gap-2 p-3 border-2 rounded-xl transition-all ${
-                      printMode === 'thermal' 
-                        ? 'border-primary bg-primary/5 text-primary' 
+                      printMode === 'thermal'
+                        ? 'border-primary bg-primary/5 text-primary'
                         : 'border-border bg-transparent text-muted-foreground hover:bg-muted'
                     }`}
                   >
@@ -178,8 +262,8 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                   <button
                     onClick={() => setPrintMode('a4')}
                     className={`flex-1 flex flex-col items-center gap-2 p-3 border-2 rounded-xl transition-all ${
-                      printMode === 'a4' 
-                        ? 'border-primary bg-primary/5 text-primary' 
+                      printMode === 'a4'
+                        ? 'border-primary bg-primary/5 text-primary'
                         : 'border-border bg-transparent text-muted-foreground hover:bg-muted'
                     }`}
                   >
@@ -191,42 +275,42 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                   </button>
                 </div>
 
-                {/* Quantity List Mapping */}
+                {/* Quantity List */}
                 <div className="w-full bg-muted/30 border border-border rounded-xl p-3 flex-shrink-0">
                   <p className="font-bold text-xs uppercase text-muted-foreground mb-3 px-2">Label Copies Per Product</p>
                   <div className="w-full flex flex-col gap-1 max-h-[220px] overflow-y-auto px-2">
-                     {products.map(p => {
-                       const id = p.id || p.barcode || '';
-                       if (!id) return null;
-                       const isDisplay = p.name?.toLowerCase().includes('display');
-                       return (
-                         <div key={id} className="flex items-center justify-between border-b border-border/50 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
-                           <div className="flex-1 min-w-0 pr-4">
-                             <p className="font-semibold text-xs truncate leading-tight">{p.name}</p>
-                             <div className="flex items-center gap-2 mt-0.5">
-                               <p className="text-[10px] text-muted-foreground font-mono truncate">{p.barcode}</p>
-                               {isDisplay && (
-                                 <span className="text-[9px] bg-amber-500/15 text-amber-600 font-bold px-1.5 py-0.5 rounded">NO PRICE</span>
-                               )}
-                             </div>
-                           </div>
-                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                             <button onClick={() => updateQuantity(id, -10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">-10</button>
-                             <button onClick={() => updateQuantity(id, -1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Minus className="w-3 h-3"/></button>
-                             <input
-                               type="number"
-                               min="0"
-                               max="200"
-                               value={quantities[id] || 0}
-                               onChange={(e) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Math.min(200, parseInt(e.target.value) || 0)) }))}
-                               className="w-12 h-7 text-center font-bold text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                             />
-                             <button onClick={() => updateQuantity(id, 1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Plus className="w-3 h-3"/></button>
-                             <button onClick={() => updateQuantity(id, 10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">+10</button>
-                           </div>
-                         </div>
-                       )
-                     })}
+                    {products.map(p => {
+                      const id = p.id || p.barcode || '';
+                      if (!id) return null;
+                      const isDisplay = p.name?.toLowerCase().includes('display');
+                      return (
+                        <div key={id} className="flex items-center justify-between border-b border-border/50 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
+                          <div className="flex-1 min-w-0 pr-4">
+                            <p className="font-semibold text-xs truncate leading-tight">{p.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] text-muted-foreground font-mono truncate">{p.barcode}</p>
+                              {isDisplay && (
+                                <span className="text-[9px] bg-amber-500/15 text-amber-600 font-bold px-1.5 py-0.5 rounded">NO PRICE</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <button onClick={() => updateQuantity(id, -10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">-10</button>
+                            <button onClick={() => updateQuantity(id, -1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Minus className="w-3 h-3"/></button>
+                            <input
+                              type="number"
+                              min="0"
+                              max="200"
+                              value={quantities[id] || 0}
+                              onChange={(e) => setQuantities(prev => ({ ...prev, [id]: Math.max(0, Math.min(200, parseInt(e.target.value) || 0)) }))}
+                              className="w-12 h-7 text-center font-bold text-sm border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button onClick={() => updateQuantity(id, 1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Plus className="w-3 h-3"/></button>
+                            <button onClick={() => updateQuantity(id, 10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">+10</button>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                   {/* Quick Set Buttons */}
                   {products.length === 1 && (
@@ -265,141 +349,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
         )}
       </AnimatePresence>
 
-      {/* ── Printable Area — only visible when printing ── */}
-      {isOpen && totalLabels > 0 && (
-        <div
-          ref={printRef}
-          className="hidden print:block barcode-print-wrapper"
-          style={{ margin: 0, padding: 0 }}
-        >
-          {printMode === 'thermal' ? (
-            <style>{`
-              @page {
-                size: 50mm 25mm;
-                margin: 0;
-              }
-              @media print {
-                html, body {
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  background: white !important;
-                }
-                body * {
-                  visibility: hidden;
-                }
-                .barcode-print-wrapper, .barcode-print-wrapper * {
-                  visibility: visible;
-                }
-                .barcode-print-wrapper {
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  margin: 0;
-                  padding: 0;
-                  width: 50mm;
-                }
-                .print\\:hidden { display: none !important; }
-              }
-            `}</style>
-          ) : (
-            <style>{`
-              @page {
-                size: A4 portrait;
-                margin: 5mm;
-              }
-              @media print {
-                html, body {
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  background: white !important;
-                }
-                body * {
-                  visibility: hidden;
-                }
-                .barcode-print-wrapper, .barcode-print-wrapper * {
-                  visibility: visible;
-                }
-                .barcode-print-wrapper {
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  width: 100%;
-                  margin: 0;
-                  padding: 0;
-                }
-                .print\\:hidden { display: none !important; }
-                
-                .a4-grid {
-                  display: flex;
-                  flex-wrap: wrap;
-                  align-items: flex-start;
-                  align-content: flex-start;
-                  gap: 0;
-                  padding: 0;
-                  margin: 0;
-                }
-              }
-            `}</style>
-          )}
-
-          <div className={printMode === 'a4' ? 'a4-grid' : ''}>
-            {printItems.map((prod, i) => (
-              <div
-                key={`${prod.id}-${i}`}
-                style={{
-                  width: '50mm',
-                  height: '25mm',
-                  backgroundColor: '#fff',
-                  color: '#000',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '1mm 2mm',
-                  boxSizing: 'border-box',
-                  // Break page in thermal mode except for the last item
-                  pageBreakAfter: printMode === 'thermal' && i < totalLabels - 1 ? 'always' : 'auto',
-                  pageBreakInside: 'avoid',
-                  overflow: 'hidden',
-                  border: printMode === 'a4' ? '0.1mm dashed #ccc' : 'none'
-                }}
-              >
-                <p style={{ fontSize: '5.5pt', fontWeight: 800, margin: 0, textAlign: 'center', lineHeight: 1.1, letterSpacing: '0.01em', width: '100%' }}>
-                  IMobile Service &amp; Repair Center
-                </p>
-
-                <div style={{ lineHeight: 0, margin: '0.5mm 0 0', transform: 'scale(0.95)', transformOrigin: 'top center' }}>
-                  <Barcode
-                    value={prod.barcode!}
-                    displayValue={false}
-                    height={20}
-                    width={1.1}
-                    margin={0}
-                    background="#ffffff"
-                    lineColor="#000000"
-                  />
-                </div>
-
-                <p style={{ fontSize: '9pt', fontWeight: 900, letterSpacing: '0.12em', margin: '0', textAlign: 'center', lineHeight: 1 }}>
-                  {prod.barcode}
-                </p>
-
-                <div style={{ width: '100%', textAlign: 'center', marginTop: '0.5mm' }}>
-                   <p style={{ fontSize: '5pt', fontWeight: 700, margin: '0', lineHeight: 1.1, maxWidth: '46mm', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                     {prod.name}
-                   </p>
-                   {!prod.name?.toLowerCase().includes('display') && prod.price !== undefined && (
-                     <p style={{ fontSize: '4.5pt', fontWeight: 800, margin: '0.5mm 0 0', lineHeight: 1 }}>
-                       Rs. {prod.price.toLocaleString()}
-                     </p>
-                   )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
+      <div ref={printRef} style={{ display: 'none' }} />
     </>
   )
 }

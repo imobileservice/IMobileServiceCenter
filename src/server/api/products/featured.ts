@@ -15,8 +15,8 @@ export const featuredHandler = asyncHandler(async (req: Request, res: Response) 
       get(name: string) {
         return req.cookies?.[name]
       },
-      set() {},
-      remove() {},
+      set() { },
+      remove() { },
     },
   })
 
@@ -24,7 +24,7 @@ export const featuredHandler = asyncHandler(async (req: Request, res: Response) 
 
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select('*, inv_stock(quantity)')
     .eq('is_featured', true)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -36,7 +36,7 @@ export const featuredHandler = asyncHandler(async (req: Request, res: Response) 
   // Load images from product_images table for each product
   if (data && data.length > 0) {
     const productIds = data.map((p: any) => p.id)
-    
+
     const { data: imagesData } = await supabase
       .from('product_images')
       .select('product_id, url, display_order, is_primary')
@@ -56,12 +56,16 @@ export const featuredHandler = asyncHandler(async (req: Request, res: Response) 
     const productsWithImages = data.map((product: any) => {
       const images = imagesMap.get(product.id) || []
       const primaryImage = imagesData?.find((img: any) => img.product_id === product.id && img.is_primary)?.url || images[0]
-      
+
+      // Resolve stock from join
+      const stockRec = Array.isArray(product.inv_stock) ? product.inv_stock[0] : product.inv_stock;
+
       return {
         ...product,
         image: primaryImage || null, // Primary image or first image
         images: images.length > 0 ? images : [], // All images array
-      }
+        stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
+      };
     })
 
     return res.json({ data: productsWithImages })
