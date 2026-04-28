@@ -95,7 +95,7 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
       console.log('[Orders API] Order items created successfully')
 
       // Reduce stock for each item in consolidated inventory (unless it's COD)
-      if (payment_method !== 'cash_on_delivery') {
+      if (order.payment_method !== 'cash_on_delivery') {
         console.log('[Orders API] Reducing stock for items in inventory...')
         for (const item of items) {
           if (item.product_id) {
