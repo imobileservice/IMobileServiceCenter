@@ -1090,6 +1090,46 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                   })()}
                 </div>
               )}
+
+              {/* Margin 3: Discount Impact */}
+              {formData.sell_price && formData.discount_price && (
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-orange-500/5 border border-orange-500/20 text-sm">
+                  <span className="text-muted-foreground whitespace-nowrap">Discount Impact:</span>
+                  {(() => {
+                    const sell = Number.parseFloat(formData.sell_price) || 0
+                    const discountPrice = Number.parseFloat(formData.discount_price) || 0
+                    const inv = Number.parseFloat(formData.buy_price) || 0
+                    
+                    const discountAmt = sell - discountPrice
+                    const discountPct = sell > 0 ? ((discountAmt / sell) * 100).toFixed(1) : '0.0'
+                    
+                    const newProfit = discountPrice - inv
+                    const newMarginPct = inv > 0 ? ((newProfit / inv) * 100).toFixed(1) : '0.0'
+                    const isPositive = newProfit > 0
+                    
+                    return (
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Off:</span>
+                          <span className="font-semibold text-orange-500">-Rs. {discountAmt.toLocaleString()}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-500">{discountPct}%</span>
+                        </div>
+                        {inv > 0 && (
+                          <div className="flex items-center gap-2 border-l border-orange-500/20 pl-4">
+                            <span className="text-xs text-muted-foreground">New Profit:</span>
+                            <span className={`font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                              Rs. {newProfit.toLocaleString()}
+                            </span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${isPositive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                              {isPositive ? '+' : ''}{newMarginPct}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Product Variants - Only for Phones */}

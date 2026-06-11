@@ -564,7 +564,7 @@ export default function ProductDetailPage() {
                     {formatCurrency(product.price)}
                   </p>
                 )}
-                <p className={`text-3xl font-bold mb-2 ${product.discount_price ? 'text-red-600' : 'text-primary'}`}>
+                <p className="text-3xl font-bold text-primary mb-2">
                   {formatCurrency(currentPrice)}
                 </p>
                 {hasNewVariants && (selectedStorage || selectedRAM) && (
@@ -726,7 +726,7 @@ export default function ProductDetailPage() {
 
               {/* Specifications Grid */}
               {(currentStorage || currentRAM || otherSpecsEntries.length > 0) && (
-                <div>
+                <div className="mb-6">
                   <h3 className="text-lg font-bold mb-4">Specifications</h3>
                   <div className="grid grid-cols-2 gap-3">
                     {currentStorage && (

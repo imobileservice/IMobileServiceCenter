@@ -337,7 +337,7 @@ function ProductCard({ id, name, price, originalPrice, image, condition, discoun
                 {formatCurrency(originalPriceDisplay)}
               </span>
             )}
-            <span className={`text-lg font-bold ${originalPriceDisplay ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>
+            <span className="text-lg font-bold text-gray-900 dark:text-white">
               {formatCurrency(price)}
             </span>
           </motion.div>
