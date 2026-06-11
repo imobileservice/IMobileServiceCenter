@@ -16,12 +16,13 @@ interface ProductCardProps {
   image: string
   condition: "new" | "used"
   discount?: number
+  originalPrice?: number
   specs?: string
   stock?: number
   onQuickView?: () => void
 }
 
-function ProductCard({ id, name, price, image, condition, discount, specs, stock, onQuickView }: ProductCardProps) {
+function ProductCard({ id, name, price, originalPrice, image, condition, discount, specs, stock, onQuickView }: ProductCardProps) {
   const navigate = useNavigate()
   const [isHovered, setIsHovered] = useState(false)
   const [quantity, setQuantity] = useState(0)
@@ -58,7 +59,7 @@ function ProductCard({ id, name, price, image, condition, discount, specs, stock
 
   const isInCart = quantity > 0
 
-  const originalPrice = discount ? Math.round(price / (1 - discount / 100)) : null
+  const originalPriceDisplay = originalPrice || (discount ? Math.round(price / (1 - discount / 100)) : null)
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -331,12 +332,12 @@ function ProductCard({ id, name, price, image, condition, discount, specs, stock
             transition={{ duration: 0.4, delay: 0.2 }}
             className="flex flex-col gap-1"
           >
-            {originalPrice && (
-              <span className="text-xs text-gray-400 dark:text-gray-500 line-through">
-                {formatCurrency(originalPrice)}
+            {originalPriceDisplay && (
+              <span className="text-sm text-red-500 line-through decoration-red-500 font-medium">
+                {formatCurrency(originalPriceDisplay)}
               </span>
             )}
-            <span className="text-lg font-bold text-gray-900 dark:text-white">
+            <span className={`text-lg font-bold ${originalPriceDisplay ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>
               {formatCurrency(price)}
             </span>
           </motion.div>

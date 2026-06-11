@@ -347,13 +347,18 @@ export default function ShopPage() {
                   animate="visible"
                 >
                   {paginatedProducts.map((product) => {
-                    // Calculate discount if original_price exists
+                    // Calculate discount and effective price
+                    const hasDiscountPrice = product.discount_price !== null && product.discount_price !== undefined
+                    const currentPrice = hasDiscountPrice ? Number(product.discount_price) : Number(product.price)
+                    const originalWebsitePrice = hasDiscountPrice ? Number(product.price) : undefined
+
                     let discount: number | undefined = undefined
-                    if (product.original_price && product.price) {
-                      const originalPrice = Number(product.original_price)
-                      const currentPrice = Number(product.price)
-                      if (originalPrice > currentPrice) {
-                        discount = Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+                    if (originalWebsitePrice && originalWebsitePrice > currentPrice) {
+                      discount = Math.round(((originalWebsitePrice - currentPrice) / originalWebsitePrice) * 100)
+                    } else if (product.original_price && product.price) {
+                      const legacyOriginal = Number(product.original_price)
+                      if (legacyOriginal > currentPrice) {
+                         discount = Math.round(((legacyOriginal - currentPrice) / legacyOriginal) * 100)
                       }
                     }
 
@@ -377,7 +382,8 @@ export default function ShopPage() {
                     const productCardProps = {
                       id: product.id,
                       name: displayName,
-                      price: Number(product.price),
+                      price: currentPrice,
+                      originalPrice: originalWebsitePrice || (product.original_price ? Number(product.original_price) : undefined),
                       image: product.image || product.images?.[0] || "/placeholder.svg",
                       condition: product.condition,
                       category: product.category,

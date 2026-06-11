@@ -169,7 +169,7 @@ export default function ProductDetailPage() {
       }
 
       // Set initial price
-      setCurrentPrice(productData.price || 0)
+      setCurrentPrice(productData.discount_price || productData.price || 0)
     } catch (err) {
       console.error("Error fetching product:", err)
       if (!silent) {
@@ -206,7 +206,7 @@ export default function ProductDetailPage() {
     // Check if product has new variant structure
     if (hasNewVariants) {
       // New structure with price adjustments
-      const basePrice = variants?.base_price || product.price
+      const basePrice = variants?.base_price || product.discount_price || product.price
       let totalPrice = basePrice
 
       // Add storage price adjustment
@@ -240,7 +240,7 @@ export default function ProductDetailPage() {
       }
     } else {
       // Fallback to base price
-      setCurrentPrice(product.price)
+      setCurrentPrice(product.discount_price || product.price)
     }
   }, [product, selectedStorage, selectedRAM, selectedColor, productImages, hasNewVariants, variants])
 
@@ -554,15 +554,22 @@ export default function ProductDetailPage() {
 
               {/* Price */}
               <div className="border-t border-b border-border py-4">
-                {currentPrice > product.price && (
+                {product.discount_price && (
+                  <p className="text-lg text-red-500 line-through decoration-red-500 font-medium mb-1">
+                    {formatCurrency(product.price)}
+                  </p>
+                )}
+                {currentPrice > (product.discount_price || product.price) && !product.discount_price && (
                   <p className="text-lg text-muted-foreground line-through mb-1">
                     {formatCurrency(product.price)}
                   </p>
                 )}
-                <p className="text-3xl font-bold text-primary mb-2">{formatCurrency(currentPrice)}</p>
+                <p className={`text-3xl font-bold mb-2 ${product.discount_price ? 'text-red-600' : 'text-primary'}`}>
+                  {formatCurrency(currentPrice)}
+                </p>
                 {hasNewVariants && (selectedStorage || selectedRAM) && (
                   <p className="text-sm text-muted-foreground">
-                    Base: {formatCurrency(product.price)}
+                    Base: {formatCurrency(product.discount_price || product.price)}
                     {selectedStorage && variants?.storage && variants.storage.find(s => s.value === selectedStorage)?.price_adjustment !== 0 && (
                       <span className="ml-2">
                         + Storage: {formatCurrency(variants.storage.find(s => s.value === selectedStorage)?.price_adjustment || 0)}
