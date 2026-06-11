@@ -37,6 +37,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     category: "",
     brand: "",
     price: "",
+    cost_price: "",
     buy_price: "",
     sell_price: "",
     discount_price: "",
@@ -164,11 +165,23 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               }
             }
 
+            // Detect custom model: if specs.model exists but isn't in the predefined list,
+            // restore the "Custom" + custom_model state so the input field appears
+            const parsedSpecs = specs as Record<string, string>
+            if (parsedSpecs.model && product.brand) {
+              const brandModels = MODELS_BY_BRAND[product.brand] || []
+              if (!brandModels.includes(parsedSpecs.model)) {
+                parsedSpecs.custom_model = parsedSpecs.model
+                parsedSpecs.model = "Custom"
+              }
+            }
+
             setFormData({
               name: product.name || "",
               category: product.category || "",
               brand: product.brand || "",
               price: product.price?.toString() || "",
+              cost_price: (product as any).cost_price?.toString() || "",
               buy_price: (product as any).buy_price?.toString() || "",
               sell_price: (product as any).sell_price?.toString() || product.price?.toString() || "",
               discount_price: (product as any).discount_price?.toString() || "",
@@ -177,7 +190,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               images: product.images || [],
               description: product.description || "",
               condition: (product.condition as "new" | "used") || "new",
-              specs: specs,
+              specs: parsedSpecs,
               is_featured: Boolean((product as any).is_featured),
               variants: variants,
               qty_meegoda: "0",
@@ -218,6 +231,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         category: "",
         brand: "",
         price: "",
+        cost_price: "",
         buy_price: "",
         sell_price: "",
         discount_price: "",
@@ -611,6 +625,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       }
       delete specsToSave.custom_model
 
+      const costPrice = Number.parseFloat(formData.cost_price) || null
       const buyPrice = Number.parseFloat(formData.buy_price) || 0
       const sellPrice = Number.parseFloat(formData.sell_price) || basePrice
       const discountPrice = Number.parseFloat(formData.discount_price) || null
@@ -620,6 +635,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         category: formData.category,
         brand: formData.brand || null,
         price: sellPrice, // Sell price is the main price shown to customers
+        cost_price: costPrice,
         buy_price: buyPrice || null,
         sell_price: sellPrice,
         discount_price: discountPrice,
@@ -955,7 +971,22 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             <div className="space-y-4">
               <h3 className="text-lg font-semibold border-b border-border pb-2">Pricing</h3>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Buy Price</label>
+                  <Input
+                    type="number"
+                    name="cost_price"
+                    value={formData.cost_price}
+                    onChange={handleChange}
+                    placeholder="0"
+                    step="0.01"
+                    min="0"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Supplier / purchase cost.
+                  </p>
+                </div>
                 <div>
                   <label className="block text-sm font-semibold mb-2">Inventory Price *</label>
                   <Input
@@ -969,9 +1000,36 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Inventory Price.
+                    Internal inventory price.
                   </p>
                 </div>
+              </div>
+
+              {/* Margin 1: Buy Price → Inventory Price */}
+              {formData.cost_price && formData.buy_price && (
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-500/5 border border-blue-500/20 text-sm">
+                  <span className="text-muted-foreground whitespace-nowrap">Buy → Inventory:</span>
+                  {(() => {
+                    const cost = Number.parseFloat(formData.cost_price) || 0
+                    const inv = Number.parseFloat(formData.buy_price) || 0
+                    const profit = inv - cost
+                    const marginPct = cost > 0 ? ((profit / cost) * 100).toFixed(1) : '0.0'
+                    const isPositive = profit > 0
+                    return (
+                      <>
+                        <span className={`font-semibold ${isPositive ? 'text-blue-400' : 'text-red-500'}`}>
+                          Rs. {profit.toLocaleString()}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isPositive ? 'bg-blue-500/10 text-blue-400' : 'bg-red-500/10 text-red-500'}`}>
+                          {isPositive ? '+' : ''}{marginPct}%
+                        </span>
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold mb-2">Website Price *</label>
                   <Input
@@ -989,7 +1047,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     required
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Website show Price.
+                    Website show price.
                   </p>
                 </div>
                 <div>
@@ -1009,15 +1067,15 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                 </div>
               </div>
 
-              {/* Profit Margin Indicator */}
+              {/* Margin 2: Inventory Price → Website Price */}
               {formData.buy_price && formData.sell_price && (
-                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm">
-                  <span className="text-muted-foreground">Profit Margin:</span>
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-green-500/5 border border-green-500/20 text-sm">
+                  <span className="text-muted-foreground whitespace-nowrap">Inventory → Website:</span>
                   {(() => {
-                    const buy = Number.parseFloat(formData.buy_price) || 0
-                    const sell = Number.parseFloat(formData.discount_price || formData.sell_price) || 0
-                    const profit = sell - buy
-                    const marginPct = buy > 0 ? ((profit / buy) * 100).toFixed(1) : '0.0'
+                    const inv = Number.parseFloat(formData.buy_price) || 0
+                    const sell = Number.parseFloat(formData.sell_price) || 0
+                    const profit = sell - inv
+                    const marginPct = inv > 0 ? ((profit / inv) * 100).toFixed(1) : '0.0'
                     const isPositive = profit > 0
                     return (
                       <>

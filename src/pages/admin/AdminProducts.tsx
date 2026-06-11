@@ -203,7 +203,7 @@ export default function ProductsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="py-4 px-6 w-12 text-center">
+                  <th className="py-4 px-4 w-12 text-center">
                     <input 
                       type="checkbox" 
                       className="w-4 h-4 rounded border-border"
@@ -211,11 +211,14 @@ export default function ProductsPage() {
                       onChange={toggleAll}
                     />
                   </th>
-                  <th className="text-left py-4 px-6 font-semibold">Product Name</th>
-                  <th className="text-left py-4 px-6 font-semibold">Category</th>
-                  <th className="text-left py-4 px-6 font-semibold">Price</th>
-                  <th className="text-left py-4 px-6 font-semibold">Stock</th>
-                  <th className="text-left py-4 px-6 font-semibold">Actions</th>
+                  <th className="text-left py-4 px-4 font-semibold">Product Name</th>
+                  <th className="text-left py-4 px-4 font-semibold">Category</th>
+                  <th className="text-right py-4 px-2 font-semibold text-xs">Buy</th>
+                  <th className="text-right py-4 px-2 font-semibold text-xs">Inventory</th>
+                  <th className="text-right py-4 px-2 font-semibold text-xs">Website</th>
+                  <th className="text-right py-4 px-2 font-semibold text-xs">Discount</th>
+                  <th className="text-left py-4 px-4 font-semibold">Stock</th>
+                  <th className="text-left py-4 px-4 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -226,7 +229,7 @@ export default function ProductsPage() {
                   animate={{ opacity: 1 }}
                   className="border-b border-border hover:bg-muted/50 transition-colors"
                 >
-                  <td className="py-4 px-6 w-12 text-center">
+                  <td className="py-4 px-4 w-12 text-center">
                     <input 
                       type="checkbox"
                       className="w-4 h-4 rounded border-border"
@@ -234,19 +237,34 @@ export default function ProductsPage() {
                       onChange={() => toggleSelection(product.id)}
                     />
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="py-4 px-4">
                     <div className="flex items-center gap-3">
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
                         className="w-10 h-10 rounded object-cover border border-border"
                       />
-                      <span className="font-semibold">{getDisplayName(product)}</span>
+                      <span className="font-semibold text-sm">{getDisplayName(product)}</span>
                     </div>
                   </td>
-                  <td className="py-4 px-6">{product.category}</td>
-                  <td className="py-4 px-6 font-semibold">{formatCurrency(product.price)}</td>
-                  <td className="py-4 px-6">
+                  <td className="py-4 px-4 text-sm">{product.category}</td>
+                  <td className="py-4 px-2 text-right text-xs text-muted-foreground">
+                    {(product as any).cost_price ? formatCurrency((product as any).cost_price) : <span className="text-muted-foreground/40">—</span>}
+                  </td>
+                  <td className="py-4 px-2 text-right text-xs text-blue-400 font-medium">
+                    {(product as any).buy_price ? formatCurrency((product as any).buy_price) : <span className="text-muted-foreground/40">—</span>}
+                  </td>
+                  <td className="py-4 px-2 text-right text-xs font-semibold">
+                    {formatCurrency(product.price)}
+                  </td>
+                  <td className="py-4 px-2 text-right text-xs">
+                    {(product as any).discount_price ? (
+                      <span className="text-green-500 font-medium">{formatCurrency((product as any).discount_price)}</span>
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
+                  </td>
+                  <td className="py-4 px-4">
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-semibold ${
                         product.stock >= 10
@@ -259,19 +277,19 @@ export default function ProductsPage() {
                       {product.stock} units
                     </span>
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="py-4 px-4">
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(product.id)} className="gap-2">
-                        <Edit2 className="w-4 h-4" />
+                      <Button size="sm" variant="outline" onClick={() => handleEdit(product.id)} className="gap-1 text-xs px-2">
+                        <Edit2 className="w-3 h-3" />
                         Edit
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleDelete(product.id)}
-                        className="gap-2 text-red-600 hover:text-red-700 bg-transparent"
+                        className="gap-1 text-xs px-2 text-red-600 hover:text-red-700 bg-transparent"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3 h-3" />
                         Delete
                       </Button>
                       <Button
@@ -279,10 +297,10 @@ export default function ProductsPage() {
                         variant="outline"
                         onClick={() => (product as any).barcode && setPrintingProducts([{ id: product.id, name: getDisplayName(product), barcode: (product as any).barcode, price: product.price }])}
                         disabled={!(product as any).barcode}
-                        className="gap-2"
+                        className="gap-1 text-xs px-2"
                         title={(product as any).barcode ? "Print Barcode Label" : "No barcode generated"}
                       >
-                        <Tag className="w-4 h-4" />
+                        <Tag className="w-3 h-3" />
                         Label
                       </Button>
                     </div>
