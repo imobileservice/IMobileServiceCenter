@@ -248,7 +248,7 @@ export default function InventoryPage() {
                       <td className="p-4">
                         <div className="flex flex-col gap-1">
                           <Badge variant="outline" className="w-fit text-[9px] uppercase font-black">{item.products?.category}</Badge>
-                          <span className="text-xs font-bold text-primary">{formatCurrency(item.products?.price)}</span>
+                          <span className="text-xs font-bold text-primary">{formatCurrency(item.products?.inventory_price || item.products?.price)}</span>
                         </div>
                       </td>
                       <td className="p-4 text-center">
