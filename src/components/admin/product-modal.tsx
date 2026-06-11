@@ -251,7 +251,8 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       // Auto-generate Name for model-required categories
       if ((name === "brand" || name === "category" || name === "specs") && !EXCLUDED_CATEGORIES.includes(newData.category)) {
         const brand = newData.brand || ""
-        const model = newData.specs.model || ""
+        const rawModel = newData.specs.model || ""
+        const model = rawModel === "Custom" ? (newData.specs.custom_model || "") : rawModel
         const categoryObj = categories.find((c) => c.slug === newData.category)
         const categoryName = categoryObj ? categoryObj.name.replace(/\(main\)/i, "").trim() : ""
 
@@ -277,7 +278,8 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       // Re-generate Name if model changes
       if (!EXCLUDED_CATEGORIES.includes(newData.category)) {
         const brand = newData.brand || ""
-        const model = newData.specs.model || ""
+        const rawModel = newData.specs.model || ""
+        const model = rawModel === "Custom" ? (newData.specs.custom_model || "") : rawModel
         const categoryObj = categories.find((c) => c.slug === newData.category)
         const categoryName = categoryObj ? categoryObj.name.replace(/\(main\)/i, "").trim() : ""
 
@@ -590,6 +592,13 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
 
       const basePrice = Number.parseFloat(formData.price) || 0
 
+      // Resolve custom model name before saving
+      const specsToSave = { ...formData.specs }
+      if (specsToSave.model === "Custom" && specsToSave.custom_model) {
+        specsToSave.model = specsToSave.custom_model
+      }
+      delete specsToSave.custom_model
+
       const productData: any = {
         name: formData.name,
         category: formData.category,
@@ -601,7 +610,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         qty_padukka_new: Number.parseInt(formData.qty_padukka_new) || 0,
         description: formData.description || null,
         condition: formData.condition,
-        specs: Object.keys(formData.specs).length > 0 ? formData.specs : null,
+        specs: Object.keys(specsToSave).length > 0 ? specsToSave : null,
         is_featured: formData.is_featured,
       }
 
@@ -828,8 +837,15 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     <div className="flex gap-2">
                       <select
                         name="model"
-                        value={formData.specs.model || ""}
-                        onChange={(e) => handleSpecChange("model", e.target.value)}
+                        value={formData.specs.model === "Custom" ? "Custom" : (formData.specs.model || "")}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          handleSpecChange("model", val);
+                          // Clear custom_model when switching away from Custom
+                          if (val !== "Custom") {
+                            handleSpecChange("custom_model", "");
+                          }
+                        }}
                         className="flex-1 px-3 py-2 border border-border rounded-lg bg-background"
                         required
                         disabled={!formData.brand}
@@ -846,14 +862,11 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                       {formData.specs.model === "Custom" && (
                         <Input
                           type="text"
+                          value={formData.specs.custom_model || ""}
                           placeholder="Type model name..."
                           className="flex-1"
+                          required
                           onChange={(e) => handleSpecChange("custom_model", e.target.value)}
-                          onBlur={(e) => {
-                            if (e.target.value.trim()) {
-                              handleSpecChange("model", e.target.value.trim())
-                            }
-                          }}
                         />
                       )}
                     </div>

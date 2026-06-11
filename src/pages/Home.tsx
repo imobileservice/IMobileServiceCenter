@@ -121,7 +121,7 @@ export default function Home() {
       {/* Features Section */}
       <section className="py-12 bg-muted">
         <div className="max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 md:px-10">
-          <motion.div
+          <motion.div 
             className="grid grid-cols-1 md:grid-cols-3 gap-8 xl:gap-10"
             variants={containerVariants}
             initial="hidden"
@@ -189,7 +189,7 @@ export default function Home() {
               <Button variant="outline" className="gap-2 bg-transparent">
                 View All <ArrowRight className="w-4 h-4" />
               </Button>
-            </Link>
+            </Link> 
           </motion.div>
 
           {loadingFeatured ? (
