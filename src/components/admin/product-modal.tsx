@@ -37,6 +37,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     category: "",
     brand: "",
     price: "",
+    buy_price: "",
+    sell_price: "",
+    discount_price: "",
     stock: "",
     qty_meegoda: "0",
     qty_padukka: "0",
@@ -166,6 +169,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               category: product.category || "",
               brand: product.brand || "",
               price: product.price?.toString() || "",
+              buy_price: (product as any).buy_price?.toString() || "",
+              sell_price: (product as any).sell_price?.toString() || product.price?.toString() || "",
+              discount_price: (product as any).discount_price?.toString() || "",
               stock: product.stock?.toString() || "0",
               image: product.image || product.images?.[0] || "",
               images: product.images || [],
@@ -212,6 +218,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         category: "",
         brand: "",
         price: "",
+        buy_price: "",
+        sell_price: "",
+        discount_price: "",
         stock: "",
         qty_meegoda: "0",
         qty_padukka: "0",
@@ -421,6 +430,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
           brand: data.brand || prev.brand,
           category: data.category || prev.category || "mobile-phones",
           description: data.description || prev.description,
+          // Fill sell price from auto-search data
+          sell_price: data.price ? String(data.price) : prev.sell_price,
+          price: data.price ? String(data.price) : prev.price,
           // Fill images - if new images found, use them as primary and in the list
           images: newImages.length > 0 ? newImages : prev.images,
           image: '', // Clear the URL input field
@@ -599,11 +611,18 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       }
       delete specsToSave.custom_model
 
+      const buyPrice = Number.parseFloat(formData.buy_price) || 0
+      const sellPrice = Number.parseFloat(formData.sell_price) || basePrice
+      const discountPrice = Number.parseFloat(formData.discount_price) || null
+
       const productData: any = {
         name: formData.name,
         category: formData.category,
         brand: formData.brand || null,
-        price: basePrice, // Base price
+        price: sellPrice, // Sell price is the main price shown to customers
+        buy_price: buyPrice || null,
+        sell_price: sellPrice,
+        discount_price: discountPrice,
         stock: Number.parseInt(formData.stock) || 0,
         qty_meegoda: Number.parseInt(formData.qty_meegoda) || 0,
         qty_padukka: Number.parseInt(formData.qty_padukka) || 0,
@@ -936,22 +955,83 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             <div className="space-y-4">
               <h3 className="text-lg font-semibold border-b border-border pb-2">Pricing</h3>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2">Base Price *</label>
-                <Input
-                  type="number"
-                  name="price"
-                  value={formData.price}
-                  onChange={handleChange}
-                  placeholder="100000"
-                  step="0.01"
-                  min="0"
-                  required
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Base price. Variant price adjustments will be added to this.
-                </p>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Inventory Price *</label>
+                  <Input
+                    type="number"
+                    name="buy_price"
+                    value={formData.buy_price}
+                    onChange={handleChange}
+                    placeholder="0"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Inventory Price.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Website Price *</label>
+                  <Input
+                    type="number"
+                    name="sell_price"
+                    value={formData.sell_price}
+                    onChange={(e) => {
+                      handleChange(e)
+                      // Sync sell_price to price (base price) so variant logic still works
+                      setFormData(prev => ({ ...prev, price: e.target.value }))
+                    }}
+                    placeholder="0"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Website show Price.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Discount Price</label>
+                  <Input
+                    type="number"
+                    name="discount_price"
+                    value={formData.discount_price}
+                    onChange={handleChange}
+                    placeholder="Optional"
+                    step="0.01"
+                    min="0"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Sale / promotional price.
+                  </p>
+                </div>
               </div>
+
+              {/* Profit Margin Indicator */}
+              {formData.buy_price && formData.sell_price && (
+                <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm">
+                  <span className="text-muted-foreground">Profit Margin:</span>
+                  {(() => {
+                    const buy = Number.parseFloat(formData.buy_price) || 0
+                    const sell = Number.parseFloat(formData.discount_price || formData.sell_price) || 0
+                    const profit = sell - buy
+                    const marginPct = buy > 0 ? ((profit / buy) * 100).toFixed(1) : '0.0'
+                    const isPositive = profit > 0
+                    return (
+                      <>
+                        <span className={`font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                          Rs. {profit.toLocaleString()}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isPositive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                          {isPositive ? '+' : ''}{marginPct}%
+                        </span>
+                      </>
+                    )
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Product Variants - Only for Phones */}

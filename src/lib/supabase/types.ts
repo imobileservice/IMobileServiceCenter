@@ -51,6 +51,9 @@ export interface Database {
           name: string
           description: string | null
           price: number
+          buy_price: number | null
+          sell_price: number | null
+          discount_price: number | null
           original_price: number | null
           stock: number
           image: string | null
@@ -69,6 +72,9 @@ export interface Database {
           name: string
           description?: string | null
           price: number
+          buy_price?: number | null
+          sell_price?: number | null
+          discount_price?: number | null
           original_price?: number | null
           stock?: number
           image?: string | null
@@ -87,6 +93,9 @@ export interface Database {
           name?: string
           description?: string | null
           price?: number
+          buy_price?: number | null
+          sell_price?: number | null
+          discount_price?: number | null
           original_price?: number | null
           stock?: number
           image?: string | null
