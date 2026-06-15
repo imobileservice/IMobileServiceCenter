@@ -207,6 +207,7 @@ export default function AdminDashboard() {
       value: formatCurrency(stats.totalRevenue, { showDecimals: false }),
       subtext: `Web: ${formatCurrency(stats.webRevenue, { showDecimals: false })} | POS: ${formatCurrency(stats.posRevenue, { showDecimals: false })}`,
       color: "bg-blue-500",
+      colSpan: "col-span-12 md:col-span-6 lg:col-span-6 xl:col-span-3",
     },
     {
       icon: ShoppingCart,
@@ -214,6 +215,7 @@ export default function AdminDashboard() {
       value: stats.totalOrders.toLocaleString(),
       subtext: `Web: ${stats.webOrdersCount} | POS: ${stats.posOrdersCount}`,
       color: "bg-green-500",
+      colSpan: "col-span-12 md:col-span-6 lg:col-span-6 xl:col-span-3",
     },
     {
       icon: Package,
@@ -221,6 +223,7 @@ export default function AdminDashboard() {
       value: stats.totalProducts.toString(),
       subtext: "Unique items",
       color: "bg-purple-500",
+      colSpan: "col-span-12 md:col-span-4 lg:col-span-4 xl:col-span-2",
     },
     {
       icon: DatabaseIcon,
@@ -228,6 +231,7 @@ export default function AdminDashboard() {
       value: (stats.totalQuantity || 0).toLocaleString(),
       subtext: "Units in stock",
       color: "bg-indigo-500",
+      colSpan: "col-span-12 md:col-span-4 lg:col-span-4 xl:col-span-2",
     },
     {
       icon: Users,
@@ -235,6 +239,7 @@ export default function AdminDashboard() {
       value: stats.totalCustomers.toString(),
       subtext: "Registered users",
       color: "bg-orange-500",
+      colSpan: "col-span-12 md:col-span-4 lg:col-span-4 xl:col-span-2",
     },
   ], [stats])
 
@@ -267,16 +272,22 @@ export default function AdminDashboard() {
 
       {/* Stats Grid */}
       {stats.loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="bg-card border border-border rounded-lg p-6 animate-pulse">
+        <div className="grid grid-cols-12 gap-6">
+          {[
+            "col-span-12 md:col-span-6 lg:col-span-6 xl:col-span-3",
+            "col-span-12 md:col-span-6 lg:col-span-6 xl:col-span-3",
+            "col-span-12 md:col-span-4 lg:col-span-4 xl:col-span-2",
+            "col-span-12 md:col-span-4 lg:col-span-4 xl:col-span-2",
+            "col-span-12 md:col-span-4 lg:col-span-4 xl:col-span-2",
+          ].map((spanClass, i) => (
+            <div key={i} className={`bg-card border border-border rounded-lg p-6 animate-pulse ${spanClass}`}>
               <div className="h-20 bg-muted rounded" />
             </div>
           ))}
         </div>
       ) : (
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6"
+          className="grid grid-cols-12 gap-6"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
@@ -288,7 +299,7 @@ export default function AdminDashboard() {
               <motion.div
                 key={`${stat.label}-${index}`}
                 variants={itemVariants}
-                className="bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-shadow"
+                className={`bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-shadow ${stat.colSpan}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
