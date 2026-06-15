@@ -14,7 +14,7 @@ router.get('/', async (req: Request, res: Response) => {
       .select(`
         *,
         products (
-          id, name, category_id, brand, barcode, price, cost_price,
+          id, name, category_id, brand, barcode, price, cost_price, buy_price,
           product_images (url, is_primary)
         )
       `)

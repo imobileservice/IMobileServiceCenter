@@ -110,6 +110,7 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
       .from('inv_stock')
       .insert({
         product_id: data.id,
+        quantity: Number(productData.stock) || 0,
         qty_meegoda: qty_meegoda,
         qty_padukka: qty_padukka,
         qty_padukka_new: qty_padukka_new,
@@ -212,10 +213,11 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   // Sync inventory stock if stock was updated
-  if (qty_meegoda !== undefined || qty_padukka !== undefined || qty_padukka_new !== undefined) {
+  if (updateData.stock !== undefined || qty_meegoda !== undefined || qty_padukka !== undefined || qty_padukka_new !== undefined) {
     console.log(`[Admin CRUD] Syncing manual stock update for product ${id}`)
     
     const updatePayload: any = { updated_at: new Date().toISOString() }
+    if (updateData.stock !== undefined) updatePayload.quantity = Number(updateData.stock) || 0
     if (qty_meegoda !== undefined) updatePayload.qty_meegoda = qty_meegoda
     if (qty_padukka !== undefined) updatePayload.qty_padukka = qty_padukka
     if (qty_padukka_new !== undefined) updatePayload.qty_padukka_new = qty_padukka_new
@@ -232,6 +234,7 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
         .from('inv_stock')
         .upsert({
           product_id: data.id,
+          quantity: Number(updateData.stock) || 0,
           qty_meegoda: qty_meegoda || 0,
           qty_padukka: qty_padukka || 0,
           qty_padukka_new: qty_padukka_new || 0,

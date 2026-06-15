@@ -80,7 +80,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
           ${pageBreak}
         ">
           <p style="font-size:5.5pt;font-weight:800;margin:0;text-align:center;line-height:1.1;letter-spacing:0.01em;width:100%;">
-            IMobile Service &amp; Repair Center
+            ${isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service &amp; Repair Center'}
           </p>
 
           <p style="font-size:9pt;font-weight:900;letter-spacing:0.15em;margin:1.5mm 0 0;text-align:center;line-height:1;font-family:monospace;">
@@ -206,7 +206,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                         }}
                       >
                         <p style={{ fontSize: '8px', fontWeight: 800, margin: 0, lineHeight: 1.1, letterSpacing: '0.01em', textAlign: 'center', width: '100%' }}>
-                          IMobile Service &amp; Repair Center
+                          {isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service & Repair Center'}
                         </p>
 
                         <div style={{ margin: '0', padding: 0, lineHeight: 0, transform: 'scale(0.95)', transformOrigin: 'center' }}>
