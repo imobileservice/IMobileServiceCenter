@@ -98,7 +98,7 @@ export default function AdminDashboard() {
           }),
           productsServiceEnhanced.getStats().catch(err => {
             console.error('Error fetching product stats:', err)
-            return { total: 0, inStock: 0, outOfStock: 0, categories: 0, brands: 0 }
+            return { total: 0, inStock: 0, outOfStock: 0, categories: 0, brands: 0, totalQuantity: 0 }
           }),
           customersService.getAll().catch(err => {
             console.error('Error fetching customers:', err)

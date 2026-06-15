@@ -226,7 +226,7 @@ export const productsServiceEnhanced = {
 
       // Count unique category_ids (excluding nulls)
       const uniqueCategories = new Set(
-        categories.data?.map(p => p.category_id).filter(Boolean) || []
+        categories.data?.map((p: any) => p.category_id).filter(Boolean) || []
       )
 
       const totalQuantity = stockResult.data?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0
@@ -236,7 +236,7 @@ export const productsServiceEnhanced = {
         inStock: inStock.count || 0,
         outOfStock: outOfStock.count || 0,
         categories: uniqueCategories.size,
-        brands: new Set(brands.data?.map(p => p.brand).filter(Boolean) || []).size,
+        brands: new Set(brands.data?.map((p: any) => p.brand).filter(Boolean) || []).size,
         totalQuantity,
       }
     })
