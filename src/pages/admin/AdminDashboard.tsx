@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, lazy, Suspense } from "react"
 import { motion } from "framer-motion"
-import { TrendingUp, Package, ShoppingCart, Users, DollarSign, Layers } from "lucide-react"
+import { TrendingUp, Package, ShoppingCart, Users, DollarSign, Database as DatabaseIcon } from "lucide-react"
 import { ordersService } from "@/lib/supabase/services/orders"
 import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanced"
 import { customersService } from "@/lib/supabase/services/customers"
@@ -223,9 +223,9 @@ export default function AdminDashboard() {
       color: "bg-purple-500",
     },
     {
-      icon: Layers,
+      icon: DatabaseIcon,
       label: "Total Quantity",
-      value: stats.totalQuantity.toLocaleString(),
+      value: (stats.totalQuantity || 0).toLocaleString(),
       subtext: "Units in stock",
       color: "bg-indigo-500",
     },
