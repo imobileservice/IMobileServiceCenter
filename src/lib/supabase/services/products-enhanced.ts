@@ -215,12 +215,13 @@ export const productsServiceEnhanced = {
     return withRetry(async () => {
       const supabase = createClient()
       
-      const [total, inStock, outOfStock, categories, brands] = await Promise.all([
+      const [total, inStock, outOfStock, categories, brands, stockResult] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('products').select('id', { count: 'exact', head: true }).gt('stock', 0),
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('stock', 0),
         supabase.from('products').select('category_id'),
         supabase.from('products').select('brand'),
+        supabase.from('inv_stock').select('quantity')
       ])
 
       // Count unique category_ids (excluding nulls)
@@ -228,12 +229,15 @@ export const productsServiceEnhanced = {
         categories.data?.map(p => p.category_id).filter(Boolean) || []
       )
 
+      const totalQuantity = stockResult.data?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0
+
       return {
         total: total.count || 0,
         inStock: inStock.count || 0,
         outOfStock: outOfStock.count || 0,
         categories: uniqueCategories.size,
         brands: new Set(brands.data?.map(p => p.brand).filter(Boolean) || []).size,
+        totalQuantity,
       }
     })
   },

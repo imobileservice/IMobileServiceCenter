@@ -217,17 +217,19 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
   })
 
   // Fetch all data in parallel
-  const [ordersResult, posSalesResult, productsResult, profilesResult] = await Promise.all([
+  const [ordersResult, posSalesResult, productsResult, profilesResult, stockResult] = await Promise.all([
     supabase.from('orders').select('total, created_at'),
     supabase.from('inv_sales').select('net_amount, created_at'),
     supabase.from('products').select('id', { count: 'exact', head: true }),
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    supabase.from('inv_stock').select('quantity')
   ])
 
   const orders = ordersResult.data || []
   const posSales = posSalesResult.data || []
   const totalProducts = productsResult.count || 0
   const totalCustomers = profilesResult.count || 0
+  const totalQuantity = stockResult.data?.reduce((sum: number, s: any) => sum + (s.quantity || 0), 0) || 0
 
   const webRevenue = orders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0)
   const posRevenue = posSales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0)
@@ -242,6 +244,7 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
       webOrdersCount: orders.length,
       posOrdersCount: posSales.length,
       totalProducts,
+      totalQuantity,
       totalCustomers,
     }
   })

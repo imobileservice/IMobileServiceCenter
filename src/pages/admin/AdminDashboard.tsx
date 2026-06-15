@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, lazy, Suspense } from "react"
 import { motion } from "framer-motion"
-import { TrendingUp, Package, ShoppingCart, Users, DollarSign } from "lucide-react"
+import { TrendingUp, Package, ShoppingCart, Users, DollarSign, Layers } from "lucide-react"
 import { ordersService } from "@/lib/supabase/services/orders"
 import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanced"
 import { customersService } from "@/lib/supabase/services/customers"
@@ -62,6 +62,7 @@ export default function AdminDashboard() {
     webOrdersCount: 0,
     posOrdersCount: 0,
     totalProducts: 0,
+    totalQuantity: 0,
     totalCustomers: 0,
     loading: true,
   })
@@ -150,6 +151,7 @@ export default function AdminDashboard() {
           webOrdersCount: statsData?.webOrdersCount ?? orders.length,
           posOrdersCount: statsData?.posOrdersCount ?? posSales.length,
           totalProducts: statsData?.totalProducts ?? (productStats?.total || 0),
+          totalQuantity: statsData?.totalQuantity ?? (productStats?.totalQuantity || 0),
           totalCustomers: statsData?.totalCustomers ?? (customers || []).length,
           loading: false,
         }
@@ -180,15 +182,19 @@ export default function AdminDashboard() {
     const pollingInterval = setInterval(() => fetchDashboardData(true), 30000)
     
     // Listen for order updates
-    const handleOrderUpdate = () => fetchDashboardData(true)
-    window.addEventListener('orderUpdated', handleOrderUpdate)
+    const handleUpdate = () => fetchDashboardData(true)
+    window.addEventListener('orderUpdated', handleUpdate)
+    window.addEventListener('productUpdated', handleUpdate)
+    window.addEventListener('inventoryUpdated', handleUpdate)
     window.addEventListener('storage', (e) => {
-      if (e.key?.startsWith('adminUpdate_')) handleOrderUpdate()
+      if (e.key?.startsWith('adminUpdate_')) handleUpdate()
     })
 
     return () => {
       clearInterval(pollingInterval)
-      window.removeEventListener('orderUpdated', handleOrderUpdate)
+      window.removeEventListener('orderUpdated', handleUpdate)
+      window.removeEventListener('productUpdated', handleUpdate)
+      window.removeEventListener('inventoryUpdated', handleUpdate)
     }
   }, [])
 
@@ -213,8 +219,15 @@ export default function AdminDashboard() {
       icon: Package,
       label: "Products",
       value: stats.totalProducts.toString(),
-      subtext: "In stock",
+      subtext: "Unique items",
       color: "bg-purple-500",
+    },
+    {
+      icon: Layers,
+      label: "Total Quantity",
+      value: stats.totalQuantity.toLocaleString(),
+      subtext: "Units in stock",
+      color: "bg-indigo-500",
     },
     {
       icon: Users,
@@ -254,8 +267,8 @@ export default function AdminDashboard() {
 
       {/* Stats Grid */}
       {stats.loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-card border border-border rounded-lg p-6 animate-pulse">
               <div className="h-20 bg-muted rounded" />
             </div>
@@ -263,7 +276,7 @@ export default function AdminDashboard() {
         </div>
       ) : (
         <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6"
           variants={containerVariants}
           initial="hidden"
           animate="visible"
