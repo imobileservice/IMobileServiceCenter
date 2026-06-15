@@ -288,20 +288,20 @@ export default function AdminDashboard() {
               <motion.div
                 key={`${stat.label}-${index}`}
                 variants={itemVariants}
-                className="bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-shadow"
+                className="bg-card border border-border rounded-lg p-4 2xl:p-6 hover:shadow-lg transition-shadow flex flex-col justify-center"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-muted-foreground text-sm font-medium truncate">{stat.label}</p>
-                    <h3 className="text-2xl font-bold mt-2 text-foreground truncate">{stat.value}</h3>
+                    <p className="text-muted-foreground text-xs md:text-sm font-medium truncate">{stat.label}</p>
+                    <h3 className="text-lg md:text-xl 2xl:text-2xl font-bold mt-1.5 text-foreground truncate">{stat.value}</h3>
                     {stat.subtext && (
-                      <p className="text-muted-foreground text-xs mt-2 truncate">
+                      <p className="text-muted-foreground text-[10px] md:text-xs mt-1.5 truncate">
                         {stat.subtext}
                       </p>
                     )}
                   </div>
-                  <div className={`${stat.color} p-3 rounded-lg text-white flex-shrink-0 ml-4`}>
-                    <Icon className="w-6 h-6" />
+                  <div className={`${stat.color} p-2 lg:p-2.5 2xl:p-3 rounded-lg text-white flex-shrink-0`}>
+                    <Icon className="w-4 h-4 lg:w-5 lg:h-5 2xl:w-6 2xl:h-6" />
                   </div>
                 </div>
               </motion.div>
