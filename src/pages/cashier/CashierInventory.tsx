@@ -124,7 +124,7 @@ export default function CashierInventory() {
                         </td>
                         <td className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>
                         <td className="px-6 py-4 text-right font-black text-primary">
-                          {formatCurrency(product.price)}
+                          {formatCurrency(product.buy_price || product.price)}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <Badge 
