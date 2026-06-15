@@ -266,7 +266,7 @@ export default function ProductsPage() {
                   </td>
                   <td className="py-4 px-4">
                     <span
-                      className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap ${
                         product.stock >= 10
                           ? "bg-green-100 text-green-800"
                           : product.stock >= 5
