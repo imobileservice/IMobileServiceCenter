@@ -55,6 +55,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       return {
         ...p,
+        category: p.category || p.category_id,
         image: primaryImage, // attach the resolved image to the product root for the frontend
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (p.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : 0,
@@ -89,6 +90,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.json({
       data: {
         ...data,
+        category: data.category || data.category_id,
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : (data.stock ?? 0),
         qty_padukka: stockRec ? (stockRec.qty_padukka ?? 0) : 0,
@@ -124,6 +126,7 @@ router.get('/barcode/:barcode', async (req: Request, res: Response) => {
     res.json({
       data: {
         ...data,
+        category: data.category || data.category_id,
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : (data.stock ?? 0),
         qty_padukka: stockRec ? (stockRec.qty_padukka ?? 0) : 0,

@@ -26,6 +26,7 @@ router.get('/', async (req: Request, res: Response) => {
       ...s,
       products: {
         ...s.products,
+        category: s.products?.category || s.products?.category_id,
         image: s.products?.product_images?.find((img: any) => img.is_primary)?.url || 
                s.products?.product_images?.[0]?.url || 
                null
