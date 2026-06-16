@@ -176,6 +176,22 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               }
             }
 
+            // Fetch shop-specific stock quantities BEFORE setting form data
+            let shopQtyMeegoda = "0"
+            let shopQtyPadukka = "0"
+            let shopQtyPadukkaNew = "0"
+            try {
+              const supabase = createClient()
+              const { data: stockData } = await supabase.from('inv_stock').select('*').eq('product_id', editingProductId).single()
+              if (stockData) {
+                shopQtyMeegoda = stockData.qty_meegoda?.toString() || "0"
+                shopQtyPadukka = stockData.qty_padukka?.toString() || "0"
+                shopQtyPadukkaNew = stockData.qty_padukka_new?.toString() || "0"
+              }
+            } catch (err) {
+              console.error('Failed to fetch shop stock:', err)
+            }
+
             setFormData({
               name: product.name || "",
               category: product.category || "",
@@ -193,28 +209,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               specs: parsedSpecs,
               is_featured: Boolean((product as any).is_featured),
               variants: variants,
-              qty_meegoda: "0",
-              qty_padukka: "0",
-              qty_padukka_new: "0",
+              qty_meegoda: shopQtyMeegoda,
+              qty_padukka: shopQtyPadukka,
+              qty_padukka_new: shopQtyPadukkaNew,
             })
             // Initialize search query with product name
             setSearchQuery(product.name || "")
 
-            // Fetch specific shop quantities
-            try {
-              const supabase = createClient()
-              const { data: stockData } = await supabase.from('inv_stock').select('*').eq('product_id', editingProductId).single()
-              if (stockData) {
-                setFormData(prev => ({
-                  ...prev,
-                  qty_meegoda: stockData.qty_meegoda?.toString() || "0",
-                  qty_padukka: stockData.qty_padukka?.toString() || "0",
-                  qty_padukka_new: stockData.qty_padukka_new?.toString() || "0",
-                }))
-              }
-            } catch (err) {
-              console.error('Failed to fetch shop stock:', err)
-            }
+            // Shop stock quantities are now fetched above before setFormData
           }
         } catch (error) {
           console.error('Failed to fetch product:', error)
@@ -630,6 +632,12 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       const sellPrice = Number.parseFloat(formData.sell_price) || basePrice
       const discountPrice = Number.parseFloat(formData.discount_price) || null
 
+      // Calculate total stock as sum of all shop quantities
+      const qtyMeegoda = Number.parseInt(formData.qty_meegoda) || 0
+      const qtyPadukka = Number.parseInt(formData.qty_padukka) || 0
+      const qtyPadukkaNew = Number.parseInt(formData.qty_padukka_new) || 0
+      const totalStock = qtyMeegoda + qtyPadukka + qtyPadukkaNew
+
       const productData: any = {
         name: formData.name,
         category: formData.category,
@@ -639,10 +647,10 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         buy_price: buyPrice || null,
         sell_price: sellPrice,
         discount_price: discountPrice,
-        stock: Number.parseInt(formData.stock) || 0,
-        qty_meegoda: Number.parseInt(formData.qty_meegoda) || 0,
-        qty_padukka: Number.parseInt(formData.qty_padukka) || 0,
-        qty_padukka_new: Number.parseInt(formData.qty_padukka_new) || 0,
+        stock: totalStock,
+        qty_meegoda: qtyMeegoda,
+        qty_padukka: qtyPadukka,
+        qty_padukka_new: qtyPadukkaNew,
         description: formData.description || null,
         condition: formData.condition,
         specs: Object.keys(specsToSave).length > 0 ? specsToSave : null,
