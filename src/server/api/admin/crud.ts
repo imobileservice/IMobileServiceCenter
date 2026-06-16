@@ -37,9 +37,10 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   const imageUrls = productData.images || (productData.image ? [productData.image] : [])
 
   // Extract shop-specific stock quantities
-  const qty_meegoda = productData.qty_meegoda || 0
-  const qty_padukka = productData.qty_padukka || 0
-  const qty_padukka_new = productData.qty_padukka_new || 0
+  const qty_meegoda = Number(productData.qty_meegoda) || 0
+  const qty_padukka = Number(productData.qty_padukka) || 0
+  const qty_padukka_new = Number(productData.qty_padukka_new) || 0
+  const totalStock = Number(productData.stock) || 0
 
   // Remove non-product table fields
   delete productData.image
@@ -47,6 +48,8 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   delete productData.qty_meegoda
   delete productData.qty_padukka
   delete productData.qty_padukka_new
+
+  console.log(`[Admin] Creating product with stock: ${totalStock}, qty_meegoda: ${qty_meegoda}, qty_padukka: ${qty_padukka}, qty_padukka_new: ${qty_padukka_new}`)
 
   if (productData.category && !productData.category_id) {
     // Get category_id from slug
@@ -105,21 +108,25 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   // Initialize stock in inv_stock so it appears in Inventory
+  // The DB trigger trg_update_total_quantity will auto-compute quantity from shop qtys
   if (data?.id) {
+    console.log(`[Admin] Inserting inv_stock for product ${data.id}: meegoda=${qty_meegoda}, padukka=${qty_padukka}, padukka_new=${qty_padukka_new}`)
     const { error: stockError } = await supabase
       .from('inv_stock')
-      .insert({
+      .upsert({
         product_id: data.id,
-        quantity: Number(productData.stock) || 0,
+        quantity: totalStock,
         qty_meegoda: qty_meegoda,
         qty_padukka: qty_padukka,
         qty_padukka_new: qty_padukka_new,
         low_stock_threshold: 5
-      })
+      }, { onConflict: 'product_id' })
 
     if (stockError) {
       console.error('Error initializing inv_stock:', stockError)
       // Non-fatal, keep going
+    } else {
+      console.log(`[Admin] inv_stock created successfully for product ${data.id}`)
     }
   }
 
@@ -214,32 +221,29 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
 
   // Sync inventory stock if stock was updated
   if (updateData.stock !== undefined || qty_meegoda !== undefined || qty_padukka !== undefined || qty_padukka_new !== undefined) {
-    console.log(`[Admin CRUD] Syncing manual stock update for product ${id}`)
+    console.log(`[Admin CRUD] Syncing manual stock update for product ${id}: stock=${updateData.stock}, meegoda=${qty_meegoda}, padukka=${qty_padukka}, padukka_new=${qty_padukka_new}`)
     
-    const updatePayload: any = { updated_at: new Date().toISOString() }
-    if (updateData.stock !== undefined) updatePayload.quantity = Number(updateData.stock) || 0
-    if (qty_meegoda !== undefined) updatePayload.qty_meegoda = qty_meegoda
-    if (qty_padukka !== undefined) updatePayload.qty_padukka = qty_padukka
-    if (qty_padukka_new !== undefined) updatePayload.qty_padukka_new = qty_padukka_new
+    const stockUpsertData: any = {
+      product_id: data.id,
+      updated_at: new Date().toISOString()
+    }
+    if (updateData.stock !== undefined) stockUpsertData.quantity = Number(updateData.stock) || 0
+    if (qty_meegoda !== undefined) stockUpsertData.qty_meegoda = Number(qty_meegoda)
+    if (qty_padukka !== undefined) stockUpsertData.qty_padukka = Number(qty_padukka)
+    if (qty_padukka_new !== undefined) stockUpsertData.qty_padukka_new = Number(qty_padukka_new)
 
+    // Use upsert to handle both existing and non-existing inv_stock records
     const { error: invStockError } = await supabase
       .from('inv_stock')
-      .update(updatePayload)
-      .eq('product_id', data.id)
+      .upsert({
+        ...stockUpsertData,
+        low_stock_threshold: 5
+      }, { onConflict: 'product_id' })
 
     if (invStockError) {
       console.error('[Admin CRUD] Error syncing inv_stock:', invStockError)
-      // Fallback: Try to insert if it somehow doesn't exist
-      await supabase
-        .from('inv_stock')
-        .upsert({
-          product_id: data.id,
-          quantity: Number(updateData.stock) || 0,
-          qty_meegoda: qty_meegoda || 0,
-          qty_padukka: qty_padukka || 0,
-          qty_padukka_new: qty_padukka_new || 0,
-          low_stock_threshold: 5
-        })
+    } else {
+      console.log(`[Admin CRUD] inv_stock synced successfully for product ${id}`)
     }
   }
 
