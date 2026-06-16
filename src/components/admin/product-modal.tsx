@@ -682,10 +682,45 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
 
       if (editingProductId) {
         await productsService.update(editingProductId, productData)
+        // Directly upsert inv_stock from frontend to ensure shop quantities are saved
+        try {
+          const supabase = createClient()
+          await supabase.from('inv_stock').upsert({
+            product_id: editingProductId,
+            qty_meegoda: qtyMeegoda,
+            qty_padukka: qtyPadukka,
+            qty_padukka_new: qtyPadukkaNew,
+            quantity: totalStock,
+            low_stock_threshold: 5,
+          }, { onConflict: 'product_id' })
+          // Also sync products.stock column directly
+          await supabase.from('products').update({ stock: totalStock }).eq('id', editingProductId)
+        } catch (stockErr) {
+          console.error('Failed to sync inv_stock from frontend:', stockErr)
+        }
         toast.success('Product updated successfully')
         onClose()
       } else {
         const created = await productsService.create(productData)
+        // Directly upsert inv_stock from frontend to ensure shop quantities are saved
+        const createdId = (created as any)?.id || (created as any)?.data?.id
+        if (createdId) {
+          try {
+            const supabase = createClient()
+            await supabase.from('inv_stock').upsert({
+              product_id: createdId,
+              qty_meegoda: qtyMeegoda,
+              qty_padukka: qtyPadukka,
+              qty_padukka_new: qtyPadukkaNew,
+              quantity: totalStock,
+              low_stock_threshold: 5,
+            }, { onConflict: 'product_id' })
+            // Also sync products.stock column directly
+            await supabase.from('products').update({ stock: totalStock }).eq('id', createdId)
+          } catch (stockErr) {
+            console.error('Failed to sync inv_stock from frontend:', stockErr)
+          }
+        }
         toast.success('Product created! Opening barcode label...')
         onClose()
         // Notify parent with created product so barcode modal auto-opens
