@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Plus, Edit2, Trash2, Search, Tag } from "lucide-react"
+import { Plus, Edit2, Trash2, Search, Tag, PackagePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -305,29 +305,42 @@ export default function ProductsPage() {
                   </td>
                   <td className="py-4 px-4">
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(product.id)} className="gap-1 text-xs px-2">
-                        <Edit2 className="w-3 h-3" />
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDelete(product.id)}
-                        className="gap-1 text-xs px-2 text-red-600 hover:text-red-700 bg-transparent"
+                      <Button 
+                        size="icon" 
+                        variant="outline" 
+                        onClick={() => window.location.href = '/admin/inventory'} 
+                        className="w-8 h-8 text-blue-600 hover:text-blue-700 bg-transparent border-border hover:bg-blue-50"
+                        title="Restock in Inventory"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        Delete
+                        <PackagePlus className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        size="icon" 
+                        variant="outline" 
+                        onClick={() => handleEdit(product.id)} 
+                        className="w-8 h-8 text-foreground bg-transparent border-border hover:bg-muted"
+                        title="Edit Product"
+                      >
+                        <Edit2 className="w-4 h-4" />
                       </Button>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="outline"
                         onClick={() => (product as any).barcode && setPrintingProducts([{ id: product.id, name: getDisplayName(product), barcode: (product as any).barcode, price: product.price }])}
                         disabled={!(product as any).barcode}
-                        className="gap-1 text-xs px-2"
+                        className="w-8 h-8 text-foreground bg-transparent border-border hover:bg-muted"
                         title={(product as any).barcode ? "Print Barcode Label" : "No barcode generated"}
                       >
-                        <Tag className="w-3 h-3" />
-                        Label
+                        <Tag className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => handleDelete(product.id)}
+                        className="w-8 h-8 text-red-600 hover:text-red-700 bg-transparent border-border hover:bg-red-50"
+                        title="Delete Product"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
                   </td>
