@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
-import { Plus, Edit2, Trash2, Search, Tag, PackagePlus } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -12,6 +12,8 @@ import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
 import BarcodeLabelModal from "@/components/admin/barcode-label-modal"
+import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
 
 type Product = Database['public']['Tables']['products']['Row']
 
@@ -25,6 +27,13 @@ export default function ProductsPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
   const [stockFilter, setStockFilter] = useState<'all' | 'very_low' | 'low'>('all')
+
+  const [restockProduct, setRestockProduct] = useState<any>(null)
+  const [restockQtyMeegoda, setRestockQtyMeegoda] = useState("")
+  const [restockQtyPadukka, setRestockQtyPadukka] = useState("")
+  const [restockQtyPadukkaNew, setRestockQtyPadukkaNew] = useState("")
+  const [restockCurrentStock, setRestockCurrentStock] = useState<any>(null)
+  const [isRestocking, setIsRestocking] = useState(false)
 
   const fetchProducts = async (silent = false) => {
     try {
@@ -129,6 +138,73 @@ export default function ProductsPage() {
   const handleEdit = (id: string) => {
     setEditingProduct(id)
     setIsModalOpen(true)
+  }
+
+  const handleOpenRestock = async (product: any) => {
+    setRestockProduct(product)
+    setRestockQtyMeegoda("")
+    setRestockQtyPadukka("")
+    setRestockQtyPadukkaNew("")
+    setRestockCurrentStock(null)
+    
+    try {
+      const supabase = createClient()
+      const { data } = await supabase.from('inv_stock').select('*').eq('product_id', product.id).single()
+      if (data) {
+        setRestockCurrentStock(data)
+      } else {
+        setRestockCurrentStock({ qty_meegoda: 0, qty_padukka: 0, qty_padukka_new: 0, quantity: product.stock || 0 })
+      }
+    } catch (err) {
+      console.error(err)
+      setRestockCurrentStock({ qty_meegoda: 0, qty_padukka: 0, qty_padukka_new: 0, quantity: product.stock || 0 })
+    }
+  }
+
+  const handleRestockSubmit = async () => {
+    if (!restockProduct || !restockCurrentStock) return;
+    setIsRestocking(true)
+    
+    const newMeegoda = (restockCurrentStock.qty_meegoda || 0) + (Number(restockQtyMeegoda) || 0);
+    const newPadukka = (restockCurrentStock.qty_padukka || 0) + (Number(restockQtyPadukka) || 0);
+    const newPadukkaNew = (restockCurrentStock.qty_padukka_new || 0) + (Number(restockQtyPadukkaNew) || 0);
+    const newTotal = newMeegoda + newPadukka + newPadukkaNew;
+
+    const totalAdded = (Number(restockQtyMeegoda) || 0) + (Number(restockQtyPadukka) || 0) + (Number(restockQtyPadukkaNew) || 0);
+
+    try {
+      const supabase = createClient()
+      
+      await supabase.from('inv_stock').upsert({
+        product_id: restockProduct.id,
+        qty_meegoda: newMeegoda,
+        qty_padukka: newPadukka,
+        qty_padukka_new: newPadukkaNew,
+        quantity: newTotal,
+        low_stock_threshold: 5,
+      }, { onConflict: 'product_id' })
+
+      await supabase.from('products').update({ stock: newTotal }).eq('id', restockProduct.id)
+
+      if (totalAdded !== 0) {
+         await supabase.from('inv_stock_movements').insert({
+            product_id: restockProduct.id,
+            type: 'adjustment',
+            quantity: totalAdded,
+            notes: `Restock: Meegoda(+${Number(restockQtyMeegoda)||0}), Padukka(+${Number(restockQtyPadukka)||0}), PadukkaNew(+${Number(restockQtyPadukkaNew)||0})`,
+            created_by: 'admin'
+         })
+      }
+
+      toast.success('Stock updated successfully')
+      setRestockProduct(null)
+      fetchProducts(true)
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Failed to restock')
+    } finally {
+      setIsRestocking(false)
+    }
   }
 
   const getDisplayName = (product: any) => {
@@ -308,7 +384,7 @@ export default function ProductsPage() {
                       <Button 
                         size="icon" 
                         variant="outline" 
-                        onClick={() => window.location.href = '/admin/inventory'} 
+                        onClick={() => handleOpenRestock(product)} 
                         className="w-8 h-8 text-blue-600 hover:text-blue-700 bg-transparent border-border hover:bg-blue-50"
                         title="Restock in Inventory"
                       >
@@ -366,6 +442,89 @@ export default function ProductsPage() {
         onClose={() => setPrintingProducts(null)}
         products={printingProducts}
       />
+
+      {/* Restock Modal */}
+      <AnimatePresence>
+        {restockProduct && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+               initial={{ opacity: 0, scale: 0.95 }}
+               animate={{ opacity: 1, scale: 1 }}
+               exit={{ opacity: 0, scale: 0.95 }}
+               className="bg-card border border-border p-6 rounded-2xl shadow-2xl w-full max-w-md"
+            >
+               <div className="flex items-center justify-between mb-6">
+                 <h3 className="text-xl font-bold">Restock Product</h3>
+                 <button onClick={() => setRestockProduct(null)} className="p-1 hover:bg-muted rounded-full">
+                   <X className="w-5 h-5" />
+                 </button>
+               </div>
+
+               <div className="mb-6 p-4 bg-muted/50 rounded-xl border border-border">
+                 <p className="text-xs text-muted-foreground uppercase font-black mb-1">Product</p>
+                 <p className="font-bold">{getDisplayName(restockProduct)}</p>
+               </div>
+
+               <div className="space-y-4">
+                 <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold text-muted-foreground uppercase mb-2">
+                   <div>Shop</div>
+                   <div>Current</div>
+                   <div>New Qty</div>
+                 </div>
+
+                 {/* Meegoda */}
+                 <div className="grid grid-cols-3 gap-2 items-center">
+                   <div className="font-semibold text-sm">Meegoda</div>
+                   <div className="text-center font-mono">{restockCurrentStock?.qty_meegoda || 0}</div>
+                   <div>
+                     <Input type="number" value={restockQtyMeegoda} onChange={e => setRestockQtyMeegoda(e.target.value)} placeholder="+0" className="h-9 text-center font-mono font-bold" />
+                   </div>
+                 </div>
+
+                 {/* Padukka */}
+                 <div className="grid grid-cols-3 gap-2 items-center">
+                   <div className="font-semibold text-sm">Padukka</div>
+                   <div className="text-center font-mono">{restockCurrentStock?.qty_padukka || 0}</div>
+                   <div>
+                     <Input type="number" value={restockQtyPadukka} onChange={e => setRestockQtyPadukka(e.target.value)} placeholder="+0" className="h-9 text-center font-mono font-bold" />
+                   </div>
+                 </div>
+
+                 {/* Padukka New */}
+                 <div className="grid grid-cols-3 gap-2 items-center">
+                   <div className="font-semibold text-sm">Padukka New</div>
+                   <div className="text-center font-mono">{restockCurrentStock?.qty_padukka_new || 0}</div>
+                   <div>
+                     <Input type="number" value={restockQtyPadukkaNew} onChange={e => setRestockQtyPadukkaNew(e.target.value)} placeholder="+0" className="h-9 text-center font-mono font-bold" />
+                   </div>
+                 </div>
+
+                 <div className="pt-4 mt-4 border-t border-border grid grid-cols-3 gap-2 items-center">
+                   <div className="font-black text-primary">TOTAL</div>
+                   <div className="text-center font-black font-mono text-lg">{restockCurrentStock?.quantity || 0}</div>
+                   <div className="text-center font-black font-mono text-lg text-green-600">
+                     +{ (Number(restockQtyMeegoda) || 0) + (Number(restockQtyPadukka) || 0) + (Number(restockQtyPadukkaNew) || 0) }
+                   </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-3 gap-2 items-center text-primary mt-2">
+                   <div className="font-black">NEW TOTAL</div>
+                   <div className="col-span-2 text-right font-black font-mono text-2xl">
+                     { (restockCurrentStock?.quantity || 0) + (Number(restockQtyMeegoda) || 0) + (Number(restockQtyPadukka) || 0) + (Number(restockQtyPadukkaNew) || 0) }
+                   </div>
+                 </div>
+               </div>
+
+               <div className="mt-8 flex flex-col gap-2">
+                 <Button className="h-12 font-bold w-full" onClick={handleRestockSubmit} disabled={isRestocking || !restockCurrentStock}>
+                   {isRestocking ? "UPDATING..." : "CONFIRM RESTOCK"}
+                 </Button>
+                 <Button variant="ghost" className="w-full" onClick={() => setRestockProduct(null)} disabled={isRestocking}>CANCEL</Button>
+               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       </div>
     </AdminLayout>
   )
