@@ -212,4 +212,39 @@ router.get('/today/summary', async (req: Request, res: Response) => {
   }
 })
 
+// POST /api/inventory/sales/return - Process a return (good or damaged)
+router.post('/return', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { invoice_number, product_id, quantity, condition, notes, created_by } = req.body
+
+    if (!invoice_number || !product_id || !quantity || !condition) {
+      return res.status(400).json({ error: 'invoice_number, product_id, quantity, and condition are required' })
+    }
+
+    if (condition !== 'good' && condition !== 'damaged') {
+      return res.status(400).json({ error: 'condition must be "good" or "damaged"' })
+    }
+
+    const { data, error } = await supabase.rpc('process_return', {
+      p_invoice_number: invoice_number,
+      p_product_id: product_id,
+      p_quantity: Number(quantity),
+      p_condition: condition,
+      p_notes: notes || null,
+      p_created_by: created_by || 'cashier',
+    })
+
+    if (error) {
+      console.error('[Sales Return] RPC process_return error:', error)
+      return res.status(400).json({ error: error.message })
+    }
+
+    res.status(200).json({ data })
+  } catch (error: any) {
+    console.error('[Inventory Sales Return] POST error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 export default router

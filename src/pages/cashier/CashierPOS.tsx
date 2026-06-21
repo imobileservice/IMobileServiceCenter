@@ -57,6 +57,8 @@ export default function CashierPOS() {
   const [lastSale, setLastSale] = useState<any>(null)
   const [showReceipt, setShowReceipt] = useState(false)
   const [scannedSale, setScannedSale] = useState<any>(null)
+  const [returnItemModal, setReturnItemModal] = useState<{item: any, quantity: number, condition: 'good' | 'damaged' | null} | null>(null)
+  const [isReturning, setIsReturning] = useState(false)
   
   const searchInputRef = useRef<HTMLInputElement>(null)
   const barcodeBuffer = useRef("")
@@ -265,6 +267,29 @@ export default function CashierPOS() {
     setShowReceipt(false)
     setLastSale(null)
     searchInputRef.current?.focus()
+  }
+
+  const handleProcessReturn = async () => {
+    if (!returnItemModal || !returnItemModal.condition || !scannedSale) return
+    setIsReturning(true)
+    try {
+      await inventorySalesService.returnItem({
+        invoice_number: scannedSale.invoice_number,
+        product_id: returnItemModal.item.product_id,
+        quantity: returnItemModal.quantity,
+        condition: returnItemModal.condition,
+        created_by: cashier?.email || 'cashier'
+      })
+      toast.success("Return processed successfully!")
+      setReturnItemModal(null)
+      // refresh scanned sale
+      const res = await inventorySalesService.getByInvoiceNumber(scannedSale.invoice_number)
+      setScannedSale(res.data)
+    } catch (err: any) {
+      toast.error(err.message || "Failed to process return")
+    } finally {
+      setIsReturning(false)
+    }
   }
 
   useEffect(() => {
@@ -741,21 +766,32 @@ export default function CashierPOS() {
                    </div>
 
                    <table className="w-full text-left">
-                      <thead>
+                       <thead>
                          <tr className="text-[10px] text-muted-foreground uppercase font-black border-b border-border">
                             <th className="py-2">Purchased Item</th>
                             <th className="py-2 text-center">Qty</th>
                             <th className="py-2 text-right">Price</th>
                             <th className="py-2 text-right">Total</th>
+                            <th className="py-2 text-right">Actions</th>
                          </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
                          {scannedSale.inv_sale_items?.map((item: any) => (
                            <tr key={item.id}>
                               <td className="py-4 font-bold text-sm tracking-tight">{item.product_name}</td>
-                              <td className="py-4 text-center font-black">{item.quantity}</td>
+                               <td className="py-4 text-center font-black">{item.quantity}</td>
                               <td className="py-4 text-right text-sm">{formatCurrency(item.unit_price)}</td>
                               <td className="py-4 text-right font-black text-primary text-sm">{formatCurrency(item.total_price)}</td>
+                              <td className="py-4 text-right">
+                                {(() => {
+                                   const isExpired = (new Date().getTime() - new Date(scannedSale.created_at).getTime()) > 4 * 24 * 60 * 60 * 1000;
+                                   return !isExpired ? (
+                                      <Button variant="outline" size="sm" onClick={() => setReturnItemModal({ item, quantity: 1, condition: null })}>
+                                        Return
+                                      </Button>
+                                   ) : null
+                                })()}
+                              </td>
                            </tr>
                          ))}
                       </tbody>
@@ -766,6 +802,77 @@ export default function CashierPOS() {
                     <Button onClick={() => setScannedSale(null)} className="w-full font-bold h-12 text-sm tracking-widest bg-foreground text-background hover:bg-foreground/90 hover:scale-[1.02] transition-all">CLOSE VIEW</Button>
                 </div>
              </motion.div>
+
+             {/* Return Item Inner Modal */}
+             <AnimatePresence>
+                {returnItemModal && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="absolute inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+                  >
+                    <div className="bg-card border border-border p-6 rounded-xl shadow-2xl w-full max-w-md">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold">Process Return</h3>
+                        <button onClick={() => setReturnItemModal(null)} className="p-1 hover:bg-muted rounded-full">
+                          <X className="w-5 h-5 text-muted-foreground" />
+                        </button>
+                      </div>
+
+                      <div className="mb-4">
+                        <p className="font-semibold">{returnItemModal.item.product_name}</p>
+                        <p className="text-sm text-muted-foreground">Original Qty: {returnItemModal.item.quantity}</p>
+                      </div>
+
+                      <div className="mb-6 space-y-4">
+                        <div>
+                           <label className="block text-sm font-semibold mb-2">Quantity to Return</label>
+                           <div className="flex items-center gap-2">
+                              <Button 
+                                variant="outline" size="icon" 
+                                onClick={() => setReturnItemModal(p => p ? {...p, quantity: Math.max(1, p.quantity - 1)} : p)}
+                              ><Minus className="w-4 h-4"/></Button>
+                              <span className="w-10 text-center font-bold">{returnItemModal.quantity}</span>
+                              <Button 
+                                variant="outline" size="icon" 
+                                onClick={() => setReturnItemModal(p => p ? {...p, quantity: Math.min(p.item.quantity, p.quantity + 1)} : p)}
+                              ><Plus className="w-4 h-4"/></Button>
+                           </div>
+                        </div>
+
+                        <div>
+                           <label className="block text-sm font-semibold mb-2">Condition</label>
+                           <div className="grid grid-cols-2 gap-2">
+                             <Button 
+                               variant={returnItemModal.condition === 'good' ? 'default' : 'outline'}
+                               className={returnItemModal.condition === 'good' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
+                               onClick={() => setReturnItemModal(p => p ? {...p, condition: 'good'} : p)}
+                             >
+                               Good (Back to Stock)
+                             </Button>
+                             <Button 
+                               variant={returnItemModal.condition === 'damaged' ? 'default' : 'outline'}
+                               className={returnItemModal.condition === 'damaged' ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
+                               onClick={() => setReturnItemModal(p => p ? {...p, condition: 'damaged'} : p)}
+                             >
+                               Damaged / Defective
+                             </Button>
+                           </div>
+                        </div>
+                      </div>
+
+                      <Button 
+                        className="w-full font-bold h-12"
+                        disabled={!returnItemModal.condition || isReturning}
+                        onClick={handleProcessReturn}
+                      >
+                        {isReturning ? "PROCESSING..." : "CONFIRM RETURN & REFUND"}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+             </AnimatePresence>
            </div>
         )}
       </AnimatePresence>

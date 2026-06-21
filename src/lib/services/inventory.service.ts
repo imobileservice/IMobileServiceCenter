@@ -130,6 +130,18 @@ export const inventorySalesService = {
     const query = shop ? `?shop=${encodeURIComponent(shop)}` : ''
     return apiFetch(`/sales/today/summary${query}`)
   },
+
+  returnItem: (payload: {
+    invoice_number: string
+    product_id: string
+    quantity: number
+    condition: 'good' | 'damaged'
+    notes?: string
+    created_by?: string
+  }) => apiFetch('/sales/return', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
 }
 
 // ─── PURCHASES ───────────────────────────────────────

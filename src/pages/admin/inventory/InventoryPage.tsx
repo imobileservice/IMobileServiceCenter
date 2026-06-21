@@ -208,6 +208,7 @@ export default function InventoryPage() {
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Product</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Info</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-center">Current Stock</th>
+                  <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-center">Damaged</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Status</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-right">Actions</th>
                 </tr>
@@ -218,6 +219,7 @@ export default function InventoryPage() {
                     <tr key={i} className="animate-pulse border-b border-border">
                        <td className="p-4"><div className="h-12 w-12 bg-muted rounded-lg" /></td>
                        <td className="p-4"><div className="h-4 w-32 bg-muted rounded mb-2" /><div className="h-3 w-16 bg-muted rounded" /></td>
+                       <td className="p-4"><div className="h-8 w-16 bg-muted rounded mx-auto" /></td>
                        <td className="p-4"><div className="h-8 w-16 bg-muted rounded mx-auto" /></td>
                        <td className="p-4"><div className="h-6 w-20 bg-muted rounded-full" /></td>
                        <td className="p-4"><div className="h-8 w-24 bg-muted rounded flex-shrink-0 ml-auto" /></td>
@@ -258,6 +260,9 @@ export default function InventoryPage() {
                           <div className="flex justify-between gap-2"><span>Padukka:</span> <span className="font-bold text-foreground">{item.qty_padukka || 0}</span></div>
                           <div className="flex justify-between gap-2"><span>Padukka New:</span> <span className="font-bold text-foreground">{item.qty_padukka_new || 0}</span></div>
                         </div>
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="text-2xl font-black text-red-500">{item.damaged_quantity || 0}</span>
                       </td>
                       <td className="p-4">
                          {item.is_low_stock ? (
