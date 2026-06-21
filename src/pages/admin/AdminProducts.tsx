@@ -23,6 +23,8 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<string | null>(null)
   const [printingProducts, setPrintingProducts] = useState<any[] | null>(null)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string>("All")
+  const [stockFilter, setStockFilter] = useState<'all' | 'very_low' | 'low'>('all')
 
   const fetchProducts = async (silent = false) => {
     try {
@@ -50,11 +52,26 @@ export default function ProductsPage() {
     }
   }, [])
 
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const categories = ["All", ...Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort()]
+
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          p.category.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
+    
+    let matchesStock = true;
+    if (stockFilter === 'very_low') {
+      matchesStock = p.stock < 4;
+    } else if (stockFilter === 'low') {
+      matchesStock = p.stock >= 4 && p.stock <= 5;
+    }
+
+    return matchesSearch && matchesCategory && matchesStock;
+  })
+
+  const veryLowStockCount = products.filter(p => p.stock < 4).length;
+  const lowStockCount = products.filter(p => p.stock >= 4 && p.stock <= 5).length;
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return
@@ -147,43 +164,52 @@ export default function ProductsPage() {
         </div>
       </motion.div>
 
-      {/* Low Stock Alerts */}
-      {products.some(p => p.stock < 5) && (
-        <motion.div 
-          initial={{ opacity: 0, height: 0 }} 
-          animate={{ opacity: 1, height: "auto" }}
-          className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6"
-        >
-          <div className="flex items-start gap-3">
-            <div className="bg-red-100 p-2 rounded-full mt-1">
-              <Trash2 className="w-4 h-4 text-red-600 rotate-180" /> {/* Using Trash2 as a warning placeholder or could use AlertCircle */}
-            </div>
-            <div>
-              <h3 className="text-red-800 font-bold text-lg">Low Stock Warning!</h3>
-              <p className="text-red-700">
-                The following products have less than 5 units left. Please order new quantities soon:
-              </p>
-              <ul className="mt-2 list-disc list-inside text-red-600 font-medium">
-                {products.filter(p => p.stock < 5).map(p => (
-                  <li key={p.id}>{getDisplayName(p)} ({p.stock} units left)</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </motion.div>
-      )}
+      {/* Category Tabs & Filters */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="flex flex-col gap-4 mb-6">
+        {/* Category Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+           {categories.map(cat => (
+             <Button 
+               key={cat} 
+               variant={selectedCategory === cat ? "default" : "outline"}
+               onClick={() => setSelectedCategory(cat)}
+               className="whitespace-nowrap rounded-full px-4"
+               size="sm"
+             >
+               {cat}
+             </Button>
+           ))}
+        </div>
 
-      {/* Search */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <div className="relative">
-          <Search className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+        {/* Action / Filter Row */}
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-card border border-border p-4 rounded-xl shadow-sm">
+           <div className="relative flex-1 w-full max-w-md">
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+             <Input
+               type="text"
+               placeholder="Search products..."
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               className="pl-10 h-10"
+             />
+           </div>
+           
+           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+             <Button
+               variant={stockFilter === 'very_low' ? "default" : "outline"}
+               onClick={() => setStockFilter(stockFilter === 'very_low' ? 'all' : 'very_low')}
+               className={`w-full sm:w-auto gap-2 font-bold ${stockFilter === 'very_low' ? 'bg-red-600 hover:bg-red-700 text-white' : 'border-red-200 text-red-600 hover:bg-red-50'}`}
+             >
+               Very Low Stock ({veryLowStockCount})
+             </Button>
+             <Button
+               variant={stockFilter === 'low' ? "default" : "outline"}
+               onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
+               className={`w-full sm:w-auto gap-2 font-bold ${stockFilter === 'low' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'border-orange-200 text-orange-500 hover:bg-orange-50'}`}
+             >
+               Low Stock ({lowStockCount})
+             </Button>
+           </div>
         </div>
       </motion.div>
 
