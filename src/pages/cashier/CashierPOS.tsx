@@ -59,6 +59,8 @@ export default function CashierPOS() {
   const [scannedSale, setScannedSale] = useState<any>(null)
   const [returnItemModal, setReturnItemModal] = useState<{item: any, quantity: number, condition: 'good' | 'damaged' | null} | null>(null)
   const [isReturning, setIsReturning] = useState(false)
+  const [returnPromptOpen, setReturnPromptOpen] = useState(false)
+  const [returnInvoiceNumber, setReturnInvoiceNumber] = useState("")
   
   const searchInputRef = useRef<HTMLInputElement>(null)
   const barcodeBuffer = useRef("")
@@ -570,6 +572,9 @@ export default function CashierPOS() {
                <Button variant="outline" size="lg" className="h-14 font-bold" onClick={() => setCart([])}>
                  CANCEL ORDER
                </Button>
+               <Button variant="secondary" size="lg" className="h-14 font-bold" onClick={() => setReturnPromptOpen(true)}>
+                 PROCESS RETURN
+               </Button>
             </div>
           </div>
         </div>
@@ -877,6 +882,60 @@ export default function CashierPOS() {
         )}
       </AnimatePresence>
 
+      {/* Return Prompt Modal */}
+      <AnimatePresence>
+        {returnPromptOpen && (
+           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+             <motion.div 
+               initial={{ opacity: 0, scale: 0.95 }}
+               animate={{ opacity: 1, scale: 1 }}
+               exit={{ opacity: 0, scale: 0.95 }}
+               className="bg-card border border-border p-6 rounded-2xl shadow-2xl w-full max-w-md"
+             >
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold">Process Return</h3>
+                  <button onClick={() => setReturnPromptOpen(false)} className="p-1 hover:bg-muted rounded-full">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="text-sm font-bold text-muted-foreground uppercase">Invoice Number</label>
+                    <Input 
+                      placeholder="e.g. INV-..." 
+                      className="mt-1 h-12 text-lg uppercase"
+                      value={returnInvoiceNumber}
+                      onChange={(e) => setReturnInvoiceNumber(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && returnInvoiceNumber.trim()) {
+                           setReturnPromptOpen(false)
+                           handleBarcodeScan(returnInvoiceNumber.trim())
+                           setReturnInvoiceNumber("")
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                   <Button 
+                     className="w-full h-12 font-bold"
+                     disabled={!returnInvoiceNumber.trim()}
+                     onClick={() => {
+                        setReturnPromptOpen(false)
+                        handleBarcodeScan(returnInvoiceNumber.trim())
+                        setReturnInvoiceNumber("")
+                     }}
+                   >
+                     FIND INVOICE
+                   </Button>
+                </div>
+             </motion.div>
+           </div>
+        )}
+      </AnimatePresence>
     </CashierLayout>
   )
 }
