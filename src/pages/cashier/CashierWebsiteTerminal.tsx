@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
+  FileText,
   Mail,
   MapPin,
   PackageCheck,
@@ -22,6 +23,9 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils/currency"
 import { websiteOrdersService } from "@/lib/services/inventory.service"
+import { getApiUrl } from "@/lib/utils/api"
+import { createClient } from "@/lib/supabase/client"
+import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import { toast } from "sonner"
 
 type WebsiteOrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled"
@@ -112,8 +116,20 @@ export default function CashierWebsiteTerminal() {
 
   useEffect(() => {
     fetchOrders()
+    const supabase = createClient()
+    const channel = supabase.channel("cashier:website-orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => fetchOrders(true)
+      )
+      .subscribe()
     const timer = window.setInterval(() => fetchOrders(true), 15000)
-    return () => window.clearInterval(timer)
+
+    return () => {
+      window.clearInterval(timer)
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const filteredOrders = useMemo(() => {
@@ -165,6 +181,7 @@ export default function CashierWebsiteTerminal() {
       setOrders(prev => prev.map(order => (
         order.id === selectedOrder.id ? { ...order, ...(res.data || {}), status } : order
       )))
+      notifyUpdate("order")
       toast.success(`Order marked ${status}`)
     } catch (err: any) {
       toast.error(err.message || "Failed to update order")
@@ -173,19 +190,27 @@ export default function CashierWebsiteTerminal() {
     }
   }
 
+  const openDeliveryBill = (order: WebsiteOrder) => {
+    window.open(getApiUrl(`/api/admin/orders/${order.id}/delivery-bill`), "_blank", "noopener,noreferrer")
+  }
+
   return (
     <CashierLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="space-y-8 pb-8">
+        <div className="bg-card border border-border rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Website Terminal</h1>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <Badge variant="outline">{activeCount} active</Badge>
+              <Badge variant="outline">{pendingCount} pending</Badge>
+            </div>
           </div>
           <Button variant="outline" onClick={() => fetchOrders()} className="gap-2 w-full sm:w-auto">
             <RefreshCcw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
           {[
             { label: "Active Orders", value: activeCount, icon: PackageCheck },
             { label: "Pending", value: pendingCount, icon: Clock },
@@ -197,7 +222,7 @@ export default function CashierWebsiteTerminal() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
-              className="bg-card border border-border rounded-xl p-4 flex items-center justify-between"
+              className="bg-card border border-border rounded-2xl p-5 min-h-[108px] flex items-center justify-between"
             >
               <div>
                 <p className="text-xs font-bold text-muted-foreground uppercase">{stat.label}</p>
@@ -210,7 +235,7 @@ export default function CashierWebsiteTerminal() {
           ))}
         </div>
 
-        <div className="flex flex-col xl:flex-row gap-4">
+        <div className="bg-card border border-border rounded-2xl p-4 flex flex-col xl:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
             <Input
@@ -220,7 +245,7 @@ export default function CashierWebsiteTerminal() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex gap-2 overflow-x-auto pb-1 xl:pb-0">
             {statusOptions.map(option => (
               <Button
                 key={option.id}
@@ -235,9 +260,9 @@ export default function CashierWebsiteTerminal() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-          <div className="xl:col-span-7 bg-card border border-border rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-7 items-start">
+          <div className="xl:col-span-7 bg-card border border-border rounded-2xl overflow-hidden self-start">
+            <div className="p-5 border-b border-border flex items-center justify-between bg-muted/30">
               <h2 className="font-bold">Website Orders</h2>
               <Badge variant="secondary">{filteredOrders.length} shown</Badge>
             </div>
@@ -245,23 +270,23 @@ export default function CashierWebsiteTerminal() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-muted/50 text-muted-foreground uppercase font-semibold text-[10px] tracking-wider">
                   <tr>
-                    <th className="px-4 py-3">Order</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Items</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                    <th className="px-4 py-3 text-right">Status</th>
+                    <th className="px-5 py-4">Order</th>
+                    <th className="px-5 py-4">Customer</th>
+                    <th className="px-5 py-4">Items</th>
+                    <th className="px-5 py-4 text-right">Total</th>
+                    <th className="px-5 py-4 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {loading ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground animate-pulse">
+                      <td colSpan={5} className="px-5 py-14 text-center text-muted-foreground animate-pulse">
                         Loading website orders...
                       </td>
                     </tr>
                   ) : filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-5 py-14 text-center text-muted-foreground">
                         <div className="flex flex-col items-center gap-2 opacity-60">
                           <AlertCircle className="w-8 h-8" />
                           <p>No website orders found.</p>
@@ -279,17 +304,17 @@ export default function CashierWebsiteTerminal() {
                           onClick={() => setSelectedOrderId(order.id)}
                           className={`cursor-pointer hover:bg-muted/40 transition-colors ${isSelected ? "bg-primary/5" : ""}`}
                         >
-                          <td className="px-4 py-4">
-                            <p className="font-black">#{order.order_number || order.id.slice(0, 8).toUpperCase()}</p>
+                          <td className="px-5 py-5 max-w-[260px]">
+                            <p className="font-black break-all">#{order.order_number || order.id.slice(0, 8).toUpperCase()}</p>
                             <p className="text-[10px] text-muted-foreground">{new Date(order.created_at).toLocaleString()}</p>
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-5 py-5">
                             <p className="font-bold line-clamp-1">{order.customer_name || order.customer_email || "Website Customer"}</p>
                             <p className="text-[10px] text-muted-foreground line-clamp-1">{order.customer_phone || order.customer_email || "No contact"}</p>
                           </td>
-                          <td className="px-4 py-4 font-bold">{order.order_items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0}</td>
-                          <td className="px-4 py-4 text-right font-black text-primary">{formatCurrency(Number(order.total || 0))}</td>
-                          <td className="px-4 py-4 text-right">
+                          <td className="px-5 py-5 font-bold">{order.order_items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0}</td>
+                          <td className="px-5 py-5 text-right font-black text-primary">{formatCurrency(Number(order.total || 0))}</td>
+                          <td className="px-5 py-5 text-right">
                             <Badge variant="outline" className={`capitalize ${getStatusClass(status)}`}>{status}</Badge>
                           </td>
                         </tr>
@@ -301,21 +326,26 @@ export default function CashierWebsiteTerminal() {
             </div>
           </div>
 
-          <div className="xl:col-span-5 bg-card border border-border rounded-xl overflow-hidden min-h-[520px]">
+          <div className="xl:col-span-5 bg-card border border-border rounded-2xl overflow-hidden min-h-[520px] self-start xl:sticky xl:top-24">
             {selectedOrder ? (
               <div className="h-full flex flex-col">
-                <div className="p-5 border-b border-border bg-muted/20 flex items-start justify-between gap-4">
-                  <div>
+                <div className="p-6 border-b border-border bg-muted/20 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                  <div className="min-w-0">
                     <p className="text-xs text-muted-foreground font-bold uppercase">Selected Order</p>
-                    <h2 className="text-xl font-black mt-1">#{selectedOrder.order_number || selectedOrder.id.slice(0, 8).toUpperCase()}</h2>
+                    <h2 className="text-lg sm:text-xl font-black mt-1 break-all">#{selectedOrder.order_number || selectedOrder.id.slice(0, 8).toUpperCase()}</h2>
                     <p className="text-xs text-muted-foreground mt-1">{new Date(selectedOrder.created_at).toLocaleString()}</p>
                   </div>
-                  <Badge variant="outline" className={`capitalize ${getStatusClass(normalizeStatus(selectedOrder.status))}`}>
-                    {normalizeStatus(selectedOrder.status)}
-                  </Badge>
+                  <div className="flex flex-col sm:items-end gap-2">
+                    <Badge variant="outline" className={`capitalize w-fit ${getStatusClass(normalizeStatus(selectedOrder.status))}`}>
+                      {normalizeStatus(selectedOrder.status)}
+                    </Badge>
+                    <Button variant="outline" size="sm" className="gap-2" onClick={() => openDeliveryBill(selectedOrder)}>
+                      <FileText className="w-4 h-4" /> Delivery Bill
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="p-5 space-y-5 overflow-y-auto">
+                <div className="p-6 space-y-6 overflow-y-auto">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <div className="space-y-2">
                       <p className="font-black">{selectedOrder.customer_name || "Website Customer"}</p>
@@ -333,19 +363,19 @@ export default function CashierWebsiteTerminal() {
                     </div>
                   </div>
 
-                  <div className="border border-border rounded-xl overflow-hidden">
+                  <div className="border border-border rounded-2xl overflow-hidden">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-muted/50 text-muted-foreground uppercase font-semibold text-[10px]">
                         <tr>
-                          <th className="px-3 py-3">Product</th>
-                          <th className="px-3 py-3 text-center">Qty</th>
-                          <th className="px-3 py-3 text-right">Website Price</th>
+                          <th className="px-4 py-4">Product</th>
+                          <th className="px-4 py-4 text-center">Qty</th>
+                          <th className="px-4 py-4 text-right">Website Price</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
                         {(selectedOrder.order_items || []).map(item => (
                           <tr key={item.id}>
-                            <td className="px-3 py-3">
+                            <td className="px-4 py-4">
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-md bg-muted border border-border overflow-hidden flex-shrink-0">
                                   {item.product_image ? (
@@ -357,8 +387,8 @@ export default function CashierWebsiteTerminal() {
                                 <p className="font-bold leading-tight">{item.product_name}</p>
                               </div>
                             </td>
-                            <td className="px-3 py-3 text-center font-black">{item.quantity}</td>
-                            <td className="px-3 py-3 text-right">
+                            <td className="px-4 py-4 text-center font-black">{item.quantity}</td>
+                            <td className="px-4 py-4 text-right">
                               <p className="font-black">{formatCurrency(Number(item.price || 0))}</p>
                               <p className="text-[10px] text-muted-foreground">{formatCurrency(Number(item.price || 0) * Number(item.quantity || 0))}</p>
                             </td>
@@ -384,7 +414,7 @@ export default function CashierWebsiteTerminal() {
                   </div>
                 </div>
 
-                <div className="p-5 border-t border-border bg-muted/10 grid grid-cols-2 gap-2">
+                <div className="p-6 border-t border-border bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Button
                     variant="outline"
                     className="gap-2"
@@ -407,6 +437,14 @@ export default function CashierWebsiteTerminal() {
                     onClick={() => updateOrderStatus("delivered")}
                   >
                     <CheckCircle2 className="w-4 h-4" /> Delivered
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    disabled={Boolean(updatingStatus)}
+                    onClick={() => openDeliveryBill(selectedOrder)}
+                  >
+                    <FileText className="w-4 h-4" /> Delivery Bill
                   </Button>
                   <Button
                     variant="outline"

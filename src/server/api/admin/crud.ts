@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import { createClient } from '@supabase/supabase-js'
+import { generateDeliveryBillPDF } from '../utils/invoice-generator'
 
 // Async error wrapper
 const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) => {
@@ -336,11 +337,27 @@ export const updateOrderStatusHandler = asyncHandler(async (req: Request, res: R
     return res.status(400).json({ error: 'Status is required' })
   }
 
+  const allowedStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled']
+  if (!allowedStatuses.includes(status)) {
+    return res.status(400).json({ error: 'Invalid order status' })
+  }
+
   console.log(`[Admin] Updating order status: ${id} -> ${status}`)
+
+  const { data: existingOrder, error: existingError } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (existingError || !existingOrder) {
+    console.error('Error fetching existing order:', existingError)
+    return res.status(404).json({ error: 'Order not found' })
+  }
 
   const { data, error } = await supabase
     .from('orders')
-    .update({ status })
+    .update({ status, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single()
@@ -355,8 +372,8 @@ export const updateOrderStatusHandler = asyncHandler(async (req: Request, res: R
     return res.status(404).json({ error: 'Order not found' })
   }
 
-  // Handle stock reduction for Cash on Delivery orders ONLY when shipped
-  if (status === 'shipped' && data.payment_method === 'cash_on_delivery') {
+  // Handle stock reduction for Cash on Delivery orders only on the first transition to shipped.
+  if (status === 'shipped' && existingOrder.status !== 'shipped' && data.payment_method === 'cash_on_delivery') {
     console.log(`[Admin] COD order ${id} marked as Shipped. Reducing stock...`)
     
     // Fetch items for this order
@@ -412,6 +429,48 @@ export const updateOrderStatusHandler = asyncHandler(async (req: Request, res: R
   }
 
   return res.json({ data })
+})
+
+/**
+ * GET /api/admin/orders/:id/delivery-bill
+ * Generate a delivery bill PDF for website packers/cashiers.
+ */
+export const downloadDeliveryBillHandler = asyncHandler(async (req: Request, res: Response) => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return res.status(503).json({ error: 'Supabase not configured' })
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  })
+
+  const { id } = req.params
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select(`*, order_items (*)`)
+    .eq('id', id)
+    .single()
+
+  if (error || !order) {
+    console.error('Error fetching delivery bill order:', error)
+    return res.status(404).json({ error: 'Order not found' })
+  }
+
+  const items = ((order as any).order_items || []).map((item: any) => ({
+    product_name: item.product_name || 'Product',
+    quantity: Number(item.quantity || 0),
+    price: Number(item.price || 0),
+  }))
+
+  const pdfBuffer = await generateDeliveryBillPDF(order as any, items)
+
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `inline; filename=delivery-bill-${order.order_number || id}.pdf`)
+  res.setHeader('Content-Length', pdfBuffer.length)
+  return res.send(pdfBuffer)
 })
 
 /**
@@ -544,4 +603,3 @@ export const deleteMessageHandler = asyncHandler(async (req: Request, res: Respo
 
   return res.json({ success: true })
 })
-

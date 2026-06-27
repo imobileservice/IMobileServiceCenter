@@ -6,6 +6,7 @@ import {
   updateProductHandler,
   deleteProductHandler,
   updateOrderStatusHandler,
+  downloadDeliveryBillHandler,
   updateMessageStatusHandler,
   updateCustomerHandler,
   deleteCustomerHandler,
@@ -69,6 +70,7 @@ router.get('/product-search', (req, res) => {
 
 
 router.put('/orders/:id/status', updateOrderStatusHandler)
+router.get('/orders/:id/delivery-bill', downloadDeliveryBillHandler)
 
 router.put('/customers/:id', updateCustomerHandler)
 router.delete('/customers/:id', deleteCustomerHandler)
@@ -104,4 +106,3 @@ router.put('/cashiers/:id', updateCashierHandler)
 router.delete('/cashiers/:id', deleteCashierHandler)
 
 export default router
-
