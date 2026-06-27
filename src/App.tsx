@@ -35,6 +35,7 @@ const AdminInventory = lazy(() => import('./pages/admin/inventory/InventoryPage'
 const AdminSales = lazy(() => import('./pages/admin/inventory/SalesPage'))
 const CashierLogin = lazy(() => import('./pages/cashier/CashierLogin'))
 const CashierPOS = lazy(() => import('./pages/cashier/CashierPOS'))
+const CashierWebsiteTerminal = lazy(() => import('./pages/cashier/CashierWebsiteTerminal'))
 const CashierDashboard = lazy(() => import('./pages/cashier/CashierDashboard'))
 const CashierInventory = lazy(() => import('./pages/cashier/CashierInventory'))
 
@@ -83,10 +84,10 @@ export default function App() {
         <Route path="/cashier/login" element={<CashierLogin />} />
         <Route path="/cashier" element={<CashierPOS />} />
         <Route path="/cashier/pos" element={<CashierPOS />} />
+        <Route path="/cashier/website" element={<CashierWebsiteTerminal />} />
         <Route path="/cashier/dashboard" element={<CashierDashboard />} />
         <Route path="/cashier/inventory" element={<CashierInventory />} />
       </Routes>
     </Suspense>
   )
 }
-

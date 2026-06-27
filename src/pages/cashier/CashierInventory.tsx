@@ -47,6 +47,11 @@ export default function CashierInventory() {
     return product.qty_meegoda || 0
   }
 
+  const getInventoryPrice = (product: any) => {
+    const inventoryPrice = Number(product.inventory_price ?? product.buy_price ?? 0)
+    return inventoryPrice > 0 ? inventoryPrice : Number(product.price || 0)
+  }
+
   return (
     <CashierLayout>
       <div className="space-y-6">
@@ -124,7 +129,7 @@ export default function CashierInventory() {
                         </td>
                         <td className="px-6 py-4 font-mono text-xs">{product.barcode || '-'}</td>
                         <td className="px-6 py-4 text-right font-black text-primary">
-                          {formatCurrency(product.buy_price || product.price)}
+                          {formatCurrency(getInventoryPrice(product))}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <Badge 

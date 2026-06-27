@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { LogOut, Calculator, LayoutDashboard, Package, ShoppingCart } from "lucide-react"
+import { LogOut, Calculator, ClipboardList, LayoutDashboard, Package, ShoppingCart } from "lucide-react"
 import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
 
@@ -54,6 +54,14 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
               <ShoppingCart className="w-4 h-4" /> POS Terminal
             </Button>
             <Button
+              variant={window.location.pathname === '/cashier/website' ? 'default' : 'ghost'}
+              size="sm"
+              className="gap-2"
+              onClick={() => navigate('/cashier/website')}
+            >
+              <ClipboardList className="w-4 h-4" /> Website Terminal
+            </Button>
+            <Button
               variant={window.location.pathname === '/cashier/dashboard' ? 'default' : 'ghost'}
               size="sm"
               className="gap-2"
@@ -93,6 +101,14 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
             onClick={() => navigate('/cashier/pos')}
           >
             <ShoppingCart className="w-4 h-4" /> POS
+          </Button>
+          <Button
+            variant={window.location.pathname === '/cashier/website' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-2 whitespace-nowrap"
+            onClick={() => navigate('/cashier/website')}
+          >
+            <ClipboardList className="w-4 h-4" /> Website
           </Button>
           <Button
             variant={window.location.pathname === '/cashier/dashboard' ? 'default' : 'outline'}

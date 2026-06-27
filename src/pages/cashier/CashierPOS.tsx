@@ -16,7 +16,9 @@ import {
   AlertCircle,
   X,
   ScanBarcode,
-  History
+  History,
+  Phone,
+  UserPlus
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,8 +52,19 @@ export default function CashierPOS() {
     }
     return product.name;
   }
-  const [customers, setCustomers] = useState<any[]>([])
+  const getInventoryPrice = (product: any) => {
+    const inventoryPrice = Number(product.inventory_price ?? product.buy_price ?? 0)
+    return inventoryPrice > 0 ? inventoryPrice : Number(product.price || 0)
+  }
+  const [customerSearchTerm, setCustomerSearchTerm] = useState("")
+  const [customerResults, setCustomerResults] = useState<any[]>([])
+  const [showNewCustomer, setShowNewCustomer] = useState(false)
+  const [newCustomerName, setNewCustomerName] = useState("")
+  const [newCustomerPhone, setNewCustomerPhone] = useState("")
+  const [walkInName, setWalkInName] = useState("")
+  const [walkInPhone, setWalkInPhone] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer'>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
   const [lastSale, setLastSale] = useState<any>(null)
@@ -128,6 +141,7 @@ export default function CashierPOS() {
     try {
       const res = await inventoryProductsService.getByBarcode(barcode)
       if (res.data) {
+        res.data.price = getInventoryPrice(res.data)
         addToCart(res.data)
         toast.success(`✅ Added: ${res.data.name} — ${formatCurrency(res.data.price)}`, { duration: 2000 })
         setScanFlash('success')
@@ -165,12 +179,61 @@ export default function CashierPOS() {
     return () => clearTimeout(delayDebounceFn)
   }, [searchTerm])
 
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      const term = customerSearchTerm.trim()
+      if (term.length < 2) {
+        setCustomerResults([])
+        return
+      }
+
+      try {
+        const res = await inventoryCustomersService.getAll(term)
+        setCustomerResults(res.data || [])
+      } catch (err) {
+        console.error('Customer search failed:', err)
+      }
+    }, 300)
+
+    return () => clearTimeout(delayDebounceFn)
+  }, [customerSearchTerm])
+
+  const handleCreateCustomer = async () => {
+    const name = newCustomerName.trim()
+    const phone = newCustomerPhone.trim()
+
+    if (!name) {
+      toast.error("Customer name is required")
+      return
+    }
+
+    setIsSavingCustomer(true)
+    try {
+      const res = await inventoryCustomersService.create({ name, phone: phone || undefined })
+      setSelectedCustomer(res.data)
+      setNewCustomerName("")
+      setNewCustomerPhone("")
+      setCustomerSearchTerm("")
+      setCustomerResults([])
+      setWalkInName("")
+      setWalkInPhone("")
+      setShowNewCustomer(false)
+      toast.success("Customer saved")
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save customer")
+    } finally {
+      setIsSavingCustomer(false)
+    }
+  }
+
   const addToCart = (product: any) => {
     const shopName = cashier?.shop || 'Meegoda'
     let availableStock = 0
     if (shopName === 'Padukka') availableStock = product.qty_padukka || 0
     else if (shopName === 'Padukka new') availableStock = product.qty_padukka_new || 0
     else availableStock = product.qty_meegoda || 0
+
+    const inventoryPrice = getInventoryPrice(product)
 
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id)
@@ -186,7 +249,7 @@ export default function CashierPOS() {
       return [...prev, {
         id: product.id,
         name: getDisplayName(product),
-        price: product.price,
+        price: inventoryPrice,
         quantity: 1,
         stock: availableStock,
         image: product.image
@@ -222,11 +285,15 @@ export default function CashierPOS() {
     if (cart.length === 0) return
     setIsProcessing(true)
     try {
+      const customerName = selectedCustomer?.name || walkInName.trim() || 'Walk-in Customer'
+      const customerPhone = selectedCustomer?.phone || walkInPhone.trim() || undefined
       const saleData = {
         customer_id: selectedCustomer?.id,
-        customer_name: selectedCustomer?.name || 'Walk-in Customer',
+        customer_name: customerName,
+        customer_phone: customerPhone,
         payment_method: paymentMethod,
         source: 'pos' as const,
+        notes: !selectedCustomer && customerPhone ? `Walk-in phone: ${customerPhone}` : undefined,
         created_by: cashier?.email || 'cashier',
         shop: cashier?.shop || 'Meegoda',
         items: cart.map(item => ({
@@ -252,6 +319,8 @@ export default function CashierPOS() {
       setShowReceipt(true)
       setCart([])
       setSelectedCustomer(null)
+      setWalkInName("")
+      setWalkInPhone("")
       toast.success("Transaction completed successfully!")
     } catch (err: any) {
       toast.error(err.message || "Failed to process sale")
@@ -371,7 +440,7 @@ export default function CashierPOS() {
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-black text-primary text-sm">{formatCurrency(product.price)}</p>
+                        <p className="font-black text-primary text-sm">{formatCurrency(getInventoryPrice(product))}</p>
                         {(() => {
                            const shopName = cashier?.shop || 'Meegoda'
                            let availableStock = 0
@@ -484,22 +553,124 @@ export default function CashierPOS() {
               <User className="w-4 h-4 text-primary" /> Customer
             </h3>
             <div className="space-y-3">
-               <div className="flex items-center gap-2">
-                 <div className="flex-1 bg-muted/50 p-3 rounded-lg border border-border flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-foreground">{selectedCustomer?.name || 'Walk-in Customer'}</p>
-                      <p className="text-[10px] text-muted-foreground">{selectedCustomer?.phone || 'Guest Checkout'}</p>
-                    </div>
-                    {selectedCustomer && (
-                       <button onClick={() => setSelectedCustomer(null)} className="text-red-500 p-1 hover:bg-red-50 rounded">
-                        <X className="w-4 h-4" />
-                       </button>
-                    )}
-                 </div>
-                 <Button variant="outline" size="icon" className="h-full px-3">
-                   <Plus className="w-4 h-4" />
-                 </Button>
-               </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search saved customers..."
+                  className="pl-9 pr-9"
+                  value={customerSearchTerm}
+                  onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                />
+                {customerSearchTerm && (
+                  <button
+                    onClick={() => {
+                      setCustomerSearchTerm("")
+                      setCustomerResults([])
+                    }}
+                    className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
+                  >
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                )}
+
+                {customerResults.length > 0 && (
+                  <div className="absolute z-50 left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1">
+                    {customerResults.map(customer => (
+                      <button
+                        key={customer.id}
+                        onClick={() => {
+                          setSelectedCustomer(customer)
+                          setCustomerSearchTerm("")
+                          setCustomerResults([])
+                          setWalkInName("")
+                          setWalkInPhone("")
+                        }}
+                        className="w-full flex items-center justify-between gap-3 p-2.5 rounded-lg text-left hover:bg-muted"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold truncate">{customer.name}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{customer.phone || 'No phone number'}</p>
+                        </div>
+                        <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-muted/50 p-3 rounded-lg border border-border flex items-center justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground truncate">{selectedCustomer?.name || walkInName.trim() || 'Walk-in Customer'}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{selectedCustomer?.phone || walkInPhone.trim() || 'Guest Checkout'}</p>
+                  </div>
+                  {(selectedCustomer || walkInName || walkInPhone) && (
+                    <button
+                      onClick={() => {
+                        setSelectedCustomer(null)
+                        setWalkInName("")
+                        setWalkInPhone("")
+                      }}
+                      className="text-red-500 p-1 hover:bg-red-50 rounded flex-shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-12 w-12"
+                  onClick={() => setShowNewCustomer(prev => !prev)}
+                >
+                  <UserPlus className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {showNewCustomer && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-border rounded-lg bg-background">
+                  <Input
+                    placeholder="Customer name"
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Phone number"
+                    value={newCustomerPhone}
+                    onChange={(e) => setNewCustomerPhone(e.target.value)}
+                  />
+                  <Button
+                    className="sm:col-span-2 font-bold"
+                    disabled={isSavingCustomer || !newCustomerName.trim()}
+                    onClick={handleCreateCustomer}
+                  >
+                    {isSavingCustomer ? "SAVING..." : "SAVE PERMANENT CUSTOMER"}
+                  </Button>
+                </div>
+              )}
+
+              {!selectedCustomer && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-3 border-t border-border">
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Walk-in name"
+                      className="pl-9"
+                      value={walkInName}
+                      onChange={(e) => setWalkInName(e.target.value)}
+                    />
+                  </div>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Phone number"
+                      className="pl-9"
+                      value={walkInPhone}
+                      onChange={(e) => setWalkInPhone(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -757,7 +928,7 @@ export default function CashierPOS() {
                             </div>
                             <div>
                                <p className="font-bold">{scannedSale.customer_name || 'Walk-in Customer'}</p>
-                               <p className="text-xs text-muted-foreground">{scannedSale.inv_customers?.phone || 'Guest Checkout'}</p>
+                               <p className="text-xs text-muted-foreground">{scannedSale.customer_phone || scannedSale.inv_customers?.phone || 'Guest Checkout'}</p>
                             </div>
                          </div>
                       </div>

@@ -3,6 +3,24 @@ import { getSupabaseAdmin } from './supabase-admin'
 
 const router = Router()
 
+const getInventoryPrice = (product: any) => {
+  const inventoryPrice = Number(product.buy_price ?? 0)
+  return inventoryPrice > 0 ? inventoryPrice : Number(product.price || 0)
+}
+
+const getWebsitePrice = (product: any) => {
+  const discountPrice = Number(product.discount_price ?? 0)
+  const sellPrice = Number(product.sell_price ?? 0)
+  if (discountPrice > 0) return discountPrice
+  return sellPrice > 0 ? sellPrice : Number(product.price || 0)
+}
+
+const withInventoryPricing = (product: any) => ({
+  ...product,
+  inventory_price: getInventoryPrice(product),
+  website_price: getWebsitePrice(product),
+})
+
 // GET /api/inventory/products - List products with stock info
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -53,7 +71,7 @@ router.get('/', async (req: Request, res: Response) => {
       // Handle both array and single object formats for inv_stock join
       const stockRec = Array.isArray(p.inv_stock) ? p.inv_stock[0] : p.inv_stock;
 
-      return {
+      return withInventoryPricing({
         ...p,
         category: p.category || p.category_id,
         image: primaryImage, // attach the resolved image to the product root for the frontend
@@ -63,7 +81,7 @@ router.get('/', async (req: Request, res: Response) => {
         qty_padukka_new: stockRec ? (stockRec.qty_padukka_new ?? 0) : 0,
         low_stock_threshold: stockRec ? (stockRec.low_stock_threshold ?? 5) : 5,
         is_low_stock: (stockRec ? (stockRec.quantity ?? 0) : (p.stock ?? 0)) <= (stockRec ? (stockRec.low_stock_threshold ?? 5) : 5),
-      };
+      });
     })
 
     res.json({ data: products })
@@ -89,7 +107,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json({
       data: {
-        ...data,
+        ...withInventoryPricing(data),
         category: data.category || data.category_id,
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : (data.stock ?? 0),
@@ -125,7 +143,7 @@ router.get('/barcode/:barcode', async (req: Request, res: Response) => {
 
     res.json({
       data: {
-        ...data,
+        ...withInventoryPricing(data),
         category: data.category || data.category_id,
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : (data.stock ?? 0),

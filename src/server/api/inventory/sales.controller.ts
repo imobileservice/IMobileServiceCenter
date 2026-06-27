@@ -10,6 +10,7 @@ router.post('/', async (req: Request, res: Response) => {
     const {
       customer_id,
       customer_name,
+      customer_phone,
       payment_method,
       source,
       discount,
@@ -37,6 +38,7 @@ router.post('/', async (req: Request, res: Response) => {
     const { data, error } = await supabase.rpc('process_sale', {
       p_customer_id: customer_id || null,
       p_customer_name: customer_name || 'Walk-in Customer',
+      p_customer_phone: customer_phone || null,
       p_payment_method: payment_method || 'cash',
       p_source: source || 'pos',
       p_discount: Number(discount || 0),

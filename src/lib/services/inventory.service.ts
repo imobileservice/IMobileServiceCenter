@@ -20,6 +20,19 @@ async function apiFetch<T = any>(endpoint: string, options?: RequestInit): Promi
   return json
 }
 
+async function rawApiFetch<T = any>(endpoint: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(getApiUrl(endpoint), {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  })
+
+  const json = await res.json()
+  if (!res.ok) {
+    throw new Error(json.error || `API error: ${res.status}`)
+  }
+  return json
+}
+
 // ─── PRODUCTS ────────────────────────────────────────
 
 export const inventoryProductsService = {
@@ -87,6 +100,7 @@ export interface SaleItem {
 export interface CreateSalePayload {
   customer_id?: string
   customer_name?: string
+  customer_phone?: string
   payment_method: 'cash' | 'card' | 'bank_transfer' | 'online'
   source: 'pos' | 'website'
   discount?: number
@@ -204,6 +218,16 @@ export const inventoryCustomersService = {
   }),
 
   delete: (id: string) => apiFetch(`/customers/${id}`, { method: 'DELETE' }),
+}
+
+export const websiteOrdersService = {
+  getAll: () => rawApiFetch('/api/admin/data/orders'),
+
+  updateStatus: (id: string, status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled') =>
+    rawApiFetch(`/api/admin/orders/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    }),
 }
 
 // ─── REPORTS ─────────────────────────────────────────
