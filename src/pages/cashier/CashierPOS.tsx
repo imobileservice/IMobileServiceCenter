@@ -552,62 +552,119 @@ export default function CashierPOS() {
             <h3 className="font-bold flex items-center gap-2 mb-4">
               <User className="w-4 h-4 text-primary" /> Customer
             </h3>
-            <div className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search saved customers..."
-                  className="pl-9 pr-9"
-                  value={customerSearchTerm}
-                  onChange={(e) => setCustomerSearchTerm(e.target.value)}
-                />
-                {customerSearchTerm && (
-                  <button
-                    onClick={() => {
-                      setCustomerSearchTerm("")
-                      setCustomerResults([])
-                    }}
-                    className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
+            <div className="space-y-4">
+              <div className="rounded-xl border border-border bg-background/60 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">Permanent Customers</p>
+                    <p className="text-sm font-bold truncate">{selectedCustomer?.name || "Saved customer account"}</p>
+                  </div>
+                  <Button
+                    variant={showNewCustomer ? "default" : "outline"}
+                    size="icon"
+                    className="h-10 w-10 flex-shrink-0"
+                    onClick={() => setShowNewCustomer(prev => !prev)}
                   >
-                    <X className="w-4 h-4 text-muted-foreground" />
-                  </button>
+                    <UserPlus className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search saved customers..."
+                    className="pl-9 pr-9"
+                    value={customerSearchTerm}
+                    onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                  />
+                  {customerSearchTerm && (
+                    <button
+                      onClick={() => {
+                        setCustomerSearchTerm("")
+                        setCustomerResults([])
+                      }}
+                      className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
+                    >
+                      <X className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                  )}
+
+                  {customerResults.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1">
+                      {customerResults.map(customer => (
+                        <button
+                          key={customer.id}
+                          onClick={() => {
+                            setSelectedCustomer(customer)
+                            setCustomerSearchTerm("")
+                            setCustomerResults([])
+                            setWalkInName("")
+                            setWalkInPhone("")
+                          }}
+                          className="w-full flex items-center justify-between gap-3 p-2.5 rounded-lg text-left hover:bg-muted"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold truncate">{customer.name}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{customer.phone || 'No phone number'}</p>
+                          </div>
+                          <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {selectedCustomer && (
+                  <div className="bg-muted/50 p-3 rounded-lg border border-primary/30 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-foreground truncate">{selectedCustomer.name}</p>
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5">Selected</Badge>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate">{selectedCustomer.phone || 'No phone number'}</p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedCustomer(null)}
+                      className="text-red-500 p-1 hover:bg-red-50 rounded flex-shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
 
-                {customerResults.length > 0 && (
-                  <div className="absolute z-50 left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1">
-                    {customerResults.map(customer => (
-                      <button
-                        key={customer.id}
-                        onClick={() => {
-                          setSelectedCustomer(customer)
-                          setCustomerSearchTerm("")
-                          setCustomerResults([])
-                          setWalkInName("")
-                          setWalkInPhone("")
-                        }}
-                        className="w-full flex items-center justify-between gap-3 p-2.5 rounded-lg text-left hover:bg-muted"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold truncate">{customer.name}</p>
-                          <p className="text-[10px] text-muted-foreground truncate">{customer.phone || 'No phone number'}</p>
-                        </div>
-                        <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                      </button>
-                    ))}
+                {showNewCustomer && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-border rounded-lg bg-card">
+                    <Input
+                      placeholder="Customer name"
+                      value={newCustomerName}
+                      onChange={(e) => setNewCustomerName(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Phone number"
+                      value={newCustomerPhone}
+                      onChange={(e) => setNewCustomerPhone(e.target.value)}
+                    />
+                    <Button
+                      className="sm:col-span-2 font-bold"
+                      disabled={isSavingCustomer || !newCustomerName.trim()}
+                      onClick={handleCreateCustomer}
+                    >
+                      {isSavingCustomer ? "SAVING..." : "SAVE PERMANENT CUSTOMER"}
+                    </Button>
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-muted/50 p-3 rounded-lg border border-border flex items-center justify-between">
+              <div className="rounded-xl border border-border bg-background/60 p-3 space-y-3">
+                <div className="bg-muted/50 p-3 rounded-lg border border-border flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-foreground truncate">{selectedCustomer?.name || walkInName.trim() || 'Walk-in Customer'}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">{selectedCustomer?.phone || walkInPhone.trim() || 'Guest Checkout'}</p>
+                    <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">Walk-in Customer</p>
+                    <p className="text-sm font-bold text-foreground truncate">{walkInName.trim() || "Walk-in Customer"}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{walkInPhone.trim() || "Guest Checkout"}</p>
                   </div>
-                  {(selectedCustomer || walkInName || walkInPhone) && (
+                  {(walkInName || walkInPhone) && (
                     <button
                       onClick={() => {
-                        setSelectedCustomer(null)
                         setWalkInName("")
                         setWalkInPhone("")
                       }}
@@ -617,47 +674,18 @@ export default function CashierPOS() {
                     </button>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-12 w-12"
-                  onClick={() => setShowNewCustomer(prev => !prev)}
-                >
-                  <UserPlus className="w-4 h-4" />
-                </Button>
-              </div>
 
-              {showNewCustomer && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-border rounded-lg bg-background">
-                  <Input
-                    placeholder="Customer name"
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
-                  />
-                  <Input
-                    placeholder="Phone number"
-                    value={newCustomerPhone}
-                    onChange={(e) => setNewCustomerPhone(e.target.value)}
-                  />
-                  <Button
-                    className="sm:col-span-2 font-bold"
-                    disabled={isSavingCustomer || !newCustomerName.trim()}
-                    onClick={handleCreateCustomer}
-                  >
-                    {isSavingCustomer ? "SAVING..." : "SAVE PERMANENT CUSTOMER"}
-                  </Button>
-                </div>
-              )}
-
-              {!selectedCustomer && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-3 border-t border-border">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="relative">
                     <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                     <Input
                       placeholder="Walk-in name"
                       className="pl-9"
                       value={walkInName}
-                      onChange={(e) => setWalkInName(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedCustomer(null)
+                        setWalkInName(e.target.value)
+                      }}
                     />
                   </div>
                   <div className="relative">
@@ -666,11 +694,14 @@ export default function CashierPOS() {
                       placeholder="Phone number"
                       className="pl-9"
                       value={walkInPhone}
-                      onChange={(e) => setWalkInPhone(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedCustomer(null)
+                        setWalkInPhone(e.target.value)
+                      }}
                     />
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
