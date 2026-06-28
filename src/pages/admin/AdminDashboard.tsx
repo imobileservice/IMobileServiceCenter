@@ -1,60 +1,489 @@
 "use client"
 
-import React, { useEffect, useState, Suspense } from "react"
-import { motion } from "framer-motion"
-import { TrendingUp, Package, ShoppingCart, Users, DollarSign, Database as DatabaseIcon } from "lucide-react"
+import React, { Suspense, useEffect, useMemo, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
+import {
+  BarChart3,
+  CalendarDays,
+  Database as DatabaseIcon,
+  DollarSign,
+  Download,
+  Package,
+  PieChart as PieChartIcon,
+  ShoppingCart,
+  TrendingUp,
+  Users,
+} from "lucide-react"
 import { ordersService } from "@/lib/supabase/services/orders"
 import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanced"
 import { customersService } from "@/lib/supabase/services/customers"
-import { analyticsService } from "@/lib/supabase/services/analytics"
 import AdminLayout from "@/components/admin-layout"
+import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
-import type { Database } from "@/lib/supabase/types"
 import { lazyWithRetry } from "@/lib/chunk-recovery"
 
-type Order = Database['public']['Tables']['orders']['Row']
+type ReportPeriod = "daily" | "weekly" | "monthly"
+
+type ReportBucket = {
+  key: string
+  label: string
+  rangeLabel: string
+  start: Date
+  end: Date
+  sales: number
+  revenue: number
+  profit: number
+  webSales: number
+  posSales: number
+  webRevenue: number
+  posRevenue: number
+  webProfit: number
+  posProfit: number
+}
+
+type ReportAnalytics = {
+  buckets: ReportBucket[]
+  rangeLabel: string
+  totals: {
+    sales: number
+    revenue: number
+    profit: number
+    webSales: number
+    posSales: number
+    webRevenue: number
+    posRevenue: number
+    webProfit: number
+    posProfit: number
+    margin: number
+  }
+  channelPie: Array<{ name: string; value: number; fill: string }>
+  profitPie: Array<{ name: string; value: number; fill: string }>
+}
 
 // Lazy load heavy chart components
-const LineChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.LineChart })))
 const BarChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.BarChart })))
+const PieChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.PieChart })))
 const ResponsiveContainer = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })))
-const Line = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Line })))
 const Bar = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Bar })))
+const Pie = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Pie })))
+const Cell = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Cell })))
 const XAxis = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.XAxis })))
 const YAxis = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.YAxis })))
 const CartesianGrid = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.CartesianGrid })))
 const Tooltip = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Tooltip })))
+const Legend = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Legend })))
 
-const SALES_DATA = [
-  { month: "Jan", sales: 4000, orders: 240 },
-  { month: "Feb", sales: 3000, orders: 221 },
-  { month: "Mar", sales: 2000, orders: 229 },
-  { month: "Apr", sales: 2780, orders: 200 },
-  { month: "May", sales: 1890, orders: 229 },
-  { month: "Jun", sales: 2390, orders: 200 },
+const PERIOD_OPTIONS: Array<{ id: ReportPeriod; label: string }> = [
+  { id: "daily", label: "Daily" },
+  { id: "weekly", label: "Weekly" },
+  { id: "monthly", label: "Monthly" },
 ]
 
+const CHART_COLORS = {
+  revenue: "#2563eb",
+  profit: "#16a34a",
+  web: "#3b82f6",
+  pos: "#22c55e",
+  cost: "#64748b",
+  loss: "#ef4444",
+  empty: "#334155",
+}
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1,
+      staggerChildren: 0.08,
     },
   },
 }
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
+  hidden: { opacity: 0, y: 16 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5 },
+    transition: { duration: 0.35 },
   },
 }
 
+const toNumber = (value: unknown) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+const endOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
+const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate()
+
+const formatShortDate = (date: Date) =>
+  date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+
+const formatRange = (start: Date, end: Date) =>
+  `${formatShortDate(start)} - ${formatShortDate(end)}`
+
+const formatAxisCurrency = (value: number) => {
+  const numeric = Number(value) || 0
+  const amount = Math.abs(numeric)
+  const sign = numeric < 0 ? "-" : ""
+  if (amount >= 1_000_000) return `${sign}Rs. ${(amount / 1_000_000).toFixed(1)}M`
+  if (amount >= 1_000) return `${sign}Rs. ${(amount / 1_000).toFixed(0)}k`
+  return `${sign}Rs. ${amount}`
+}
+
+const formatPercent = (value: number) =>
+  `${Number.isFinite(value) ? value.toFixed(1) : "0.0"}%`
+
+const formatCurrencyTooltip = (value: unknown, name: unknown) => [
+  formatCurrency(Number(value), { showDecimals: false }),
+  String(name),
+]
+
+const formatCountTooltip = (value: unknown, name: unknown) => [
+  Number(value).toLocaleString(),
+  String(name),
+]
+
+const formatPieTooltip = (value: unknown, name: unknown) => {
+  const label = String(name)
+  return label.startsWith("No ")
+    ? ["No data", label]
+    : [formatCurrency(Number(value), { showDecimals: false }), label]
+}
+
+const escapeHtml = (value: unknown) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+
+function createBuckets(period: ReportPeriod, now = new Date()): Pick<ReportAnalytics, "buckets" | "rangeLabel"> {
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const monthName = now.toLocaleDateString("en-US", { month: "long" })
+
+  if (period === "daily") {
+    const totalDays = daysInMonth(year, month)
+    const buckets = Array.from({ length: totalDays }, (_, index) => {
+      const day = index + 1
+      const date = new Date(year, month, day)
+      return createBucket({
+        key: `${year}-${month + 1}-${day}`,
+        label: String(day),
+        rangeLabel: formatShortDate(date),
+        start: startOfDay(date),
+        end: endOfDay(date),
+      })
+    })
+
+    return { buckets, rangeLabel: `${monthName} ${year}` }
+  }
+
+  if (period === "weekly") {
+    const totalDays = daysInMonth(year, month)
+    const buckets: ReportBucket[] = []
+
+    for (let startDay = 1; startDay <= totalDays; startDay += 7) {
+      const endDay = Math.min(startDay + 6, totalDays)
+      const start = new Date(year, month, startDay)
+      const end = new Date(year, month, endDay)
+      buckets.push(
+        createBucket({
+          key: `${year}-${month + 1}-week-${buckets.length + 1}`,
+          label: `Week ${buckets.length + 1}`,
+          rangeLabel: formatRange(start, end),
+          start: startOfDay(start),
+          end: endOfDay(end),
+        })
+      )
+    }
+
+    return { buckets, rangeLabel: `${monthName} ${year}` }
+  }
+
+  const buckets = Array.from({ length: 12 }, (_, index) => {
+    const start = new Date(year, index, 1)
+    const end = new Date(year, index, daysInMonth(year, index))
+    return createBucket({
+      key: `${year}-${index + 1}`,
+      label: start.toLocaleDateString("en-US", { month: "short" }),
+      rangeLabel: start.toLocaleDateString("en-US", { month: "long" }),
+      start: startOfDay(start),
+      end: endOfDay(end),
+    })
+  })
+
+  return { buckets, rangeLabel: String(year) }
+}
+
+function createBucket(args: Pick<ReportBucket, "key" | "label" | "rangeLabel" | "start" | "end">): ReportBucket {
+  return {
+    ...args,
+    sales: 0,
+    revenue: 0,
+    profit: 0,
+    webSales: 0,
+    posSales: 0,
+    webRevenue: 0,
+    posRevenue: 0,
+    webProfit: 0,
+    posProfit: 0,
+  }
+}
+
+function findBucket(buckets: ReportBucket[], value: unknown) {
+  const date = new Date(String(value))
+  if (Number.isNaN(date.getTime())) return null
+  return buckets.find(bucket => date >= bucket.start && date <= bucket.end) || null
+}
+
+function buildCostMap(products: any[]) {
+  const map = new Map<string, number>()
+
+  products.forEach(product => {
+    if (!product?.id) return
+    const cost = toNumber(product.cost_price ?? product.buy_price ?? product.inventory_price)
+    if (cost > 0) map.set(product.id, cost)
+  })
+
+  return map
+}
+
+function getWebOrderItems(order: any) {
+  if (Array.isArray(order?.order_items) && order.order_items.length > 0) {
+    return order.order_items
+  }
+
+  const rawItems = order?.items
+  if (Array.isArray(rawItems)) return rawItems
+
+  if (typeof rawItems === "string") {
+    try {
+      const parsed = JSON.parse(rawItems)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
+function calculateItemsProfit(items: any[], productCosts: Map<string, number>) {
+  return items.reduce((sum, item) => {
+    const productId = item.product_id || item.productId || item.id
+    const cost = productId ? productCosts.get(productId) : undefined
+    if (cost === undefined) return sum
+
+    const quantity = toNumber(item.quantity || item.qty || 1)
+    const itemTotal = toNumber(item.total_price ?? item.total)
+    const unitPrice = toNumber(item.price ?? item.unit_price ?? (quantity > 0 ? itemTotal / quantity : 0))
+
+    return sum + (unitPrice - cost) * quantity
+  }, 0)
+}
+
+function isRevenueOrder(order: any) {
+  const status = String(order?.status || "").toLowerCase()
+  const paymentStatus = String(order?.payment_status || "").toLowerCase()
+  return status !== "cancelled" && paymentStatus !== "failed"
+}
+
+function buildReportAnalytics(
+  period: ReportPeriod,
+  orders: any[],
+  posSales: any[],
+  products: any[]
+): ReportAnalytics {
+  const { buckets, rangeLabel } = createBuckets(period)
+  const productCosts = buildCostMap(products)
+
+  orders.filter(isRevenueOrder).forEach(order => {
+    const bucket = findBucket(buckets, order.created_at)
+    if (!bucket) return
+
+    const revenue = toNumber(order.total)
+    const profit = calculateItemsProfit(getWebOrderItems(order), productCosts)
+
+    bucket.sales += 1
+    bucket.webSales += 1
+    bucket.revenue += revenue
+    bucket.webRevenue += revenue
+    bucket.profit += profit
+    bucket.webProfit += profit
+  })
+
+  posSales.forEach(sale => {
+    const bucket = findBucket(buckets, sale.created_at)
+    if (!bucket) return
+
+    const revenue = toNumber(sale.net_amount ?? sale.total_amount)
+    const profit = calculateItemsProfit(sale.inv_sale_items || [], productCosts)
+
+    bucket.sales += 1
+    bucket.posSales += 1
+    bucket.revenue += revenue
+    bucket.posRevenue += revenue
+    bucket.profit += profit
+    bucket.posProfit += profit
+  })
+
+  const totals = buckets.reduce(
+    (acc, bucket) => ({
+      sales: acc.sales + bucket.sales,
+      revenue: acc.revenue + bucket.revenue,
+      profit: acc.profit + bucket.profit,
+      webSales: acc.webSales + bucket.webSales,
+      posSales: acc.posSales + bucket.posSales,
+      webRevenue: acc.webRevenue + bucket.webRevenue,
+      posRevenue: acc.posRevenue + bucket.posRevenue,
+      webProfit: acc.webProfit + bucket.webProfit,
+      posProfit: acc.posProfit + bucket.posProfit,
+      margin: 0,
+    }),
+    {
+      sales: 0,
+      revenue: 0,
+      profit: 0,
+      webSales: 0,
+      posSales: 0,
+      webRevenue: 0,
+      posRevenue: 0,
+      webProfit: 0,
+      posProfit: 0,
+      margin: 0,
+    }
+  )
+
+  totals.margin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0
+
+  const channelPie = withFallbackPie(
+    [
+      { name: "Website", value: totals.webRevenue, fill: CHART_COLORS.web },
+      { name: "POS", value: totals.posRevenue, fill: CHART_COLORS.pos },
+    ],
+    "No revenue"
+  )
+
+  const knownCost = totals.revenue - totals.profit
+  const profitPie =
+    totals.profit >= 0
+      ? withFallbackPie(
+          [
+            { name: "Known Cost", value: Math.max(knownCost, 0), fill: CHART_COLORS.cost },
+            { name: "Profit", value: totals.profit, fill: CHART_COLORS.profit },
+          ],
+          "No profit"
+        )
+      : withFallbackPie(
+          [
+            { name: "Revenue", value: totals.revenue, fill: CHART_COLORS.revenue },
+            { name: "Loss", value: Math.abs(totals.profit), fill: CHART_COLORS.loss },
+          ],
+          "No profit"
+        )
+
+  return { buckets, rangeLabel, totals, channelPie, profitPie }
+}
+
+function withFallbackPie(data: Array<{ name: string; value: number; fill: string }>, fallbackName: string) {
+  return data.some(item => item.value > 0)
+    ? data
+    : [{ name: fallbackName, value: 1, fill: CHART_COLORS.empty }]
+}
+
+function downloadExcelReport(period: ReportPeriod, analytics: ReportAnalytics) {
+  if (typeof window === "undefined") return
+
+  const heading = `${period.charAt(0).toUpperCase()}${period.slice(1)} Dashboard Report`
+  const generatedAt = new Date().toLocaleString()
+
+  const rows = analytics.buckets.map(bucket => [
+    bucket.label,
+    bucket.rangeLabel,
+    bucket.sales,
+    bucket.webSales,
+    bucket.posSales,
+    bucket.revenue.toFixed(2),
+    bucket.webRevenue.toFixed(2),
+    bucket.posRevenue.toFixed(2),
+    bucket.profit.toFixed(2),
+    bucket.webProfit.toFixed(2),
+    bucket.posProfit.toFixed(2),
+    bucket.revenue > 0 ? `${((bucket.profit / bucket.revenue) * 100).toFixed(2)}%` : "0.00%",
+  ])
+
+  const headers = [
+    "Period",
+    "Range",
+    "Sales",
+    "Website Sales",
+    "POS Sales",
+    "Revenue",
+    "Website Revenue",
+    "POS Revenue",
+    "Profit",
+    "Website Profit",
+    "POS Profit",
+    "Profit Margin",
+  ]
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          table { border-collapse: collapse; font-family: Arial, sans-serif; }
+          th, td { border: 1px solid #b8c2cc; padding: 8px 10px; }
+          th { background: #111827; color: #ffffff; }
+          .meta { font-weight: 700; background: #e5e7eb; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr><td class="meta" colspan="${headers.length}">${escapeHtml(heading)}</td></tr>
+          <tr><td class="meta" colspan="${headers.length}">Range: ${escapeHtml(analytics.rangeLabel)}</td></tr>
+          <tr><td class="meta" colspan="${headers.length}">Generated: ${escapeHtml(generatedAt)}</td></tr>
+          <tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+          ${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
+          <tr>
+            <td class="meta">Total</td>
+            <td class="meta">${escapeHtml(analytics.rangeLabel)}</td>
+            <td class="meta">${analytics.totals.sales}</td>
+            <td class="meta">${analytics.totals.webSales}</td>
+            <td class="meta">${analytics.totals.posSales}</td>
+            <td class="meta">${analytics.totals.revenue.toFixed(2)}</td>
+            <td class="meta">${analytics.totals.webRevenue.toFixed(2)}</td>
+            <td class="meta">${analytics.totals.posRevenue.toFixed(2)}</td>
+            <td class="meta">${analytics.totals.profit.toFixed(2)}</td>
+            <td class="meta">${analytics.totals.webProfit.toFixed(2)}</td>
+            <td class="meta">${analytics.totals.posProfit.toFixed(2)}</td>
+            <td class="meta">${analytics.totals.margin.toFixed(2)}%</td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `
+
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = `imobile-${period}-sales-revenue-profit-${new Date().toISOString().slice(0, 10)}.xls`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 export default function AdminDashboard() {
+  const [activePeriod, setActivePeriod] = useState<ReportPeriod>("daily")
+  const [orders, setOrders] = useState<any[]>([])
+  const [posSales, setPosSales] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([])
   const [stats, setStats] = useState({
     totalRevenue: 0,
     webRevenue: 0,
@@ -67,149 +496,148 @@ export default function AdminDashboard() {
     totalCustomers: 0,
     loading: true,
   })
-  const [salesData, setSalesData] = useState<any[]>([])
-  const [recentTransactions, setRecentTransactions] = useState<any[]>([])
 
   useEffect(() => {
     const fetchDashboardData = async (silent = false) => {
       try {
         if (!silent) setStats(prev => ({ ...prev, loading: true }))
-        // Try to fetch stats from backend API first
-        const { getApiUrl } = await import('@/lib/utils/api')
-        let statsData = null
+
+        const { getApiUrl } = await import("@/lib/utils/api")
+        const reportStart = new Date(new Date().getFullYear(), 0, 1).toISOString()
+        let statsData: any = null
+
         try {
-          const statsResponse = await fetch(getApiUrl('/api/admin/data/stats'))
+          const statsResponse = await fetch(getApiUrl("/api/admin/data/stats"))
           if (statsResponse.ok) {
             const statsResult = await statsResponse.json()
             statsData = statsResult.data
           }
         } catch (err) {
-          console.warn('Failed to fetch stats from API, using fallback:', err)
+          console.warn("Failed to fetch stats from API, using fallback:", err)
         }
 
         const needsProductStatsFallback =
           statsData?.totalProducts === undefined || statsData?.totalQuantity === undefined
         const needsCustomerFallback = statsData?.totalCustomers === undefined
 
-        // Fetch all data in parallel
-        const [orders, posSalesResult, productStats, customers] = await Promise.all([
+        const productsRequest = fetch(getApiUrl("/api/inventory/products"))
+          .then(res => {
+            if (!res.ok) throw new Error(`Product API failed: ${res.status}`)
+            return res.json()
+          })
+          .catch(async err => {
+            console.warn("Failed to fetch product costs from API, using fallback:", err)
+            const fallbackProducts = await productsServiceEnhanced.getAll().catch(() => [])
+            return { data: fallbackProducts }
+          })
+
+        const [ordersData, posSalesResult, productStats, customers, productsResult] = await Promise.all([
           ordersService.getAll().catch(err => {
-            console.error('Error fetching orders:', err)
+            console.error("Error fetching orders:", err)
             return []
           }),
-          fetch(getApiUrl('/api/inventory/sales')).then(res => res.json()).catch(err => {
-            console.error('Error fetching POS sales:', err)
-            return { data: [] }
-          }),
+          fetch(getApiUrl(`/api/inventory/sales?from_date=${encodeURIComponent(reportStart)}&limit=5000`))
+            .then(res => res.json())
+            .catch(err => {
+              console.error("Error fetching POS sales:", err)
+              return { data: [] }
+            }),
           needsProductStatsFallback
             ? productsServiceEnhanced.getStats().catch(err => {
-                console.error('Error fetching product stats:', err)
+                console.error("Error fetching product stats:", err)
                 return { total: 0, inStock: 0, outOfStock: 0, categories: 0, brands: 0, totalQuantity: 0 }
               })
             : Promise.resolve(null),
           needsCustomerFallback
             ? customersService.getAll().catch(err => {
-                console.error('Error fetching customers:', err)
+                console.error("Error fetching customers:", err)
                 return []
               })
             : Promise.resolve([]),
+          productsRequest,
         ])
 
-        const posSales = posSalesResult.data || []
+        const posSalesData = posSalesResult.data || []
+        const productsData = productsResult.data || []
 
-        // Calculate revenue
-        const webRevenue = (orders || []).reduce((sum: number, order: any) => sum + Number(order.total || 0), 0)
-        const posRevenue = (posSales || []).reduce((sum: number, sale: any) => sum + Number(sale.net_amount || 0), 0)
+        setOrders(ordersData || [])
+        setPosSales(posSalesData)
+        setProducts(productsData)
+
+        const revenueOrders = (ordersData || []).filter(isRevenueOrder)
+        const webRevenue = revenueOrders.reduce((sum: number, order: any) => sum + toNumber(order.total), 0)
+        const posRevenue = posSalesData.reduce((sum: number, sale: any) => sum + toNumber(sale.net_amount), 0)
         const totalRevenue = webRevenue + posRevenue
 
-        // Get last 6 months sales data breakdown
-        const now = new Date()
-        const monthlyData = []
-        for (let i = 5; i >= 0; i--) {
-          const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-          const monthStart = date.getTime()
-          const nextMonthDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-          const monthEnd = nextMonthDate.getTime()
-          
-          const monthOrders = (orders || []).filter((o: any) => {
-            const orderDate = new Date(o.created_at).getTime()
-            return orderDate >= monthStart && orderDate < monthEnd
-          })
-
-          const monthPosSales = (posSales || []).filter((s: any) => {
-            const saleDate = new Date(s.created_at).getTime()
-            return saleDate >= monthStart && saleDate < monthEnd
-          })
-
-          monthlyData.push({
-            month: date.toLocaleDateString('en-US', { month: 'short' }),
-            webSales: monthOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0),
-            posSales: monthPosSales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0),
-            totalSales: monthOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0) + 
-                       monthPosSales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0),
-            orders: monthOrders.length + monthPosSales.length,
-          })
-        }
-
-        // Use stats from API if available, otherwise use calculated values
         const finalStats = {
           totalRevenue: statsData?.totalRevenue ?? totalRevenue,
           webRevenue: statsData?.webRevenue ?? webRevenue,
           posRevenue: statsData?.posRevenue ?? posRevenue,
-          totalOrders: statsData?.totalOrders ?? (orders.length + posSales.length),
-          webOrdersCount: statsData?.webOrdersCount ?? orders.length,
-          posOrdersCount: statsData?.posOrdersCount ?? posSales.length,
-          totalProducts: statsData?.totalProducts ?? (productStats?.total || 0),
+          totalOrders: statsData?.totalOrders ?? (revenueOrders.length + posSalesData.length),
+          webOrdersCount: statsData?.webOrdersCount ?? revenueOrders.length,
+          posOrdersCount: statsData?.posOrdersCount ?? posSalesData.length,
+          totalProducts: statsData?.totalProducts ?? (productStats?.total || productsData.length || 0),
           totalQuantity: statsData?.totalQuantity ?? (productStats?.totalQuantity || 0),
           totalCustomers: statsData?.totalCustomers ?? (customers || []).length,
           loading: false,
         }
-        
-        console.log('[AdminDashboard] Updated unified stats:', finalStats)
-        
+
         setStats(finalStats)
-        setSalesData(monthlyData.length > 0 ? monthlyData : SALES_DATA)
-        
-        // Combine and sort recent transactions (Website Orders + POS Sales)
+
         const combinedTransactions = [
-          ...(orders || []).map((o: any) => ({ ...o, transactionType: 'Website', displayId: o.order_number, displayAmount: o.total, displayStatus: o.status })),
-          ...(posSales || []).map((s: any) => ({ ...s, transactionType: 'POS', displayId: s.invoice_number, displayAmount: s.net_amount, displayStatus: 'Completed' }))
+          ...(ordersData || []).map((order: any) => ({
+            ...order,
+            transactionType: "Website",
+            displayId: order.order_number,
+            displayAmount: order.total,
+            displayStatus: order.status,
+          })),
+          ...posSalesData.map((sale: any) => ({
+            ...sale,
+            transactionType: "POS",
+            displayId: sale.invoice_number,
+            displayAmount: sale.net_amount,
+            displayStatus: "Completed",
+          })),
         ]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 10)
 
         setRecentTransactions(combinedTransactions)
       } catch (error) {
-        console.error('Failed to fetch dashboard data:', error)
+        console.error("Failed to fetch dashboard data:", error)
         if (!silent) setStats(prev => ({ ...prev, loading: false }))
       }
     }
 
     fetchDashboardData()
 
-    // Polling fallback
     const pollingInterval = setInterval(() => fetchDashboardData(true), 30000)
-    
-    // Listen for order updates
     const handleUpdate = () => fetchDashboardData(true)
-    window.addEventListener('orderUpdated', handleUpdate)
-    window.addEventListener('productUpdated', handleUpdate)
-    window.addEventListener('inventoryUpdated', handleUpdate)
-    window.addEventListener('storage', (e) => {
-      if (e.key?.startsWith('adminUpdate_')) handleUpdate()
-    })
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key?.startsWith("adminUpdate_")) handleUpdate()
+    }
+
+    window.addEventListener("orderUpdated", handleUpdate)
+    window.addEventListener("productUpdated", handleUpdate)
+    window.addEventListener("inventoryUpdated", handleUpdate)
+    window.addEventListener("storage", handleStorage)
 
     return () => {
       clearInterval(pollingInterval)
-      window.removeEventListener('orderUpdated', handleUpdate)
-      window.removeEventListener('productUpdated', handleUpdate)
-      window.removeEventListener('inventoryUpdated', handleUpdate)
+      window.removeEventListener("orderUpdated", handleUpdate)
+      window.removeEventListener("productUpdated", handleUpdate)
+      window.removeEventListener("inventoryUpdated", handleUpdate)
+      window.removeEventListener("storage", handleStorage)
     }
   }, [])
 
-  // Compute STATS array based on current stats state
-  // Use useMemo to ensure it updates when stats change
-  const STATS = React.useMemo(() => [
+  const analytics = useMemo(
+    () => buildReportAnalytics(activePeriod, orders, posSales, products),
+    [activePeriod, orders, posSales, products]
+  )
+
+  const STATS = useMemo(() => [
     {
       icon: DollarSign,
       label: "Total Revenue",
@@ -247,18 +675,55 @@ export default function AdminDashboard() {
     },
   ], [stats])
 
+  const reportCards = [
+    {
+      icon: CalendarDays,
+      label: "Sales",
+      value: analytics.totals.sales.toLocaleString(),
+      subtext: `Web ${analytics.totals.webSales} | POS ${analytics.totals.posSales}`,
+      color: "bg-sky-500",
+    },
+    {
+      icon: DollarSign,
+      label: "Revenue",
+      value: formatCurrency(analytics.totals.revenue, { showDecimals: false }),
+      subtext: analytics.rangeLabel,
+      color: "bg-blue-500",
+    },
+    {
+      icon: TrendingUp,
+      label: "Profit",
+      value: formatCurrency(analytics.totals.profit, { showDecimals: false }),
+      subtext: `${formatPercent(analytics.totals.margin)} margin`,
+      color: analytics.totals.profit >= 0 ? "bg-emerald-500" : "bg-red-500",
+    },
+    {
+      icon: PieChartIcon,
+      label: "POS Share",
+      value: formatPercent(analytics.totals.revenue ? (analytics.totals.posRevenue / analytics.totals.revenue) * 100 : 0),
+      subtext: formatCurrency(analytics.totals.posRevenue, { showDecimals: false }),
+      color: "bg-violet-500",
+    },
+  ]
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Delivered":
+      case "delivered":
       case "Completed":
+      case "completed":
         return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
       case "Shipped":
+      case "shipped":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
       case "Processing":
+      case "processing":
         return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
       case "Pending":
+      case "pending":
         return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
       case "Cancelled":
+      case "cancelled":
         return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
@@ -267,186 +732,327 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="space-y-8">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Welcome back! Here's your business overview.</p>
-      </motion.div>
+      <div className="space-y-6">
+        <motion.div initial={{ opacity: 0, y: -18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Welcome back! Here's your business overview.</p>
+        </motion.div>
 
-      {/* Stats Grid */}
-      {stats.loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="bg-card border border-border rounded-lg p-6 animate-pulse">
-              <div className="h-20 bg-muted rounded" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <motion.div
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6"
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          {STATS.map((stat, index) => {
-            const Icon = stat.icon
-            console.log(`[AdminDashboard] Rendering stat ${index}:`, stat.label, stat.value)
-            return (
-              <motion.div
-                key={`${stat.label}-${index}`}
-                variants={itemVariants}
-                className="bg-card border border-border rounded-lg p-4 2xl:p-6 hover:shadow-lg transition-shadow flex flex-col justify-center"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-muted-foreground text-xs md:text-sm font-medium truncate">{stat.label}</p>
-                    <h3 className="text-lg md:text-xl 2xl:text-2xl font-bold mt-1.5 text-foreground truncate">{stat.value}</h3>
-                    {stat.subtext && (
-                      <p className="text-muted-foreground text-[10px] md:text-xs mt-1.5 truncate">
-                        {stat.subtext}
-                      </p>
-                    )}
+        {stats.loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {[1, 2, 3, 4, 5].map((item) => (
+              <div key={item} className="bg-card border border-border rounded-lg p-5 animate-pulse">
+                <div className="h-20 bg-muted rounded" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            {STATS.map((stat, index) => {
+              const Icon = stat.icon
+              return (
+                <motion.div
+                  key={`${stat.label}-${index}`}
+                  variants={itemVariants}
+                  className="bg-card border border-border rounded-lg p-4 2xl:p-5 hover:shadow-lg transition-shadow flex flex-col justify-center"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-muted-foreground text-xs md:text-sm font-medium truncate">{stat.label}</p>
+                      <h3 className="text-lg md:text-xl 2xl:text-2xl font-bold mt-1.5 text-foreground truncate">{stat.value}</h3>
+                      <p className="text-muted-foreground text-[10px] md:text-xs mt-1.5 truncate">{stat.subtext}</p>
+                    </div>
+                    <div className={`${stat.color} p-2 lg:p-2.5 2xl:p-3 rounded-lg text-white flex-shrink-0`}>
+                      <Icon className="w-4 h-4 lg:w-5 lg:h-5 2xl:w-6 2xl:h-6" />
+                    </div>
                   </div>
-                  <div className={`${stat.color} p-2 lg:p-2.5 2xl:p-3 rounded-lg text-white flex-shrink-0`}>
-                    <Icon className="w-4 h-4 lg:w-5 lg:h-5 2xl:w-6 2xl:h-6" />
+                </motion.div>
+              )
+            })}
+          </motion.div>
+        )}
+
+        <motion.div variants={itemVariants} initial="hidden" animate="visible" className="space-y-5">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold">Performance</h2>
+              <p className="text-sm text-muted-foreground">{analytics.rangeLabel}</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="inline-flex h-10 items-center rounded-lg border border-border bg-background p-1">
+                {PERIOD_OPTIONS.map(option => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setActivePeriod(option.id)}
+                    className={`h-8 px-4 rounded-md text-sm font-semibold transition-all ${
+                      activePeriod === option.id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10"
+                onClick={() => downloadExcelReport(activePeriod, analytics)}
+              >
+                <Download className="w-4 h-4" />
+                Export .xls
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {reportCards.map((card) => {
+                const Icon = card.icon
+                return (
+                  <div key={card.label} className="border border-border rounded-lg p-4 bg-card">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground truncate">{card.label}</p>
+                        <p className="text-xl font-black mt-1 truncate">{card.value}</p>
+                        <p className="text-xs text-muted-foreground mt-1 truncate">{card.subtext}</p>
+                      </div>
+                      <div className={`${card.color} p-2 rounded-lg text-white flex-shrink-0`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activePeriod}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.25 }}
+                className="grid grid-cols-1 xl:grid-cols-3 gap-4"
+              >
+                <div className="xl:col-span-2 border border-border rounded-lg p-4 sm:p-5 bg-card">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h3 className="text-base font-bold">Revenue and Profit</h3>
+                      <p className="text-xs text-muted-foreground">{analytics.rangeLabel}</p>
+                    </div>
+                    <BarChart3 className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <Suspense fallback={<div className="h-[330px] bg-muted animate-pulse rounded" />}>
+                    <ResponsiveContainer width="100%" height={330}>
+                      <BarChart data={analytics.buckets} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.7} />
+                        <XAxis dataKey="label" stroke="var(--muted-foreground)" tickLine={false} axisLine={false} />
+                        <YAxis
+                          stroke="var(--muted-foreground)"
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={formatAxisCurrency}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
+                          contentStyle={{
+                            backgroundColor: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "8px",
+                          }}
+                          formatter={formatCurrencyTooltip}
+                          labelFormatter={(label: string) => {
+                            const bucket = analytics.buckets.find(item => item.label === label)
+                            return bucket?.rangeLabel || label
+                          }}
+                        />
+                        <Legend />
+                        <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.revenue} radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="profit" name="Profit" fill={CHART_COLORS.profit} radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Suspense>
+                </div>
+
+                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h3 className="text-base font-bold">Sales Count</h3>
+                      <p className="text-xs text-muted-foreground">{analytics.totals.sales.toLocaleString()} transactions</p>
+                    </div>
+                    <CalendarDays className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <Suspense fallback={<div className="h-[330px] bg-muted animate-pulse rounded" />}>
+                    <ResponsiveContainer width="100%" height={330}>
+                      <BarChart data={analytics.buckets} margin={{ top: 12, right: 8, left: -16, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.7} />
+                        <XAxis dataKey="label" stroke="var(--muted-foreground)" tickLine={false} axisLine={false} />
+                        <YAxis stroke="var(--muted-foreground)" tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip
+                          cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
+                          contentStyle={{
+                            backgroundColor: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "8px",
+                          }}
+                          formatter={formatCountTooltip}
+                          labelFormatter={(label: string) => {
+                            const bucket = analytics.buckets.find(item => item.label === label)
+                            return bucket?.rangeLabel || label
+                          }}
+                        />
+                        <Bar dataKey="sales" name="Sales" fill="#f97316" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Suspense>
+                </div>
+
+                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                  <h3 className="text-base font-bold mb-1">Revenue Channel</h3>
+                  <p className="text-xs text-muted-foreground mb-4">Website and POS</p>
+                  <Suspense fallback={<div className="h-[260px] bg-muted animate-pulse rounded" />}>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <PieChart>
+                        <Pie data={analytics.channelPie} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} paddingAngle={4}>
+                          {analytics.channelPie.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "8px",
+                          }}
+                          formatter={formatPieTooltip}
+                        />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Suspense>
+                </div>
+
+                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                  <h3 className="text-base font-bold mb-1">Profit Mix</h3>
+                  <p className="text-xs text-muted-foreground mb-4">Based on product cost</p>
+                  <Suspense fallback={<div className="h-[260px] bg-muted animate-pulse rounded" />}>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <PieChart>
+                        <Pie data={analytics.profitPie} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} paddingAngle={4}>
+                          {analytics.profitPie.map((entry) => (
+                            <Cell key={entry.name} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "8px",
+                          }}
+                          formatter={formatPieTooltip}
+                        />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Suspense>
+                </div>
+
+                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                  <h3 className="text-base font-bold mb-4">Channel Summary</h3>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold">Website</p>
+                        <p className="text-xs text-muted-foreground">{analytics.totals.webSales.toLocaleString()} sales</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">{formatCurrency(analytics.totals.webRevenue, { showDecimals: false })}</p>
+                        <p className="text-xs text-emerald-500">{formatCurrency(analytics.totals.webProfit, { showDecimals: false })}</p>
+                      </div>
+                    </div>
+                    <div className="h-px bg-border" />
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold">POS</p>
+                        <p className="text-xs text-muted-foreground">{analytics.totals.posSales.toLocaleString()} sales</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">{formatCurrency(analytics.totals.posRevenue, { showDecimals: false })}</p>
+                        <p className="text-xs text-emerald-500">{formatCurrency(analytics.totals.posProfit, { showDecimals: false })}</p>
+                      </div>
+                    </div>
+                    <div className="border-t border-border pt-4">
+                      <p className="text-xs text-muted-foreground">Margin</p>
+                      <p className="text-2xl font-black">{formatPercent(analytics.totals.margin)}</p>
+                    </div>
                   </div>
                 </div>
               </motion.div>
-            )
-          })}
-        </motion.div>
-      )}
-
-      {/* Charts */}
-      <motion.div
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        {/* Sales Chart */}
-        <motion.div variants={itemVariants} className="bg-card border border-border rounded-lg p-6">
-          <h3 className="text-lg font-bold mb-4">Sales Overview</h3>
-          <Suspense fallback={<div className="h-[300px] bg-muted animate-pulse rounded" />}>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={salesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="webSales"
-                  name="Website Sales"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: "#3b82f6" }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="posSales"
-                  name="POS Sales"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={{ fill: "#10b981" }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="totalSales"
-                  name="Total Sales"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={{ fill: "#8b5cf6" }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Suspense>
-        </motion.div>
-
-        {/* Orders Chart */}
-        <motion.div variants={itemVariants} className="bg-card border border-border rounded-lg p-6">
-          <h3 className="text-lg font-bold mb-4">Orders by Month</h3>
-          <Suspense fallback={<div className="h-[300px] bg-muted animate-pulse rounded" />}>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={salesData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis stroke="var(--muted-foreground)" />
-                <YAxis stroke="var(--muted-foreground)" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Bar dataKey="orders" fill="var(--primary)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Suspense>
-        </motion.div>
-      </motion.div>
-
-      {/* Recent Transactions */}
-      <motion.div variants={itemVariants} className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-bold">Recent Transactions</h3>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="flex items-center gap-1.5 text-blue-500 font-medium">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span> Website
-            </span>
-            <span className="flex items-center gap-1.5 text-green-500 font-medium">
-              <span className="w-2 h-2 rounded-full bg-green-500"></span> POS
-            </span>
+            </AnimatePresence>
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          {recentTransactions.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">No transactions found</div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 font-semibold">Transaction ID</th>
-                  <th className="text-left py-3 px-4 font-semibold">Channel</th>
-                  <th className="text-left py-3 px-4 font-semibold">Customer</th>
-                  <th className="text-left py-3 px-4 font-semibold">Amount</th>
-                  <th className="text-left py-3 px-4 font-semibold">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentTransactions.map((tx) => (
-                  <tr key={tx.id} className="border-b border-border hover:bg-muted/50 transition-colors">
-                    <td className="py-3 px-4 font-semibold">#{tx.displayId || tx.id.substring(0, 8).toUpperCase()}</td>
-                    <td className="py-3 px-4">
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-                        tx.transactionType === 'Website' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
-                      }`}>
-                        {tx.transactionType}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 truncate max-w-[200px]">{tx.customer_name || tx.customer_email || "Walk-in Customer"}</td>
-                    <td className="py-3 px-4 font-bold">{formatCurrency(tx.displayAmount || 0)}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(tx.displayStatus || "Pending")}`}>
-                        {tx.displayStatus || "Completed"}
-                      </span>
-                    </td>
+        </motion.div>
+
+        <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <h3 className="text-lg font-bold">Recent Transactions</h3>
+            <div className="flex items-center gap-4 text-sm">
+              <span className="flex items-center gap-1.5 text-blue-500 font-medium">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span> Website
+              </span>
+              <span className="flex items-center gap-1.5 text-green-500 font-medium">
+                <span className="w-2 h-2 rounded-full bg-green-500"></span> POS
+              </span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            {recentTransactions.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">No transactions found</div>
+            ) : (
+              <table className="w-full min-w-[760px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-semibold">Transaction ID</th>
+                    <th className="text-left py-3 px-4 font-semibold">Channel</th>
+                    <th className="text-left py-3 px-4 font-semibold">Customer</th>
+                    <th className="text-left py-3 px-4 font-semibold">Amount</th>
+                    <th className="text-left py-3 px-4 font-semibold">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </motion.div>
+                </thead>
+                <tbody>
+                  {recentTransactions.map((tx) => (
+                    <tr key={`${tx.transactionType}-${tx.id}`} className="border-b border-border hover:bg-muted/50 transition-colors">
+                      <td className="py-3 px-4 font-semibold">#{tx.displayId || tx.id.substring(0, 8).toUpperCase()}</td>
+                      <td className="py-3 px-4">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          tx.transactionType === "Website" ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"
+                        }`}>
+                          {tx.transactionType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 truncate max-w-[220px]">{tx.customer_name || tx.customer_email || "Walk-in Customer"}</td>
+                      <td className="py-3 px-4 font-bold">{formatCurrency(tx.displayAmount || 0)}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(tx.displayStatus || "Pending")}`}>
+                          {tx.displayStatus || "Completed"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </motion.div>
       </div>
     </AdminLayout>
   )
