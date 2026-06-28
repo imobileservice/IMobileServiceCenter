@@ -1,7 +1,7 @@
 "use client"
 
-import React, { Suspense, useEffect, useMemo, useState } from "react"
-import { AnimatePresence, motion } from "framer-motion"
+import React, { useEffect, useMemo, useState } from "react"
+import { motion } from "framer-motion"
 import {
   BarChart3,
   CalendarDays,
@@ -20,7 +20,6 @@ import { customersService } from "@/lib/supabase/services/customers"
 import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
-import { lazyWithRetry } from "@/lib/chunk-recovery"
 
 type ReportPeriod = "daily" | "weekly" | "monthly"
 
@@ -59,19 +58,6 @@ type ReportAnalytics = {
   channelPie: Array<{ name: string; value: number; fill: string }>
   profitPie: Array<{ name: string; value: number; fill: string }>
 }
-
-// Lazy load heavy chart components
-const BarChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.BarChart })))
-const PieChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.PieChart })))
-const ResponsiveContainer = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })))
-const Bar = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Bar })))
-const Pie = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Pie })))
-const Cell = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Cell })))
-const XAxis = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.XAxis })))
-const YAxis = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.YAxis })))
-const CartesianGrid = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.CartesianGrid })))
-const Tooltip = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Tooltip })))
-const Legend = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Legend })))
 
 const PERIOD_OPTIONS: Array<{ id: ReportPeriod; label: string }> = [
   { id: "daily", label: "Daily" },
@@ -134,23 +120,6 @@ const formatAxisCurrency = (value: number) => {
 
 const formatPercent = (value: number) =>
   `${Number.isFinite(value) ? value.toFixed(1) : "0.0"}%`
-
-const formatCurrencyTooltip = (value: unknown, name: unknown) => [
-  formatCurrency(Number(value), { showDecimals: false }),
-  String(name),
-]
-
-const formatCountTooltip = (value: unknown, name: unknown) => [
-  Number(value).toLocaleString(),
-  String(name),
-]
-
-const formatPieTooltip = (value: unknown, name: unknown) => {
-  const label = String(name)
-  return label.startsWith("No ")
-    ? ["No data", label]
-    : [formatCurrency(Number(value), { showDecimals: false }), label]
-}
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -476,6 +445,203 @@ function downloadExcelReport(period: ReportPeriod, analytics: ReportAnalytics) {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
+
+type BarChartSeries = {
+  name: string
+  color: string
+  getValue: (bucket: ReportBucket) => number
+  formatValue?: (value: number) => string
+}
+
+const formatNumberValue = (value: number) => value.toLocaleString()
+const formatCurrencyValue = (value: number) => formatCurrency(value, { showDecimals: false })
+
+function getLabelStep(length: number) {
+  if (length > 24) return 5
+  if (length > 14) return 3
+  if (length > 8) return 2
+  return 1
+}
+
+function getChartDomain(data: ReportBucket[], series: BarChartSeries[]) {
+  const values = data.flatMap(bucket => series.map(item => item.getValue(bucket)))
+  const minValue = Math.min(0, ...values)
+  const maxValue = Math.max(0, ...values)
+
+  if (minValue === maxValue) {
+    return { min: 0, max: 1 }
+  }
+
+  const padding = (maxValue - minValue) * 0.08
+  return {
+    min: minValue < 0 ? minValue - padding : 0,
+    max: maxValue > 0 ? maxValue + padding : 1,
+  }
+}
+
+function GroupedBarChartView({
+  data,
+  series,
+  valueFormatter = formatNumberValue,
+}: {
+  data: ReportBucket[]
+  series: BarChartSeries[]
+  valueFormatter?: (value: number) => string
+}) {
+  const width = 720
+  const height = 330
+  const padding = { top: 18, right: 18, bottom: 58, left: 76 }
+  const plotWidth = width - padding.left - padding.right
+  const plotHeight = height - padding.top - padding.bottom
+  const domain = getChartDomain(data, series)
+  const range = domain.max - domain.min
+  const yForValue = (value: number) => padding.top + ((domain.max - value) / range) * plotHeight
+  const baselineY = yForValue(0)
+  const groupWidth = plotWidth / Math.max(data.length, 1)
+  const barGap = data.length > 20 ? 1 : 3
+  const barWidth = Math.max(2, Math.min(18, (groupWidth * 0.72 - barGap * (series.length - 1)) / series.length))
+  const labelStep = getLabelStep(data.length)
+  const ticks = Array.from({ length: 5 }, (_, index) => domain.min + (range / 4) * index)
+
+  return (
+    <div className="h-[330px] w-full overflow-hidden">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" role="img" aria-label="Bar chart">
+        {ticks.map(tick => {
+          const y = yForValue(tick)
+          return (
+            <g key={tick}>
+              <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="var(--border)" strokeDasharray="4 4" opacity="0.75" />
+              <text x={padding.left - 10} y={y + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">
+                {valueFormatter(tick)}
+              </text>
+            </g>
+          )
+        })}
+
+        <line x1={padding.left} x2={width - padding.right} y1={baselineY} y2={baselineY} stroke="var(--border)" />
+        <line x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} stroke="var(--border)" />
+
+        {data.map((bucket, bucketIndex) => {
+          const groupCenter = padding.left + bucketIndex * groupWidth + groupWidth / 2
+          const groupStart = groupCenter - (series.length * barWidth + (series.length - 1) * barGap) / 2
+          const showLabel = bucketIndex === 0 || bucketIndex === data.length - 1 || bucketIndex % labelStep === 0
+
+          return (
+            <g key={bucket.key}>
+              {series.map((item, seriesIndex) => {
+                const value = item.getValue(bucket)
+                const valueY = yForValue(value)
+                const y = Math.min(valueY, baselineY)
+                const barHeight = Math.abs(baselineY - valueY)
+
+                return (
+                  <rect
+                    key={item.name}
+                    x={groupStart + seriesIndex * (barWidth + barGap)}
+                    y={y}
+                    width={barWidth}
+                    height={barHeight}
+                    rx={Math.min(5, barWidth / 2)}
+                    fill={item.color}
+                    style={{ transition: "all 260ms ease" }}
+                  >
+                    <title>{`${bucket.rangeLabel} - ${item.name}: ${(item.formatValue || valueFormatter)(value)}`}</title>
+                  </rect>
+                )
+              })}
+              {showLabel && (
+                <text x={groupCenter} y={height - 28} textAnchor="middle" className="fill-muted-foreground text-[11px]">
+                  {bucket.label}
+                </text>
+              )}
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
+function ChartLegend({ items }: { items: Array<{ name: string; color: string }> }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      {items.map(item => (
+        <span key={item.name} className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+          {item.name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function PieDonutChartView({
+  data,
+  centerLabel,
+}: {
+  data: Array<{ name: string; value: number; fill: string }>
+  centerLabel: string
+}) {
+  const total = data.reduce((sum, item) => sum + Math.max(item.value, 0), 0)
+  let offset = 0
+  const isFallback = data.length === 1 && data[0]?.name.startsWith("No ")
+
+  return (
+    <div className="grid min-h-[260px] grid-cols-1 items-center gap-4 sm:grid-cols-[220px_1fr]">
+      <svg viewBox="0 0 220 220" className="h-[220px] w-full max-w-[220px] justify-self-center" role="img" aria-label="Pie chart">
+        <circle cx="110" cy="110" r="74" fill="none" stroke="var(--muted)" strokeWidth="30" opacity="0.28" />
+        {data.map(item => {
+          const percent = total > 0 ? (Math.max(item.value, 0) / total) * 100 : 0
+          const dashOffset = -offset
+          offset += percent
+
+          return (
+            <circle
+              key={item.name}
+              cx="110"
+              cy="110"
+              r="74"
+              fill="none"
+              stroke={item.fill}
+              strokeWidth="30"
+              pathLength="100"
+              strokeDasharray={`${percent} ${100 - percent}`}
+              strokeDashoffset={dashOffset}
+              transform="rotate(-90 110 110)"
+              style={{ transition: "stroke-dasharray 260ms ease, stroke-dashoffset 260ms ease" }}
+            >
+              <title>{`${item.name}: ${isFallback ? "No data" : formatCurrencyValue(item.value)}`}</title>
+            </circle>
+          )
+        })}
+        <text x="110" y="104" textAnchor="middle" className="fill-foreground text-[18px] font-bold">
+          {isFallback ? "No data" : centerLabel}
+        </text>
+        <text x="110" y="126" textAnchor="middle" className="fill-muted-foreground text-[11px]">
+          Total
+        </text>
+      </svg>
+
+      <div className="space-y-3">
+        {data.map(item => {
+          const percent = total > 0 && !isFallback ? (item.value / total) * 100 : 0
+          return (
+            <div key={item.name} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.fill }} />
+                  <p className="truncate text-sm font-semibold">{item.name}</p>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{isFallback ? "No data" : formatPercent(percent)}</p>
+              </div>
+              <p className="text-sm font-bold">{isFallback ? "-" : formatCurrencyValue(item.value)}</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function AdminDashboard() {
@@ -835,170 +1001,117 @@ export default function AdminDashboard() {
               })}
             </div>
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activePeriod}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.25 }}
-                className="grid grid-cols-1 xl:grid-cols-3 gap-4"
-              >
-                <div className="xl:col-span-2 border border-border rounded-lg p-4 sm:p-5 bg-card">
-                  <div className="flex items-center justify-between gap-3 mb-4">
+            <motion.div
+              key={activePeriod}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="grid grid-cols-1 xl:grid-cols-3 gap-4"
+            >
+              <div className="xl:col-span-2 border border-border rounded-lg p-4 sm:p-5 bg-card">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-base font-bold">Revenue and Profit</h3>
+                    <p className="text-xs text-muted-foreground">{analytics.rangeLabel}</p>
+                  </div>
+                  <BarChart3 className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <GroupedBarChartView
+                  data={analytics.buckets}
+                  valueFormatter={formatAxisCurrency}
+                  series={[
+                    {
+                      name: "Revenue",
+                      color: CHART_COLORS.revenue,
+                      getValue: bucket => bucket.revenue,
+                      formatValue: formatCurrencyValue,
+                    },
+                    {
+                      name: "Profit",
+                      color: CHART_COLORS.profit,
+                      getValue: bucket => bucket.profit,
+                      formatValue: formatCurrencyValue,
+                    },
+                  ]}
+                />
+                <ChartLegend
+                  items={[
+                    { name: "Revenue", color: CHART_COLORS.revenue },
+                    { name: "Profit", color: CHART_COLORS.profit },
+                  ]}
+                />
+              </div>
+
+              <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-base font-bold">Sales Count</h3>
+                    <p className="text-xs text-muted-foreground">{analytics.totals.sales.toLocaleString()} transactions</p>
+                  </div>
+                  <CalendarDays className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <GroupedBarChartView
+                  data={analytics.buckets}
+                  series={[
+                    {
+                      name: "Sales",
+                      color: "#f97316",
+                      getValue: bucket => bucket.sales,
+                      formatValue: formatNumberValue,
+                    },
+                  ]}
+                />
+              </div>
+
+              <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                <h3 className="text-base font-bold mb-1">Revenue Channel</h3>
+                <p className="text-xs text-muted-foreground mb-4">Website and POS</p>
+                <PieDonutChartView
+                  data={analytics.channelPie}
+                  centerLabel={formatCurrencyValue(analytics.totals.revenue)}
+                />
+              </div>
+
+              <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                <h3 className="text-base font-bold mb-1">Profit Mix</h3>
+                <p className="text-xs text-muted-foreground mb-4">Based on product cost</p>
+                <PieDonutChartView
+                  data={analytics.profitPie}
+                  centerLabel={formatCurrencyValue(Math.max(analytics.totals.profit, 0))}
+                />
+              </div>
+
+              <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
+                <h3 className="text-base font-bold mb-4">Channel Summary</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-base font-bold">Revenue and Profit</h3>
-                      <p className="text-xs text-muted-foreground">{analytics.rangeLabel}</p>
+                      <p className="font-semibold">Website</p>
+                      <p className="text-xs text-muted-foreground">{analytics.totals.webSales.toLocaleString()} sales</p>
                     </div>
-                    <BarChart3 className="w-5 h-5 text-muted-foreground" />
+                    <div className="text-right">
+                      <p className="font-bold">{formatCurrency(analytics.totals.webRevenue, { showDecimals: false })}</p>
+                      <p className="text-xs text-emerald-500">{formatCurrency(analytics.totals.webProfit, { showDecimals: false })}</p>
+                    </div>
                   </div>
-                  <Suspense fallback={<div className="h-[330px] bg-muted animate-pulse rounded" />}>
-                    <ResponsiveContainer width="100%" height={330}>
-                      <BarChart data={analytics.buckets} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.7} />
-                        <XAxis dataKey="label" stroke="var(--muted-foreground)" tickLine={false} axisLine={false} />
-                        <YAxis
-                          stroke="var(--muted-foreground)"
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={formatAxisCurrency}
-                        />
-                        <Tooltip
-                          cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
-                          contentStyle={{
-                            backgroundColor: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                          }}
-                          formatter={formatCurrencyTooltip}
-                          labelFormatter={(label: string) => {
-                            const bucket = analytics.buckets.find(item => item.label === label)
-                            return bucket?.rangeLabel || label
-                          }}
-                        />
-                        <Legend />
-                        <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.revenue} radius={[6, 6, 0, 0]} />
-                        <Bar dataKey="profit" name="Profit" fill={CHART_COLORS.profit} radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Suspense>
-                </div>
-
-                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
-                  <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="h-px bg-border" />
+                  <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-base font-bold">Sales Count</h3>
-                      <p className="text-xs text-muted-foreground">{analytics.totals.sales.toLocaleString()} transactions</p>
+                      <p className="font-semibold">POS</p>
+                      <p className="text-xs text-muted-foreground">{analytics.totals.posSales.toLocaleString()} sales</p>
                     </div>
-                    <CalendarDays className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                  <Suspense fallback={<div className="h-[330px] bg-muted animate-pulse rounded" />}>
-                    <ResponsiveContainer width="100%" height={330}>
-                      <BarChart data={analytics.buckets} margin={{ top: 12, right: 8, left: -16, bottom: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.7} />
-                        <XAxis dataKey="label" stroke="var(--muted-foreground)" tickLine={false} axisLine={false} />
-                        <YAxis stroke="var(--muted-foreground)" tickLine={false} axisLine={false} allowDecimals={false} />
-                        <Tooltip
-                          cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
-                          contentStyle={{
-                            backgroundColor: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                          }}
-                          formatter={formatCountTooltip}
-                          labelFormatter={(label: string) => {
-                            const bucket = analytics.buckets.find(item => item.label === label)
-                            return bucket?.rangeLabel || label
-                          }}
-                        />
-                        <Bar dataKey="sales" name="Sales" fill="#f97316" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Suspense>
-                </div>
-
-                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
-                  <h3 className="text-base font-bold mb-1">Revenue Channel</h3>
-                  <p className="text-xs text-muted-foreground mb-4">Website and POS</p>
-                  <Suspense fallback={<div className="h-[260px] bg-muted animate-pulse rounded" />}>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie data={analytics.channelPie} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} paddingAngle={4}>
-                          {analytics.channelPie.map((entry) => (
-                            <Cell key={entry.name} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                          }}
-                          formatter={formatPieTooltip}
-                        />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </Suspense>
-                </div>
-
-                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
-                  <h3 className="text-base font-bold mb-1">Profit Mix</h3>
-                  <p className="text-xs text-muted-foreground mb-4">Based on product cost</p>
-                  <Suspense fallback={<div className="h-[260px] bg-muted animate-pulse rounded" />}>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <PieChart>
-                        <Pie data={analytics.profitPie} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} paddingAngle={4}>
-                          {analytics.profitPie.map((entry) => (
-                            <Cell key={entry.name} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: "var(--card)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                          }}
-                          formatter={formatPieTooltip}
-                        />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </Suspense>
-                </div>
-
-                <div className="border border-border rounded-lg p-4 sm:p-5 bg-card">
-                  <h3 className="text-base font-bold mb-4">Channel Summary</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">Website</p>
-                        <p className="text-xs text-muted-foreground">{analytics.totals.webSales.toLocaleString()} sales</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold">{formatCurrency(analytics.totals.webRevenue, { showDecimals: false })}</p>
-                        <p className="text-xs text-emerald-500">{formatCurrency(analytics.totals.webProfit, { showDecimals: false })}</p>
-                      </div>
-                    </div>
-                    <div className="h-px bg-border" />
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold">POS</p>
-                        <p className="text-xs text-muted-foreground">{analytics.totals.posSales.toLocaleString()} sales</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold">{formatCurrency(analytics.totals.posRevenue, { showDecimals: false })}</p>
-                        <p className="text-xs text-emerald-500">{formatCurrency(analytics.totals.posProfit, { showDecimals: false })}</p>
-                      </div>
-                    </div>
-                    <div className="border-t border-border pt-4">
-                      <p className="text-xs text-muted-foreground">Margin</p>
-                      <p className="text-2xl font-black">{formatPercent(analytics.totals.margin)}</p>
+                    <div className="text-right">
+                      <p className="font-bold">{formatCurrency(analytics.totals.posRevenue, { showDecimals: false })}</p>
+                      <p className="text-xs text-emerald-500">{formatCurrency(analytics.totals.posProfit, { showDecimals: false })}</p>
                     </div>
                   </div>
+                  <div className="border-t border-border pt-4">
+                    <p className="text-xs text-muted-foreground">Margin</p>
+                    <p className="text-2xl font-black">{formatPercent(analytics.totals.margin)}</p>
+                  </div>
                 </div>
-              </motion.div>
-            </AnimatePresence>
+              </div>
+            </motion.div>
           </div>
         </motion.div>
 
