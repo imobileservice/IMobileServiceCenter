@@ -1,5 +1,5 @@
 import React from 'react'
-import { isChunkLoadError, markChunkReloadAttempt, reloadForChunkError } from './lib/chunk-recovery'
+import { isChunkLoadError, requestChunkRecovery } from './lib/chunk-recovery'
 
 interface ErrorBoundaryState {
   hasError: boolean
@@ -23,9 +23,8 @@ export class ErrorBoundary extends React.Component<
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error caught by boundary:', error, errorInfo)
 
-    if (isChunkLoadError(error) && markChunkReloadAttempt(error)) {
+    if (isChunkLoadError(error) && requestChunkRecovery(error)) {
       this.setState({ isRecovering: true })
-      reloadForChunkError()
     }
   }
 

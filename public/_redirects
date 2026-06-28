@@ -1,0 +1,20 @@
+# Cloudflare Pages SPA rewrites for known client routes.
+# Keep this narrow so missing /assets/*.js chunks return a real missing-file response.
+/about /index.html 200
+/shop /index.html 200
+/product/* /index.html 200
+/cart /index.html 200
+/checkout /index.html 200
+/invoice/* /index.html 200
+/contact /index.html 200
+/profile /index.html 200
+/signin /index.html 200
+/signup /index.html 200
+/verify-email /index.html 200
+/problem /index.html 200
+/test-supabase /index.html 200
+/auth/* /index.html 200
+/admin /index.html 200
+/admin/* /index.html 200
+/cashier /index.html 200
+/cashier/* /index.html 200

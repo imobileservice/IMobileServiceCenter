@@ -362,18 +362,17 @@ export const authService = {
       try {
         const { getApiUrl } = await import('../../utils/api')
         const storedToken = await getAuthTokenFast(true)
-        const headers: HeadersInit = {}
-        if (storedToken) headers['x-session-token'] = storedToken
+        if (storedToken) {
+          const response = await fetch(getApiUrl('/api/profile'), {
+            headers: { 'x-session-token': storedToken },
+            credentials: 'include',
+            signal: AbortSignal.timeout(10000),
+          })
 
-        const response = await fetch(getApiUrl('/api/profile'), {
-          headers,
-          credentials: 'include',
-          signal: AbortSignal.timeout(10000),
-        })
-
-        if (response.ok) {
-          const payload = await response.json()
-          return payload.data
+          if (response.ok) {
+            const payload = await response.json()
+            return payload.data
+          }
         }
       } catch (e: any) {
         if (!e.message?.includes('timeout') && e.name !== 'AbortError') {

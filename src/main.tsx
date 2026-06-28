@@ -8,9 +8,12 @@ import App from './App'
 import ConditionalLayout from '@/components/conditional-layout'
 import { AuthProvider } from '@/components/auth-provider'
 import { ErrorBoundary } from './ErrorBoundary'
+import { installChunkRecovery } from './lib/chunk-recovery'
 // Import global styles
 import '@/globals.css'
 import './index.css' // Additional styles if needed
+
+installChunkRecovery()
 
 const container = document.getElementById('root')
 if (!container) {
@@ -37,4 +40,3 @@ root.render(
     </ErrorBoundary>
   </React.StrictMode>
 )
-

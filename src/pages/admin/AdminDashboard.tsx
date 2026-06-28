@@ -87,6 +87,10 @@ export default function AdminDashboard() {
           console.warn('Failed to fetch stats from API, using fallback:', err)
         }
 
+        const needsProductStatsFallback =
+          statsData?.totalProducts === undefined || statsData?.totalQuantity === undefined
+        const needsCustomerFallback = statsData?.totalCustomers === undefined
+
         // Fetch all data in parallel
         const [orders, posSalesResult, productStats, customers] = await Promise.all([
           ordersService.getAll().catch(err => {
@@ -97,14 +101,18 @@ export default function AdminDashboard() {
             console.error('Error fetching POS sales:', err)
             return { data: [] }
           }),
-          productsServiceEnhanced.getStats().catch(err => {
-            console.error('Error fetching product stats:', err)
-            return { total: 0, inStock: 0, outOfStock: 0, categories: 0, brands: 0, totalQuantity: 0 }
-          }),
-          customersService.getAll().catch(err => {
-            console.error('Error fetching customers:', err)
-            return []
-          }),
+          needsProductStatsFallback
+            ? productsServiceEnhanced.getStats().catch(err => {
+                console.error('Error fetching product stats:', err)
+                return { total: 0, inStock: 0, outOfStock: 0, categories: 0, brands: 0, totalQuantity: 0 }
+              })
+            : Promise.resolve(null),
+          needsCustomerFallback
+            ? customersService.getAll().catch(err => {
+                console.error('Error fetching customers:', err)
+                return []
+              })
+            : Promise.resolve([]),
         ])
 
         const posSales = posSalesResult.data || []
