@@ -5,7 +5,8 @@ import { useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Filter, ArrowUpDown, X, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { lazy, Suspense } from "react"
+import { Suspense } from "react"
+import { lazyWithRetry } from "@/lib/chunk-recovery"
 import { productsService } from "@/lib/supabase/services/products"
 import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
 import type { Database } from "@/lib/supabase/types"
@@ -13,10 +14,10 @@ import type { Database } from "@/lib/supabase/types"
 type Product = Database["public"]["Tables"]["products"]["Row"]
 
 // Lazy load heavy components
-const ProductCard = lazy(() => import("@/components/product-card"))
-const ProductQuickView = lazy(() => import("@/components/product-quick-view"))
-const FilterSidebar = lazy(() => import("@/components/filter-sidebar"))
-const MobileShopHeader = lazy(() => import("@/components/mobile-shop-header"))
+const ProductCard = lazyWithRetry(() => import("@/components/product-card"))
+const ProductQuickView = lazyWithRetry(() => import("@/components/product-quick-view"))
+const FilterSidebar = lazyWithRetry(() => import("@/components/filter-sidebar"))
+const MobileShopHeader = lazyWithRetry(() => import("@/components/mobile-shop-header"))
 
 const LoadingPlaceholder = () => <div className="h-80 bg-muted animate-pulse rounded-lg" />
 

@@ -3,7 +3,8 @@ import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import { ArrowRight, Zap, Shield, Truck, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { lazy, Suspense } from "react"
+import { Suspense } from "react"
+import { lazyWithRetry } from "@/lib/chunk-recovery"
 import { productsService } from "@/lib/supabase/services/products"
 import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
 import type { Database } from "@/lib/supabase/types"
@@ -11,11 +12,11 @@ import type { Database } from "@/lib/supabase/types"
 type Product = Database["public"]["Tables"]["products"]["Row"]
 
 // Lazy load heavy components
-const ProductCard = lazy(() => import("@/components/product-card"))
-const HeroSection = lazy(() => import("@/components/hero-section"))
-const BrandMarquee = lazy(() => import("@/components/brand-marquee"))
-const CategoryGrid = lazy(() => import("@/components/category-grid"))
-const ProductsCarousel = lazy(() => import("@/components/products-carousel"))
+const ProductCard = lazyWithRetry(() => import("@/components/product-card"))
+const HeroSection = lazyWithRetry(() => import("@/components/hero-section"))
+const BrandMarquee = lazyWithRetry(() => import("@/components/brand-marquee"))
+const CategoryGrid = lazyWithRetry(() => import("@/components/category-grid"))
+const ProductsCarousel = lazyWithRetry(() => import("@/components/products-carousel"))
 
 const LoadingPlaceholder = () => <div className="h-80 bg-muted animate-pulse rounded-lg" />
 

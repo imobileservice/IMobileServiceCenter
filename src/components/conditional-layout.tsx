@@ -1,17 +1,18 @@
 import { useLocation } from "react-router-dom"
-import { lazy, Suspense } from "react"
+import { Suspense } from "react"
 import Navbar from "@/components/navbar"
 import Footer from "@/components/footer"
 import { MessageCircle } from "lucide-react"
 import { motion } from "framer-motion"
+import { lazyWithRetry } from "@/lib/chunk-recovery"
 
 // Lazy load components for code splitting
-const PageLoadAnimation = lazy(() => import("@/components/page-load-animation"))
-const ScrollToTop = lazy(() => import("@/components/scroll-to-top"))
-const ScrollToTopOnNavigation = lazy(() => import("@/components/scroll-to-top-on-navigation"))
-const PerformanceMonitor = lazy(() => import("@/components/performance-monitor"))
-const BottomNavigation = lazy(() => import("@/components/bottom-navigation"))
-const FloatingContactButtons = lazy(() => import("@/components/floating-contact-buttons"))
+const PageLoadAnimation = lazyWithRetry(() => import("@/components/page-load-animation"))
+const ScrollToTop = lazyWithRetry(() => import("@/components/scroll-to-top"))
+const ScrollToTopOnNavigation = lazyWithRetry(() => import("@/components/scroll-to-top-on-navigation"))
+const PerformanceMonitor = lazyWithRetry(() => import("@/components/performance-monitor"))
+const BottomNavigation = lazyWithRetry(() => import("@/components/bottom-navigation"))
+const FloatingContactButtons = lazyWithRetry(() => import("@/components/floating-contact-buttons"))
 
 interface ConditionalLayoutProps {
   children: React.ReactNode

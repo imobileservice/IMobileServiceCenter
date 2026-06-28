@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, lazy, Suspense } from "react"
+import React, { useEffect, useState, Suspense } from "react"
 import { motion } from "framer-motion"
 import { TrendingUp, Package, ShoppingCart, Users, DollarSign, Database as DatabaseIcon } from "lucide-react"
 import { ordersService } from "@/lib/supabase/services/orders"
@@ -10,19 +10,20 @@ import { analyticsService } from "@/lib/supabase/services/analytics"
 import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
+import { lazyWithRetry } from "@/lib/chunk-recovery"
 
 type Order = Database['public']['Tables']['orders']['Row']
 
 // Lazy load heavy chart components
-const LineChart = lazy(() => import("recharts").then(mod => ({ default: mod.LineChart })))
-const BarChart = lazy(() => import("recharts").then(mod => ({ default: mod.BarChart })))
-const ResponsiveContainer = lazy(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })))
-const Line = lazy(() => import("recharts").then(mod => ({ default: mod.Line })))
-const Bar = lazy(() => import("recharts").then(mod => ({ default: mod.Bar })))
-const XAxis = lazy(() => import("recharts").then(mod => ({ default: mod.XAxis })))
-const YAxis = lazy(() => import("recharts").then(mod => ({ default: mod.YAxis })))
-const CartesianGrid = lazy(() => import("recharts").then(mod => ({ default: mod.CartesianGrid })))
-const Tooltip = lazy(() => import("recharts").then(mod => ({ default: mod.Tooltip })))
+const LineChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.LineChart })))
+const BarChart = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.BarChart })))
+const ResponsiveContainer = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })))
+const Line = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Line })))
+const Bar = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Bar })))
+const XAxis = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.XAxis })))
+const YAxis = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.YAxis })))
+const CartesianGrid = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.CartesianGrid })))
+const Tooltip = lazyWithRetry(() => import("recharts").then(mod => ({ default: mod.Tooltip })))
 
 const SALES_DATA = [
   { month: "Jan", sales: 4000, orders: 240 },

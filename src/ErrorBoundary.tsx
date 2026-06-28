@@ -1,8 +1,10 @@
 import React from 'react'
+import { isChunkLoadError, markChunkReloadAttempt, reloadForChunkError } from './lib/chunk-recovery'
 
 interface ErrorBoundaryState {
   hasError: boolean
   error: Error | null
+  isRecovering: boolean
 }
 
 export class ErrorBoundary extends React.Component<
@@ -11,25 +13,48 @@ export class ErrorBoundary extends React.Component<
 > {
   constructor(props: { children: React.ReactNode }) {
     super(props)
-    this.state = { hasError: false, error: null }
+    this.state = { hasError: false, error: null, isRecovering: false }
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error }
+    return { hasError: true, error, isRecovering: false }
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('Error caught by boundary:', error, errorInfo)
+
+    if (isChunkLoadError(error) && markChunkReloadAttempt(error)) {
+      this.setState({ isRecovering: true })
+      reloadForChunkError()
+    }
   }
 
   render() {
     if (this.state.hasError) {
+      if (this.state.isRecovering) {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-background">
+            <div className="text-center p-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-6"></div>
+              <h1 className="text-2xl font-bold mb-3 text-foreground">Updating app</h1>
+              <p className="text-muted-foreground">
+                A new version is available. Reloading the latest files...
+              </p>
+            </div>
+          </div>
+        )
+      }
+
+      const isChunkError = isChunkLoadError(this.state.error)
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-background">
           <div className="text-center p-8">
             <h1 className="text-2xl font-bold mb-4 text-foreground">Something went wrong</h1>
             <p className="text-muted-foreground mb-4">
-              {this.state.error?.message || 'An unexpected error occurred'}
+              {isChunkError
+                ? 'The app files changed while this page was open. Reload the page to load the current version.'
+                : this.state.error?.message || 'An unexpected error occurred'}
             </p>
             <button
               onClick={() => window.location.reload()}
@@ -51,4 +76,3 @@ export class ErrorBoundary extends React.Component<
     return this.props.children
   }
 }
-
