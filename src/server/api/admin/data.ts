@@ -25,6 +25,19 @@ const isRevenueOrder = (order: any) => {
   return !cancelledStatuses.has(status) && !failedPaymentStatuses.has(paymentStatus)
 }
 
+const toNumber = (value: unknown) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const getStockUnitValue = (product: any) => {
+  const price = [product?.buy_price, product?.cost_price, product?.price]
+    .map(value => toNumber(value))
+    .find(value => value > 0)
+
+  return price || 0
+}
+
 /**
  * GET /api/admin/data/orders
  * Get all orders (admin only, uses service role)
@@ -226,19 +239,34 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
   })
 
   // Fetch all data in parallel
-  const [ordersResult, posSalesResult, productsResult, profilesResult, stockResult] = await Promise.all([
+  const [ordersResult, posSalesResult, productsResult, profilesResult, invCustomersResult, stockResult] = await Promise.all([
     supabase.from('orders').select('total, created_at, status, payment_status'),
     supabase.from('inv_sales').select('net_amount, created_at'),
     supabase.from('products').select('id', { count: 'exact', head: true }),
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
-    supabase.from('inv_stock').select('quantity')
+    supabase.from('inv_customers').select('id', { count: 'exact', head: true }),
+    supabase.from('inv_stock').select(`
+      quantity,
+      products (
+        buy_price,
+        cost_price,
+        price
+      )
+    `)
   ])
 
   const orders = (ordersResult.data || []).filter(isRevenueOrder)
   const posSales = posSalesResult.data || []
   const totalProducts = productsResult.count || 0
-  const totalCustomers = profilesResult.count || 0
-  const totalQuantity = stockResult.data?.reduce((sum: number, s: any) => sum + (s.quantity || 0), 0) || 0
+  const websiteCustomersCount = profilesResult.count || 0
+  const shopCustomersCount = invCustomersResult.count || 0
+  const totalCustomers = websiteCustomersCount + shopCustomersCount
+  const stockRows = stockResult.data || []
+  const totalQuantity = stockRows.reduce((sum: number, s: any) => sum + toNumber(s.quantity), 0)
+  const shopStockValue = stockRows.reduce((sum: number, s: any) => {
+    const product = Array.isArray(s.products) ? s.products[0] : s.products
+    return sum + Math.max(toNumber(s.quantity), 0) * getStockUnitValue(product)
+  }, 0)
 
   const webRevenue = orders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0)
   const posRevenue = posSales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0)
@@ -252,9 +280,12 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
       totalOrders: orders.length + posSales.length,
       webOrdersCount: orders.length,
       posOrdersCount: posSales.length,
+      shopStockValue,
       totalProducts,
       totalQuantity,
       totalCustomers,
+      websiteCustomersCount,
+      shopCustomersCount,
     }
   })
 })

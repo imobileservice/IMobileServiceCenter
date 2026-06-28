@@ -17,6 +17,7 @@ import {
 import { ordersService } from "@/lib/supabase/services/orders"
 import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanced"
 import { customersService } from "@/lib/supabase/services/customers"
+import { inventoryCustomersService } from "@/lib/services/inventory.service"
 import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
@@ -218,6 +219,34 @@ function buildCostMap(products: any[]) {
   })
 
   return map
+}
+
+function getProductStockQuantity(product: any) {
+  const directStock = [product?.stock_quantity, product?.quantity, product?.stock].find(
+    value => value !== undefined && value !== null && value !== ""
+  )
+
+  if (directStock !== undefined) return Math.max(toNumber(directStock), 0)
+
+  return ["qty_meegoda", "qty_padukka", "qty_padukka_new"].reduce(
+    (sum, key) => sum + Math.max(toNumber(product?.[key]), 0),
+    0
+  )
+}
+
+function getShopInventoryUnitPrice(product: any) {
+  const price = [product?.buy_price, product?.cost_price, product?.inventory_price, product?.price]
+    .map(value => toNumber(value))
+    .find(value => value > 0)
+
+  return price || 0
+}
+
+function calculateShopStockValue(products: any[]) {
+  return products.reduce(
+    (sum, product) => sum + getProductStockQuantity(product) * getShopInventoryUnitPrice(product),
+    0
+  )
 }
 
 function getWebOrderItems(order: any) {
@@ -657,9 +686,12 @@ export default function AdminDashboard() {
     totalOrders: 0,
     webOrdersCount: 0,
     posOrdersCount: 0,
+    shopStockValue: 0,
     totalProducts: 0,
     totalQuantity: 0,
     totalCustomers: 0,
+    websiteCustomersCount: 0,
+    shopCustomersCount: 0,
     loading: true,
   })
 
@@ -684,7 +716,8 @@ export default function AdminDashboard() {
 
         const needsProductStatsFallback =
           statsData?.totalProducts === undefined || statsData?.totalQuantity === undefined
-        const needsCustomerFallback = statsData?.totalCustomers === undefined
+        const needsWebsiteCustomerFallback = statsData?.websiteCustomersCount === undefined
+        const needsShopCustomerFallback = statsData?.shopCustomersCount === undefined
 
         const productsRequest = fetch(getApiUrl("/api/inventory/products"))
           .then(res => {
@@ -697,7 +730,7 @@ export default function AdminDashboard() {
             return { data: fallbackProducts }
           })
 
-        const [ordersData, posSalesResult, productStats, customers, productsResult] = await Promise.all([
+        const [ordersData, posSalesResult, productStats, websiteCustomers, shopCustomersResult, productsResult] = await Promise.all([
           ordersService.getAll().catch(err => {
             console.error("Error fetching orders:", err)
             return []
@@ -714,17 +747,24 @@ export default function AdminDashboard() {
                 return { total: 0, inStock: 0, outOfStock: 0, categories: 0, brands: 0, totalQuantity: 0 }
               })
             : Promise.resolve(null),
-          needsCustomerFallback
+          needsWebsiteCustomerFallback
             ? customersService.getAll().catch(err => {
-                console.error("Error fetching customers:", err)
+                console.error("Error fetching website customers:", err)
                 return []
               })
             : Promise.resolve([]),
+          needsShopCustomerFallback
+            ? inventoryCustomersService.getAll().catch(err => {
+                console.error("Error fetching shop customers:", err)
+                return { data: [] }
+              })
+            : Promise.resolve({ data: [] }),
           productsRequest,
         ])
 
         const posSalesData = posSalesResult.data || []
         const productsData = productsResult.data || []
+        const shopCustomers = shopCustomersResult.data || []
 
         setOrders(ordersData || [])
         setPosSales(posSalesData)
@@ -734,6 +774,9 @@ export default function AdminDashboard() {
         const webRevenue = revenueOrders.reduce((sum: number, order: any) => sum + toNumber(order.total), 0)
         const posRevenue = posSalesData.reduce((sum: number, sale: any) => sum + toNumber(sale.net_amount), 0)
         const totalRevenue = webRevenue + posRevenue
+        const shopStockValue = statsData?.shopStockValue ?? calculateShopStockValue(productsData)
+        const websiteCustomersCount = statsData?.websiteCustomersCount ?? (websiteCustomers || []).length
+        const shopCustomersCount = statsData?.shopCustomersCount ?? shopCustomers.length
 
         const finalStats = {
           totalRevenue,
@@ -742,9 +785,12 @@ export default function AdminDashboard() {
           totalOrders: revenueOrders.length + posSalesData.length,
           webOrdersCount: revenueOrders.length,
           posOrdersCount: posSalesData.length,
+          shopStockValue,
           totalProducts: statsData?.totalProducts ?? (productStats?.total || productsData.length || 0),
           totalQuantity: statsData?.totalQuantity ?? (productStats?.totalQuantity || 0),
-          totalCustomers: statsData?.totalCustomers ?? (customers || []).length,
+          totalCustomers: websiteCustomersCount + shopCustomersCount,
+          websiteCustomersCount,
+          shopCustomersCount,
           loading: false,
         }
 
@@ -803,41 +849,58 @@ export default function AdminDashboard() {
     [activePeriod, orders, posSales, products]
   )
 
-  const STATS = useMemo(() => [
+  const summarySections = useMemo(() => [
     {
-      icon: DollarSign,
-      label: "Total Revenue",
-      value: formatCurrency(stats.totalRevenue, { showDecimals: false }),
-      subtext: `Web: ${formatCurrency(stats.webRevenue, { showDecimals: false })} | POS: ${formatCurrency(stats.posRevenue, { showDecimals: false })}`,
-      color: "bg-blue-500",
+      title: "Business Value",
+      cards: [
+        {
+          icon: DatabaseIcon,
+          label: "Total Shop Product Value",
+          value: formatCurrency(stats.shopStockValue, { showDecimals: false }),
+          subtext: "All shop stock at buy/cost price",
+          color: "bg-indigo-500",
+        },
+        {
+          icon: DollarSign,
+          label: "Total Revenue",
+          value: formatCurrency(stats.totalRevenue, { showDecimals: false }),
+          subtext: `Web: ${formatCurrency(stats.webRevenue, { showDecimals: false })} | POS: ${formatCurrency(stats.posRevenue, { showDecimals: false })}`,
+          color: "bg-blue-500",
+        },
+        {
+          icon: ShoppingCart,
+          label: "Total Orders",
+          value: stats.totalOrders.toLocaleString(),
+          subtext: `Web: ${stats.webOrdersCount} | POS: ${stats.posOrdersCount}`,
+          color: "bg-green-500",
+        },
+      ],
     },
     {
-      icon: ShoppingCart,
-      label: "Total Orders",
-      value: stats.totalOrders.toLocaleString(),
-      subtext: `Web: ${stats.webOrdersCount} | POS: ${stats.posOrdersCount}`,
-      color: "bg-green-500",
-    },
-    {
-      icon: Package,
-      label: "Products",
-      value: stats.totalProducts.toString(),
-      subtext: "Unique items",
-      color: "bg-purple-500",
-    },
-    {
-      icon: DatabaseIcon,
-      label: "Total Quantity",
-      value: (stats.totalQuantity || 0).toLocaleString(),
-      subtext: "Units in stock",
-      color: "bg-indigo-500",
-    },
-    {
-      icon: Users,
-      label: "Customers",
-      value: stats.totalCustomers.toString(),
-      subtext: "Registered users",
-      color: "bg-orange-500",
+      title: "Inventory & Customers",
+      cards: [
+        {
+          icon: Package,
+          label: "Total Products",
+          value: stats.totalProducts.toString(),
+          subtext: "Unique items",
+          color: "bg-purple-500",
+        },
+        {
+          icon: DatabaseIcon,
+          label: "Total Quantity",
+          value: (stats.totalQuantity || 0).toLocaleString(),
+          subtext: "Units in stock",
+          color: "bg-sky-500",
+        },
+        {
+          icon: Users,
+          label: "Total Customers",
+          value: stats.totalCustomers.toLocaleString(),
+          subtext: `Website: ${stats.websiteCustomersCount} | Shop permanent: ${stats.shopCustomersCount}`,
+          color: "bg-orange-500",
+        },
+      ],
     },
   ], [stats])
 
@@ -905,41 +968,54 @@ export default function AdminDashboard() {
         </motion.div>
 
         {stats.loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {[1, 2, 3, 4, 5].map((item) => (
-              <div key={item} className="bg-card border border-border rounded-lg p-5 animate-pulse">
-                <div className="h-20 bg-muted rounded" />
+          <div className="space-y-5">
+            {[1, 2].map((section) => (
+              <div key={section} className="space-y-3">
+                <div className="h-5 w-40 bg-muted rounded animate-pulse" />
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((item) => (
+                    <div key={item} className="bg-card border border-border rounded-lg p-5 animate-pulse">
+                      <div className="h-20 bg-muted rounded" />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         ) : (
           <motion.div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4"
+            className="space-y-5"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
           >
-            {STATS.map((stat, index) => {
-              const Icon = stat.icon
-              return (
-                <motion.div
-                  key={`${stat.label}-${index}`}
-                  variants={itemVariants}
-                  className="bg-card border border-border rounded-lg p-4 2xl:p-5 hover:shadow-lg transition-shadow flex flex-col justify-center"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-muted-foreground text-xs md:text-sm font-medium truncate">{stat.label}</p>
-                      <h3 className="text-lg md:text-xl 2xl:text-2xl font-bold mt-1.5 text-foreground truncate">{stat.value}</h3>
-                      <p className="text-muted-foreground text-[10px] md:text-xs mt-1.5 truncate">{stat.subtext}</p>
-                    </div>
-                    <div className={`${stat.color} p-2 lg:p-2.5 2xl:p-3 rounded-lg text-white flex-shrink-0`}>
-                      <Icon className="w-4 h-4 lg:w-5 lg:h-5 2xl:w-6 2xl:h-6" />
-                    </div>
-                  </div>
-                </motion.div>
-              )
-            })}
+            {summarySections.map(section => (
+              <motion.section key={section.title} variants={itemVariants} className="space-y-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {section.cards.map((stat, index) => {
+                    const Icon = stat.icon
+                    return (
+                      <div
+                        key={`${stat.label}-${index}`}
+                        className="bg-card border border-border rounded-lg p-4 2xl:p-5 hover:shadow-lg transition-shadow flex flex-col justify-center"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-muted-foreground text-xs md:text-sm font-medium truncate">{stat.label}</p>
+                            <h3 className="text-lg md:text-xl 2xl:text-2xl font-bold mt-1.5 text-foreground truncate">{stat.value}</h3>
+                            <p className="text-muted-foreground text-[10px] md:text-xs mt-1.5 truncate">{stat.subtext}</p>
+                          </div>
+                          <div className={`${stat.color} p-2 lg:p-2.5 2xl:p-3 rounded-lg text-white flex-shrink-0`}>
+                            <Icon className="w-4 h-4 lg:w-5 lg:h-5 2xl:w-6 2xl:h-6" />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </motion.section>
+            ))}
           </motion.div>
         )}
 
