@@ -140,6 +140,8 @@ export const inventorySalesService = {
 
   getByInvoiceNumber: (invoice: string) => apiFetch(`/sales/invoice/${invoice}`),
 
+  delete: (id: string) => apiFetch(`/sales/${id}`, { method: 'DELETE' }),
+
   getTodaySummary: (shop?: string) => {
     const query = shop ? `?shop=${encodeURIComponent(shop)}` : ''
     return apiFetch(`/sales/today/summary${query}`)

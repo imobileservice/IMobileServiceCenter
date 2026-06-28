@@ -3,20 +3,16 @@
 import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
-  History, 
   Search, 
-  Calendar, 
   ArrowLeft, 
   ArrowRight, 
   Download, 
   Eye, 
-  ShoppingCart, 
+  Trash2,
   User, 
   CreditCard,
-  CheckCircle2,
   FileText,
   Filter,
-  BarChart3
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,6 +27,7 @@ export default function SalesHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedSale, setSelectedSale] = useState<any>(null)
+  const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
   const [summary, setSummary] = useState<any>(null)
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
 
@@ -68,6 +65,27 @@ export default function SalesHistoryPage() {
     sale.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
     sale.customer_name?.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  const handleDelete = async (sale: any) => {
+    const invoice = sale.invoice_number || sale.id
+    if (!confirm(`Are you sure you want to delete sale ${invoice}? This cannot be undone.`)) return
+
+    try {
+      setDeletingSaleId(sale.id)
+      await inventorySalesService.delete(sale.id)
+      setSales(prev => prev.filter(item => item.id !== sale.id))
+      if (selectedSale?.id === sale.id) setSelectedSale(null)
+      await fetchSummary()
+      window.dispatchEvent(new CustomEvent('inventoryUpdated', { detail: { type: 'sale', id: sale.id, action: 'delete' } }))
+      localStorage.setItem('adminUpdate_inventory', JSON.stringify({ type: 'inventory', action: 'delete-sale', timestamp: Date.now() }))
+      toast.success(`Sale ${invoice} deleted`)
+    } catch (err) {
+      console.error('Failed to delete sale:', err)
+      toast.error("Failed to delete sale")
+    } finally {
+      setDeletingSaleId(null)
+    }
+  }
 
   const getPaymentIcon = (method: string) => {
     switch(method) {
@@ -163,7 +181,7 @@ export default function SalesHistoryPage() {
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Items</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Payment</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-right">Net Amount</th>
-                  <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-right w-16"></th>
+                  <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-right w-40">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -219,14 +237,25 @@ export default function SalesHistoryPage() {
                          <span className="font-black text-primary">{formatCurrency(sale.net_amount)}</span>
                       </td>
                       <td className="p-2 text-right">
-                         <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                         <div className="flex items-center justify-end gap-2">
                             <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-8 w-8"
+                              variant="outline" 
+                              size="sm" 
+                              className="h-8 gap-1.5"
                               onClick={() => setSelectedSale(sale)}
                             >
                                <Eye className="w-4 h-4" />
+                               View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-red-600 hover:text-red-700 bg-transparent"
+                              disabled={deletingSaleId === sale.id}
+                              onClick={() => handleDelete(sale)}
+                            >
+                               <Trash2 className="w-4 h-4" />
+                               {deletingSaleId === sale.id ? "Deleting" : "Delete"}
                             </Button>
                          </div>
                       </td>

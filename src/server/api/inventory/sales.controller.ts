@@ -168,6 +168,39 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 })
 
+// DELETE /api/inventory/sales/:id - Delete a sale history record
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { id } = req.params
+
+    const { data: sale, error: fetchError } = await supabase
+      .from('inv_sales')
+      .select('id, invoice_number')
+      .eq('id', id)
+      .single()
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Sale not found' })
+      }
+      throw fetchError
+    }
+
+    const { error } = await supabase
+      .from('inv_sales')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
+
+    res.json({ success: true, data: sale })
+  } catch (error: any) {
+    console.error('[Inventory Sales] DELETE/:id error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // GET /api/inventory/sales/today/summary - Today's summary
 router.get('/today/summary', async (req: Request, res: Response) => {
   try {
