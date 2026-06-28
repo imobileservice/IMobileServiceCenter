@@ -16,6 +16,15 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
   }
 }
 
+const isRevenueOrder = (order: any) => {
+  const status = String(order?.status || '').toLowerCase()
+  const paymentStatus = String(order?.payment_status || '').toLowerCase()
+  const cancelledStatuses = new Set(['cancelled', 'canceled'])
+  const failedPaymentStatuses = new Set(['failed', 'cancelled', 'canceled'])
+
+  return !cancelledStatuses.has(status) && !failedPaymentStatuses.has(paymentStatus)
+}
+
 /**
  * GET /api/admin/data/orders
  * Get all orders (admin only, uses service role)
@@ -82,7 +91,7 @@ export const getCustomersHandler = asyncHandler(async (req: Request, res: Respon
   // Get orders for statistics
   const { data: orders, error: ordersError } = await supabase
     .from('orders')
-    .select('user_id, total, created_at')
+    .select('user_id, total, created_at, status, payment_status')
 
   if (ordersError) {
     console.error('Error fetching orders for stats:', ordersError)
@@ -91,7 +100,7 @@ export const getCustomersHandler = asyncHandler(async (req: Request, res: Respon
 
   // Calculate statistics for each customer
   const customers = (profiles || []).map((profile: any) => {
-    const userOrders = (orders || []).filter((o: any) => o.user_id === profile.id)
+    const userOrders = (orders || []).filter((o: any) => o.user_id === profile.id && isRevenueOrder(o))
     const totalOrders = userOrders.length
     const totalSpent = userOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0)
     const lastOrder = userOrders.length > 0 
@@ -218,14 +227,14 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
 
   // Fetch all data in parallel
   const [ordersResult, posSalesResult, productsResult, profilesResult, stockResult] = await Promise.all([
-    supabase.from('orders').select('total, created_at'),
+    supabase.from('orders').select('total, created_at, status, payment_status'),
     supabase.from('inv_sales').select('net_amount, created_at'),
     supabase.from('products').select('id', { count: 'exact', head: true }),
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     supabase.from('inv_stock').select('quantity')
   ])
 
-  const orders = ordersResult.data || []
+  const orders = (ordersResult.data || []).filter(isRevenueOrder)
   const posSales = posSalesResult.data || []
   const totalProducts = productsResult.count || 0
   const totalCustomers = profilesResult.count || 0
@@ -249,4 +258,3 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
     }
   })
 })
-

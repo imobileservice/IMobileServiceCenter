@@ -257,7 +257,7 @@ function calculateItemsProfit(items: any[], productCosts: Map<string, number>) {
 function isRevenueOrder(order: any) {
   const status = String(order?.status || "").toLowerCase()
   const paymentStatus = String(order?.payment_status || "").toLowerCase()
-  return status !== "cancelled" && paymentStatus !== "failed"
+  return status !== "cancelled" && status !== "canceled" && paymentStatus !== "failed" && paymentStatus !== "cancelled" && paymentStatus !== "canceled"
 }
 
 function buildReportAnalytics(
@@ -736,12 +736,12 @@ export default function AdminDashboard() {
         const totalRevenue = webRevenue + posRevenue
 
         const finalStats = {
-          totalRevenue: statsData?.totalRevenue ?? totalRevenue,
-          webRevenue: statsData?.webRevenue ?? webRevenue,
-          posRevenue: statsData?.posRevenue ?? posRevenue,
-          totalOrders: statsData?.totalOrders ?? (revenueOrders.length + posSalesData.length),
-          webOrdersCount: statsData?.webOrdersCount ?? revenueOrders.length,
-          posOrdersCount: statsData?.posOrdersCount ?? posSalesData.length,
+          totalRevenue,
+          webRevenue,
+          posRevenue,
+          totalOrders: revenueOrders.length + posSalesData.length,
+          webOrdersCount: revenueOrders.length,
+          posOrdersCount: posSalesData.length,
           totalProducts: statsData?.totalProducts ?? (productStats?.total || productsData.length || 0),
           totalQuantity: statsData?.totalQuantity ?? (productStats?.totalQuantity || 0),
           totalCustomers: statsData?.totalCustomers ?? (customers || []).length,
