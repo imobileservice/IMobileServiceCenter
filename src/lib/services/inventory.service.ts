@@ -108,6 +108,8 @@ export interface CreateSalePayload {
   notes?: string
   created_by?: string
   shop?: string
+  pos_session_id?: string
+  pos_session_token?: string
   items: SaleItem[]
 }
 
@@ -154,6 +156,8 @@ export const inventorySalesService = {
     condition: 'good' | 'damaged'
     notes?: string
     created_by?: string
+    pos_session_id?: string
+    pos_session_token?: string
   }) => apiFetch('/sales/return', {
     method: 'POST',
     body: JSON.stringify(payload),

@@ -1,10 +1,10 @@
 import { Router } from 'express'
-import { initCashierLoginHandler, verifyCashierLoginHandler } from './login'
+import { loginCashierHandler, logoutCashierHandler } from './login'
 
 const router = Router()
 
 // Cashier Auth endpoints
-router.post('/login/init', initCashierLoginHandler)
-router.post('/login/verify', verifyCashierLoginHandler)
+router.post('/login', loginCashierHandler)
+router.post('/logout', logoutCashierHandler)
 
 export default router

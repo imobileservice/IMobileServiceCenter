@@ -1,215 +1,302 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
-import { sendEmail } from '../utils/email'
+import { verifyPassword } from '../utils/password'
 
-/**
- * POST /api/cashier/login/init
- * Step 1: Validate credentials (email/password) and send OTP
- */
-export async function initCashierLoginHandler(req: Request, res: Response) {
-    console.log(`🔐 [Cashier] Login init attempt for: ${req.body?.email}`)
+const POS_ROLES = new Set(['cashier', 'admin'])
+const DEFAULT_SHOP = 'Meegoda'
+
+function getSupabaseConfig() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+        throw new Error('Server configuration error (Supabase)')
+    }
+
+    return { supabaseUrl, supabaseServiceKey }
+}
+
+function normalizeEmail(email: string) {
+    return email.toLowerCase().trim()
+}
+
+function normalizeTillCode(tillCode: string) {
+    return tillCode.trim().toUpperCase()
+}
+
+function hashSecret(value: string) {
+    return crypto.createHash('sha256').update(value).digest('hex')
+}
+
+function getClientIp(req: Request) {
+    const forwardedFor = req.headers['x-forwarded-for']
+    if (Array.isArray(forwardedFor)) return forwardedFor[0]
+    if (typeof forwardedFor === 'string') return forwardedFor.split(',')[0]?.trim()
+    return req.socket.remoteAddress || null
+}
+
+async function logPosAuthEvent(adminClient: any, req: Request, event: {
+    cashier_email?: string
+    cashier_id?: string
+    role?: string
+    till_id?: string
+    event_type: string
+    success: boolean
+    reason?: string
+}) {
     try {
-        const { email, password } = req.body
-
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' })
-        }
-
-        const normalizedEmail = email.toLowerCase().trim()
-
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-        if (!supabaseUrl || !supabaseKey || !supabaseServiceKey) {
-            return res.status(503).json({ error: 'Server configuration error (Supabase)' })
-        }
-
-        const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-        const { data: admin, error: adminError } = await adminClient
-            .from('admins')
-            .select('id, name, password, role, shop')
-            .eq('email', normalizedEmail)
-            .single()
-
-        if (adminError || !admin) {
-            console.error('Cashier fetch error:', adminError)
-            return res.status(401).json({ error: 'Invalid email or password' })
-        }
-
-        // Validate Password
-        if (admin.password !== password) {
-            return res.status(401).json({ error: 'Invalid email or password' })
-        }
-
-        // Must be cashier or admin
-        if (admin.role !== 'cashier' && admin.role !== 'admin') {
-            return res.status(403).json({ error: 'Unauthorized role.' })
-        }
-
-        // 3. Generate OTP
-        const otp = crypto.randomInt(100000, 999999).toString()
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 1 WEEK
-
-        // 4. Store OTP in cashier_otp table (NEW)
-        await adminClient.from('cashier_otp').delete().eq('email', normalizedEmail)
-
-        // Hashing for security
-        const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex')
-
-        const { error: otpError } = await adminClient
-            .from('cashier_otp')
-            .insert({
-                email: normalizedEmail,
-                otp: hashedOtp,
-                expires_at: expiresAt.toISOString(),
-                used: false,
-            })
-
-        if (otpError) {
-            console.error('OTP storage error:', otpError)
-            return res.status(500).json({ error: 'Failed to generate OTP' })
-        }
-
-        // 5. Send OTP via Email (await so errors are visible in logs)
-        try {
-            await sendEmail({
-                to: normalizedEmail,
-                subject: 'Cashier Terminal Verification Code',
-                text: `Your IMobile Cashier Verification Code is: ${otp}. Valid for 1 week.`,
-                html: `
-                    <!DOCTYPE html>
-                    <html>
-                    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-                    <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:#0f172a;">
-                      <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
-                        <tr><td align="center">
-                          <table width="560" cellpadding="0" cellspacing="0" style="background:#1e293b;border-radius:16px;overflow:hidden;border:1px solid #334155;">
-                            <tr><td style="background:linear-gradient(135deg,#3b82f6,#06b6d4);padding:32px 30px;text-align:center;">
-                              <h1 style="margin:0;color:#fff;font-size:24px;font-weight:700;">IMOBILE CASHIER TERMINAL</h1>
-                              <p style="margin:6px 0 0;color:#e0f2fe;font-size:13px;">POS System Access Code</p>
-                            </td></tr>
-                            <tr><td style="padding:40px 40px;text-align:center;">
-                              <p style="margin:0 0 24px;color:#cbd5e1;font-size:15px;">Your cashier terminal access code:</p>
-                              <div style="background:#0f172a;border:2px solid #3b82f6;border-radius:12px;padding:30px 20px;margin:0 auto;">
-                                <p style="margin:0;color:#3b82f6;font-size:48px;font-weight:700;letter-spacing:14px;font-family:'Courier New',monospace;">${otp}</p>
-                                <p style="margin:12px 0 0;color:#64748b;font-size:12px;">Valid for 1 week</p>
-                              </div>
-                              <p style="margin:24px 0 0;color:#94a3b8;font-size:13px;">If you did not request this, please contact your manager immediately.</p>
-                            </td></tr>
-                            <tr><td style="background:#0f172a;padding:20px 30px;text-align:center;border-top:1px solid #334155;">
-                              <p style="margin:0;color:#64748b;font-size:11px;">© 2024 IMobile Service & Repair Center</p>
-                            </td></tr>
-                          </table>
-                        </td></tr>
-                      </table>
-                    </body>
-                    </html>
-                `
-            })
-            console.log(`[Email] ✅ Cashier OTP sent successfully to ${normalizedEmail}`)
-        } catch (emailErr: any) {
-            console.error(`[Email] ❌ FAILED to send cashier OTP to ${normalizedEmail}:`, emailErr.message)
-        }
-
-        return res.json({
-            success: true,
-            message: 'Credentials valid. Verification code sent.',
-            otp: process.env.NODE_ENV === 'development' ? otp : undefined
+        await adminClient.from('pos_auth_events').insert({
+            cashier_email: event.cashier_email || null,
+            cashier_id: event.cashier_id || null,
+            role: event.role || null,
+            till_id: event.till_id || null,
+            event_type: event.event_type,
+            success: event.success,
+            reason: event.reason || null,
+            ip_address: getClientIp(req),
+            user_agent: req.headers['user-agent'] || null,
         })
-
-    } catch (e: any) {
-        console.error('Cashier Login Init Error:', e)
-        return res.status(500).json({ error: 'Internal Server Error' })
+    } catch (error) {
+        console.warn('[Cashier] Failed to write POS auth event:', error)
     }
 }
 
 /**
- * POST /api/cashier/login/verify
- * Step 2: Verify OTP and return Session
+ * POST /api/cashier/login
+ * Direct POS login without email OTP. Validates cashier/admin credentials,
+ * validates the till code, then opens a till session for auditability.
  */
-export async function verifyCashierLoginHandler(req: Request, res: Response) {
+export async function loginCashierHandler(req: Request, res: Response) {
+    const attemptedEmail = req.body?.email ? normalizeEmail(String(req.body.email)) : undefined
+    console.log(`[Cashier] POS login attempt for: ${attemptedEmail || 'unknown'}`)
+
+    let adminClient: any
+
     try {
-        const { email, password, otp } = req.body
+        const { email, password, till_code, opening_float, device_fingerprint } = req.body
 
-        if (!email || !password || !otp) {
-            return res.status(400).json({ error: 'Email, password, and OTP are required' })
+        if (!email || !password || !till_code) {
+            return res.status(400).json({ error: 'Email, password, and till code are required' })
         }
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        const normalizedEmail = normalizeEmail(String(email))
+        const normalizedTillCode = normalizeTillCode(String(till_code))
 
-        if (!supabaseUrl || !supabaseKey || !supabaseServiceKey) {
-            return res.status(503).json({ error: 'Server configuration error' })
-        }
+        const { supabaseUrl, supabaseServiceKey } = getSupabaseConfig()
+        adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
-        const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-        const normalizedEmail = email.toLowerCase().trim()
-        const normalizedOtp = String(otp).trim()
-
-        // Hashing to compare
-        const hashedOtp = crypto.createHash('sha256').update(normalizedOtp).digest('hex')
-
-        // 1. Verify OTP
-        const { data: otpList, error: otpFetchError } = await adminClient
-            .from('cashier_otp')
-            .select('*')
-            .eq('email', normalizedEmail)
-            .eq('otp', hashedOtp)
-            .order('created_at', { ascending: false })
-            .limit(1)
-
-        if (otpFetchError || !otpList || otpList.length === 0) {
-            return res.status(401).json({ error: 'Invalid or expired verification code' })
-        }
-
-        const otpData = otpList[0]
-
-        if (otpData.used) {
-            return res.status(401).json({ error: 'This code has already been used' })
-        }
-
-        if (new Date(otpData.expires_at) < new Date()) {
-            return res.status(401).json({ error: 'OTP has expired' })
-        }
-
-        // Mark as used
-        await adminClient.from('cashier_otp').update({ used: true }).eq('id', otpData.id)
-
-        // 2. Fetch admin details
         const { data: admin, error: adminError } = await adminClient
             .from('admins')
-            .select('id, email, name, role, password, shop')
+            .select('id, email, name, password, role, shop')
             .eq('email', normalizedEmail)
             .single()
 
-        if (adminError || !admin || admin.password !== password) {
-            return res.status(401).json({ error: 'Invalid credentials' })
+        if (adminError || !admin || !verifyPassword(String(password), admin.password)) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'invalid_credentials',
+            })
+            return res.status(401).json({ error: 'Invalid email or password' })
         }
 
-        // Must be cashier or admin
-        if (admin.role !== 'cashier' && admin.role !== 'admin') {
-            return res.status(403).json({ error: 'Unauthorized role.' })
+        if (!POS_ROLES.has(admin.role)) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                cashier_id: admin.id,
+                role: admin.role,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'unauthorized_role',
+            })
+            return res.status(403).json({ error: 'This account cannot access the POS terminal' })
         }
 
-        console.log(`[Verify] ✅ Cashier Login successful for ${normalizedEmail}`)
+        const { data: till, error: tillError } = await adminClient
+            .from('pos_tills')
+            .select('id, code_hint, label, shop, status')
+            .eq('code_hash', hashSecret(normalizedTillCode))
+            .single()
+
+        if (tillError || !till) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                cashier_id: admin.id,
+                role: admin.role,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'invalid_till_code',
+            })
+            return res.status(401).json({ error: 'Invalid till code' })
+        }
+
+        if (till.status !== 'active') {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                cashier_id: admin.id,
+                role: admin.role,
+                till_id: till.id,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'inactive_till',
+            })
+            return res.status(403).json({ error: 'This till is not active' })
+        }
+
+        const accountShop = admin.shop || DEFAULT_SHOP
+        const effectiveShop = till.shop || accountShop
+
+        if (admin.role === 'cashier' && accountShop !== effectiveShop) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                cashier_id: admin.id,
+                role: admin.role,
+                till_id: till.id,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'shop_mismatch',
+            })
+            return res.status(403).json({ error: `This cashier is assigned to ${accountShop}, not ${effectiveShop}` })
+        }
+
+        const sessionToken = crypto.randomBytes(32).toString('hex')
+        const sessionTokenHash = hashSecret(sessionToken)
+        const openedAt = new Date().toISOString()
+
+        await adminClient
+            .from('pos_till_sessions')
+            .update({
+                status: 'forced_closed',
+                closed_at: openedAt,
+                closed_by: normalizedEmail,
+            })
+            .eq('till_id', till.id)
+            .eq('status', 'open')
+
+        const { data: tillSession, error: sessionError } = await adminClient
+            .from('pos_till_sessions')
+            .insert({
+                till_id: till.id,
+                cashier_id: admin.id,
+                cashier_email: admin.email || normalizedEmail,
+                cashier_name: admin.name || 'Cashier',
+                role: admin.role,
+                shop: effectiveShop,
+                opening_float: Number(opening_float || 0),
+                session_token_hash: sessionTokenHash,
+                device_fingerprint: device_fingerprint || null,
+                ip_address: getClientIp(req),
+                user_agent: req.headers['user-agent'] || null,
+                opened_at: openedAt,
+                last_seen_at: openedAt,
+                status: 'open',
+            })
+            .select('id, till_id, shop, opening_float, opened_at, status')
+            .single()
+
+        if (sessionError || !tillSession) {
+            console.error('[Cashier] Failed to create till session:', sessionError)
+            return res.status(500).json({ error: 'Failed to open till session' })
+        }
+
+        await logPosAuthEvent(adminClient, req, {
+            cashier_email: normalizedEmail,
+            cashier_id: admin.id,
+            role: admin.role,
+            till_id: till.id,
+            event_type: 'login_success',
+            success: true,
+        })
 
         return res.json({
             success: true,
             cashier: {
                 id: admin.id,
-                email: admin.email,
-                name: admin.name || 'Cashier',
+                email: admin.email || normalizedEmail,
+                name: admin.name || (admin.role === 'admin' ? 'Admin' : 'Cashier'),
                 role: admin.role,
-                shop: admin.shop || 'Meegoda'
+                shop: effectiveShop,
             },
-            message: 'Login successful'
+            tillSession: {
+                id: tillSession.id,
+                token: sessionToken,
+                status: tillSession.status,
+                opened_at: tillSession.opened_at,
+                opening_float: Number(tillSession.opening_float || 0),
+                till: {
+                    id: till.id,
+                    code: till.code_hint,
+                    label: till.label,
+                    shop: effectiveShop,
+                },
+            },
+            message: 'POS till session opened',
         })
 
-    } catch (e: any) {
-        console.error('Login Verify Error:', e)
-        return res.status(500).json({ error: 'Internal Server Error' })
+    } catch (error: any) {
+        console.error('[Cashier] POS login error:', error)
+        if (adminClient && attemptedEmail) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: attemptedEmail,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'server_error',
+            })
+        }
+        return res.status(error.message?.includes('Supabase') ? 503 : 500).json({ error: error.message || 'Internal Server Error' })
+    }
+}
+
+/**
+ * POST /api/cashier/logout
+ * Closes the active till session. Local logout still proceeds even if this fails.
+ */
+export async function logoutCashierHandler(req: Request, res: Response) {
+    try {
+        const { session_id, session_token, closing_float, closed_by } = req.body
+
+        if (!session_id || !session_token) {
+            return res.status(400).json({ error: 'Session id and token are required' })
+        }
+
+        const { supabaseUrl, supabaseServiceKey } = getSupabaseConfig()
+        const adminClient = createClient(supabaseUrl, supabaseServiceKey)
+        const tokenHash = hashSecret(String(session_token))
+
+        const { data: session, error: sessionError } = await adminClient
+            .from('pos_till_sessions')
+            .select('id, session_token_hash, status, cashier_email, till_id')
+            .eq('id', session_id)
+            .single()
+
+        if (sessionError || !session || session.session_token_hash !== tokenHash) {
+            return res.status(401).json({ error: 'Invalid till session' })
+        }
+
+        const closedAt = new Date().toISOString()
+        await adminClient
+            .from('pos_till_sessions')
+            .update({
+                status: 'closed',
+                closed_at: closedAt,
+                closing_float: closing_float === undefined || closing_float === null ? null : Number(closing_float),
+                closed_by: closed_by || session.cashier_email,
+                last_seen_at: closedAt,
+            })
+            .eq('id', session_id)
+
+        await logPosAuthEvent(adminClient, req, {
+            cashier_email: session.cashier_email,
+            till_id: session.till_id,
+            event_type: 'logout',
+            success: true,
+        })
+
+        return res.json({ success: true })
+    } catch (error: any) {
+        console.error('[Cashier] POS logout error:', error)
+        return res.status(500).json({ error: error.message || 'Internal Server Error' })
     }
 }

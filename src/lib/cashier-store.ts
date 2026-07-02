@@ -9,10 +9,25 @@ interface CashierUser {
   shop: string
 }
 
+interface TillSession {
+  id: string
+  token: string
+  status: string
+  opened_at: string
+  opening_float: number
+  till: {
+    id: string
+    code: string
+    label: string
+    shop: string
+  }
+}
+
 interface CashierState {
   cashier: CashierUser | null
+  tillSession: TillSession | null
   isAuthenticated: boolean
-  login: (email: string, otp: string, userData: any) => void
+  login: (userData: CashierUser, tillSession: TillSession) => void
   logout: () => void
 }
 
@@ -20,24 +35,25 @@ export const useCashierStore = create<CashierState>()(
   persist(
     (set) => ({
       cashier: null,
+      tillSession: null,
       isAuthenticated: false,
-      login: (email: string, otp: string, userData: any) => {
-        if (userData) {
-          set({
-            cashier: {
-              id: userData.id,
-              email: userData.email || email,
-              name: userData.name || "Cashier",
-              role: userData.role || "cashier",
-              shop: userData.shop || "Meegoda",
-            },
-            isAuthenticated: true,
-          })
-        }
+      login: (userData: CashierUser, tillSession: TillSession) => {
+        set({
+          cashier: {
+            id: userData.id,
+            email: userData.email,
+            name: userData.name || "Cashier",
+            role: userData.role || "cashier",
+            shop: userData.shop || tillSession?.till?.shop || "Meegoda",
+          },
+          tillSession,
+          isAuthenticated: true,
+        })
       },
       logout: () => {
         set({
           cashier: null,
+          tillSession: null,
           isAuthenticated: false,
         })
       },

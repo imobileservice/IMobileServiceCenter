@@ -1,7 +1,34 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
+import crypto from 'crypto'
 
 const router = Router()
+
+function hashSecret(value: string) {
+  return crypto.createHash('sha256').update(value).digest('hex')
+}
+
+async function resolveOpenPosSession(supabase: any, sessionId?: string, sessionToken?: string) {
+  if (!sessionId && !sessionToken) {
+    return null
+  }
+
+  if (!sessionId || !sessionToken) {
+    throw Object.assign(new Error('POS till session id and token are required'), { statusCode: 401 })
+  }
+
+  const { data: session, error } = await supabase
+    .from('pos_till_sessions')
+    .select('id, till_id, cashier_email, cashier_name, role, shop, status, session_token_hash')
+    .eq('id', sessionId)
+    .single()
+
+  if (error || !session || session.status !== 'open' || session.session_token_hash !== hashSecret(String(sessionToken))) {
+    throw Object.assign(new Error('Invalid or closed POS till session'), { statusCode: 401 })
+  }
+
+  return session
+}
 
 // POST /api/inventory/sales - Process a sale (TRANSACTIONAL via RPC)
 router.post('/', async (req: Request, res: Response) => {
@@ -17,6 +44,8 @@ router.post('/', async (req: Request, res: Response) => {
       tax,
       notes,
       created_by,
+      pos_session_id,
+      pos_session_token,
       items,
     } = req.body
 
@@ -34,8 +63,9 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    // Call the transactional RPC function
-    const { data, error } = await supabase.rpc('process_sale', {
+    const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
+
+    const rpcArgs: any = {
       p_customer_id: customer_id || null,
       p_customer_name: customer_name || 'Walk-in Customer',
       p_customer_phone: customer_phone || null,
@@ -44,10 +74,17 @@ router.post('/', async (req: Request, res: Response) => {
       p_discount: Number(discount || 0),
       p_tax: Number(tax || 0),
       p_notes: notes || null,
-      p_created_by: created_by || 'cashier',
+      p_created_by: posSession?.cashier_email || created_by || 'cashier',
       p_items: items,
-      p_shop: req.body.shop || 'Meegoda',
-    })
+      p_shop: posSession?.shop || req.body.shop || 'Meegoda',
+    }
+
+    if (posSession) {
+      rpcArgs.p_pos_session_id = posSession.id
+    }
+
+    // Call the transactional RPC function
+    const { data, error } = await supabase.rpc('process_sale', rpcArgs)
 
     if (error) {
       console.error('[Sales] RPC process_sale error:', error)
@@ -61,7 +98,7 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(201).json({ data })
   } catch (error: any) {
     console.error('[Inventory Sales] POST error:', error)
-    res.status(500).json({ error: error.message })
+    res.status(error.statusCode || 500).json({ error: error.message })
   }
 })
 
@@ -251,7 +288,7 @@ router.get('/today/summary', async (req: Request, res: Response) => {
 router.post('/return', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
-    const { invoice_number, product_id, quantity, condition, notes, created_by } = req.body
+    const { invoice_number, product_id, quantity, condition, notes, created_by, pos_session_id, pos_session_token } = req.body
 
     if (!invoice_number || !product_id || !quantity || !condition) {
       return res.status(400).json({ error: 'invoice_number, product_id, quantity, and condition are required' })
@@ -261,13 +298,16 @@ router.post('/return', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'condition must be "good" or "damaged"' })
     }
 
+    const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
+    const sessionNote = posSession ? `POS session ${posSession.id}` : null
+
     const { data, error } = await supabase.rpc('process_return', {
       p_invoice_number: invoice_number,
       p_product_id: product_id,
       p_quantity: Number(quantity),
       p_condition: condition,
-      p_notes: notes || null,
-      p_created_by: created_by || 'cashier',
+      p_notes: [notes, sessionNote].filter(Boolean).join(' | ') || null,
+      p_created_by: posSession?.cashier_email || created_by || 'cashier',
     })
 
     if (error) {
@@ -278,7 +318,7 @@ router.post('/return', async (req: Request, res: Response) => {
     res.status(200).json({ data })
   } catch (error: any) {
     console.error('[Inventory Sales Return] POST error:', error)
-    res.status(500).json({ error: error.message })
+    res.status(error.statusCode || 500).json({ error: error.message })
   }
 })
 

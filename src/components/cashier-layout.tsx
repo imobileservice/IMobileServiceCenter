@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom"
 import { LogOut, Calculator, ClipboardList, LayoutDashboard, Package, ShoppingCart } from "lucide-react"
 import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
+import { getApiUrl } from "@/lib/utils/api"
 
 interface CashierLayoutProps {
   children: ReactNode
@@ -12,7 +13,7 @@ interface CashierLayoutProps {
 
 export default function CashierLayout({ children }: CashierLayoutProps) {
   const navigate = useNavigate()
-  const { cashier, isAuthenticated, logout } = useCashierStore()
+  const { cashier, tillSession, isAuthenticated, logout } = useCashierStore()
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -20,7 +21,23 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
     }
   }, [isAuthenticated, navigate])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (tillSession?.id && tillSession?.token) {
+      try {
+        await fetch(getApiUrl("/api/cashier/logout"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: tillSession.id,
+            session_token: tillSession.token,
+            closed_by: cashier?.email,
+          }),
+        })
+      } catch (error) {
+        console.warn("Failed to close POS till session:", error)
+      }
+    }
+
     logout()
     navigate("/cashier/login")
   }
@@ -83,7 +100,9 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">
             <p className="text-sm font-bold text-foreground">{cashier?.name}</p>
-            <p className="text-[10px] text-muted-foreground capitalize">{cashier?.role} • {cashier?.shop || 'Meegoda'}</p>
+            <p className="text-[10px] text-muted-foreground capitalize">
+              {cashier?.role} • {cashier?.shop || 'Meegoda'} • {tillSession?.till?.code || 'Till'}
+            </p>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-500 hover:text-red-600 hover:bg-red-50">
             <LogOut className="w-4 h-4 mr-2" />

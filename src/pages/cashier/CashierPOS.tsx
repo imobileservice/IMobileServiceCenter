@@ -40,7 +40,7 @@ interface CartItem {
 }
 
 export default function CashierPOS() {
-  const { cashier } = useCashierStore()
+  const { cashier, tillSession } = useCashierStore()
   const [searchTerm, setSearchTerm] = useState("")
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [cart, setCart] = useState<CartItem[]>([])
@@ -296,6 +296,8 @@ export default function CashierPOS() {
         notes: !selectedCustomer && customerPhone ? `Walk-in phone: ${customerPhone}` : undefined,
         created_by: cashier?.email || 'cashier',
         shop: cashier?.shop || 'Meegoda',
+        pos_session_id: tillSession?.id,
+        pos_session_token: tillSession?.token,
         items: cart.map(item => ({
           product_id: item.id,
           quantity: item.quantity,
@@ -349,7 +351,9 @@ export default function CashierPOS() {
         product_id: returnItemModal.item.product_id,
         quantity: returnItemModal.quantity,
         condition: returnItemModal.condition,
-        created_by: cashier?.email || 'cashier'
+        created_by: cashier?.email || 'cashier',
+        pos_session_id: tillSession?.id,
+        pos_session_token: tillSession?.token
       })
       toast.success("Return processed successfully!")
       setReturnItemModal(null)
@@ -803,6 +807,7 @@ export default function CashierPOS() {
                       <p className="mt-1">Date: {new Date().toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '')}</p>
                       <p># {lastSale?.invoice_number}</p>
                       <p>Cashier : {cashier?.name || cashier?.email?.split('@')[0] || 'Admin'}</p>
+                      <p>Till : {tillSession?.till?.code || lastSale?.till_code || 'N/A'}</p>
                       <p>Customer : {selectedCustomer?.name || 'Walk-in Customer'}</p>
                     </div>
 

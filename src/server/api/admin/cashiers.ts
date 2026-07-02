@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
+import { hashPassword } from '../utils/password'
 
 export async function getCashiersHandler(req: Request, res: Response) {
     try {
@@ -44,7 +45,7 @@ export async function createCashierHandler(req: Request, res: Response) {
             .from('admins')
             .insert({
                 email: email.toLowerCase(),
-                password: password,
+                password: hashPassword(password),
                 name: name || 'New Cashier',
                 role: 'cashier',
                 shop: shop || 'Meegoda'
@@ -104,4 +105,3 @@ export async function updateCashierHandler(req: Request, res: Response) {
         res.status(500).json({ error: error.message })
     }
 }
-

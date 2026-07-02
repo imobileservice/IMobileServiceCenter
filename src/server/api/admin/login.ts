@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { sendEmail } from '../utils/email'
+import { verifyPassword } from '../utils/password'
 
 /**
  * POST /api/admin/login/init
@@ -41,7 +42,7 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
         }
 
         // 2. Validate Password
-        if (admin.password !== password) {
+        if (!verifyPassword(password, admin.password)) {
             return res.status(401).json({ error: 'Invalid email or password' })
         }
 
@@ -194,7 +195,7 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
         }
 
         // Verify password matches (double-check security)
-        if (admin.password !== password) {
+        if (!verifyPassword(password, admin.password)) {
             console.error('[Verify] Password mismatch')
             return res.status(401).json({ error: 'Invalid credentials' })
         }
