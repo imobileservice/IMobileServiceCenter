@@ -19,12 +19,25 @@ async function resolveOpenPosSession(supabase: any, sessionId?: string, sessionT
 
   const { data: session, error } = await supabase
     .from('pos_till_sessions')
-    .select('id, till_id, cashier_email, cashier_name, role, shop, status, session_token_hash')
+    .select('id, till_id, cashier_email, cashier_name, role, shop, status, session_token_hash, expires_at')
     .eq('id', sessionId)
     .single()
 
   if (error || !session || session.status !== 'open' || session.session_token_hash !== hashSecret(String(sessionToken))) {
     throw Object.assign(new Error('Invalid or closed POS till session'), { statusCode: 401 })
+  }
+
+  if (!session.expires_at || new Date(session.expires_at).getTime() <= Date.now()) {
+    await supabase
+      .from('pos_till_sessions')
+      .update({
+        status: 'forced_closed',
+        closed_at: new Date().toISOString(),
+        closed_by: 'session-expired',
+      })
+      .eq('id', sessionId)
+
+    throw Object.assign(new Error('POS till session expired. Enter till code again.'), { statusCode: 401 })
   }
 
   return session

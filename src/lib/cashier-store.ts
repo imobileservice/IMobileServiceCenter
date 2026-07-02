@@ -14,6 +14,7 @@ interface TillSession {
   token: string
   status: string
   opened_at: string
+  expires_at: string
   opening_float: number
   till: {
     id: string
@@ -29,11 +30,12 @@ interface CashierState {
   isAuthenticated: boolean
   login: (userData: CashierUser, tillSession: TillSession) => void
   logout: () => void
+  isTillSessionExpired: () => boolean
 }
 
 export const useCashierStore = create<CashierState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       cashier: null,
       tillSession: null,
       isAuthenticated: false,
@@ -56,6 +58,13 @@ export const useCashierStore = create<CashierState>()(
           tillSession: null,
           isAuthenticated: false,
         })
+      },
+      isTillSessionExpired: () => {
+        const { isAuthenticated, tillSession } = get()
+        if (!isAuthenticated || !tillSession?.expires_at) return true
+
+        const expiresAt = new Date(tillSession.expires_at).getTime()
+        return Number.isNaN(expiresAt) || Date.now() >= expiresAt
       },
     }),
     {

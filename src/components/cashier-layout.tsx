@@ -7,19 +7,38 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
 import { getApiUrl } from "@/lib/utils/api"
 
+const SESSION_CHECK_INTERVAL_MS = 30 * 1000
+
 interface CashierLayoutProps {
   children: ReactNode
 }
 
 export default function CashierLayout({ children }: CashierLayoutProps) {
   const navigate = useNavigate()
-  const { cashier, tillSession, isAuthenticated, logout } = useCashierStore()
+  const { cashier, tillSession, isAuthenticated, logout, isTillSessionExpired } = useCashierStore()
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/cashier/login")
+      return
     }
-  }, [isAuthenticated, navigate])
+
+    if (isTillSessionExpired()) {
+      logout()
+      navigate("/cashier/login")
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      const state = useCashierStore.getState()
+      if (state.isTillSessionExpired()) {
+        state.logout()
+        navigate("/cashier/login")
+      }
+    }, SESSION_CHECK_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalId)
+  }, [isAuthenticated, isTillSessionExpired, logout, navigate])
 
   const handleLogout = async () => {
     if (tillSession?.id && tillSession?.token) {

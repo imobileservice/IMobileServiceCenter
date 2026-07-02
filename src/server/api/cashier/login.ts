@@ -5,6 +5,7 @@ import { verifyPassword } from '../utils/password'
 
 const POS_ROLES = new Set(['cashier', 'admin'])
 const DEFAULT_SHOP = 'Meegoda'
+const TILL_SESSION_HOURS = 6
 
 function getSupabaseConfig() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -163,7 +164,9 @@ export async function loginCashierHandler(req: Request, res: Response) {
 
         const sessionToken = crypto.randomBytes(32).toString('hex')
         const sessionTokenHash = hashSecret(sessionToken)
-        const openedAt = new Date().toISOString()
+        const now = Date.now()
+        const openedAt = new Date(now).toISOString()
+        const expiresAt = new Date(now + TILL_SESSION_HOURS * 60 * 60 * 1000).toISOString()
 
         await adminClient
             .from('pos_till_sessions')
@@ -190,10 +193,11 @@ export async function loginCashierHandler(req: Request, res: Response) {
                 ip_address: getClientIp(req),
                 user_agent: req.headers['user-agent'] || null,
                 opened_at: openedAt,
+                expires_at: expiresAt,
                 last_seen_at: openedAt,
                 status: 'open',
             })
-            .select('id, till_id, shop, opening_float, opened_at, status')
+            .select('id, till_id, shop, opening_float, opened_at, expires_at, status')
             .single()
 
         if (sessionError || !tillSession) {
@@ -224,6 +228,7 @@ export async function loginCashierHandler(req: Request, res: Response) {
                 token: sessionToken,
                 status: tillSession.status,
                 opened_at: tillSession.opened_at,
+                expires_at: tillSession.expires_at,
                 opening_float: Number(tillSession.opening_float || 0),
                 till: {
                     id: till.id,

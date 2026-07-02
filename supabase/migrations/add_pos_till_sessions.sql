@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS pos_till_sessions (
   ip_address TEXT,
   user_agent TEXT,
   opened_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '6 hours'),
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at TIMESTAMPTZ,
   closed_by TEXT
@@ -74,6 +75,13 @@ ON CONFLICT (code_hash) DO UPDATE SET
   shop = EXCLUDED.shop,
   status = EXCLUDED.status,
   updated_at = now();
+
+ALTER TABLE pos_till_sessions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+UPDATE pos_till_sessions
+SET expires_at = COALESCE(expires_at, opened_at + interval '6 hours', now() + interval '6 hours');
+ALTER TABLE pos_till_sessions ALTER COLUMN expires_at SET DEFAULT (now() + interval '6 hours');
+ALTER TABLE pos_till_sessions ALTER COLUMN expires_at SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pos_till_sessions_expires_at ON pos_till_sessions(expires_at);
 
 ALTER TABLE inv_sales ADD COLUMN IF NOT EXISTS pos_session_id UUID REFERENCES pos_till_sessions(id) ON DELETE SET NULL;
 ALTER TABLE inv_sales ADD COLUMN IF NOT EXISTS till_id UUID REFERENCES pos_tills(id) ON DELETE SET NULL;
@@ -122,7 +130,8 @@ BEGIN
     FROM pos_till_sessions s
     JOIN pos_tills t ON t.id = s.till_id
     WHERE s.id = p_pos_session_id
-      AND s.status = 'open';
+      AND s.status = 'open'
+      AND s.expires_at > now();
 
     IF v_till_id IS NULL THEN
       RAISE EXCEPTION 'Invalid or closed POS till session';
