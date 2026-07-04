@@ -21,6 +21,7 @@ import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import Barcode from "react-barcode"
 
 export default function SalesHistoryPage() {
   const [sales, setSales] = useState<any[]>([])
@@ -93,6 +94,23 @@ export default function SalesHistoryPage() {
       case 'card': return <CreditCard className="w-4 h-4 text-blue-500" />
       default: return <ArrowRight className="w-4 h-4 text-purple-500" />
     }
+  }
+
+  const formatReceiptAmount = (value: any) => {
+    return formatCurrency(Number(value || 0)).replace('Rs. ', '')
+  }
+
+  const getSaleItems = (sale: any) => sale?.inv_sale_items || []
+
+  const getSaleItemPrice = (item: any) => Number(item.unit_price ?? item.price ?? 0)
+
+  const getSaleItemTotal = (item: any) => {
+    return Number(item.total_price ?? (getSaleItemPrice(item) * Number(item.quantity || 0)))
+  }
+
+  const handlePrintInvoice = () => {
+    if (!selectedSale) return
+    window.print()
   }
 
   return (
@@ -325,7 +343,7 @@ export default function SalesHistoryPage() {
                          </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
-                         {selectedSale.inv_sale_items?.map((item: any) => (
+                         {getSaleItems(selectedSale).map((item: any) => (
                            <tr key={item.id}>
                               <td className="py-4 font-bold text-sm">{item.product_name}</td>
                               <td className="py-4 text-center font-bold">{item.quantity}</td>
@@ -352,8 +370,105 @@ export default function SalesHistoryPage() {
                    </div>
                 </div>
 
+                <div id="pos-receipt" className="fixed -left-[10000px] top-0 bg-white text-black p-4 font-mono text-[11px] leading-tight w-full max-w-[80mm]">
+                  <div className="text-center mb-3">
+                    <h2 className="text-sm font-black tracking-tight mb-1">IMobile Service & Repair Center</h2>
+                    <p>Colombo Road, Negombo</p>
+                    <p>Tel: 077 123 4567 / 077 765 4321</p>
+                    <p className="mt-1">Date: {new Date(selectedSale.created_at).toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '')}</p>
+                    <p># {selectedSale.invoice_number}</p>
+                    <p>Cashier : {selectedSale.created_by || selectedSale.cashier_name || 'Admin'}</p>
+                    <p>Till : {selectedSale.till_code || 'N/A'}</p>
+                    <p>Customer : {selectedSale.customer_name || 'Walk-in Customer'}</p>
+                  </div>
+
+                  <div className="text-center font-bold border-y border-dashed border-black py-1 mb-2">
+                    Receipt - Reprint Copy
+                  </div>
+
+                  <div className="flex justify-between border-b border-dashed border-black pb-1 mb-2 font-bold text-[11px]">
+                    <div className="flex-1">#Item</div>
+                    <div className="w-[60px] text-right">Net</div>
+                    <div className="w-[30px] text-center">Qty</div>
+                    <div className="w-[65px] text-right">Total</div>
+                  </div>
+
+                  <div className="space-y-2 mb-2 border-b border-dashed border-black pb-3">
+                    {getSaleItems(selectedSale).map((item: any, idx: number) => (
+                      <div key={item.id || idx}>
+                        <div className="font-bold text-[11px] mb-0.5">
+                          {idx + 1}) {(item.product_name || 'PRODUCT').toUpperCase()}
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                          <div className="flex-1"></div>
+                          <div className="w-[60px] text-right text-gray-700">
+                            {getSaleItemPrice(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <div className="w-[30px] text-center font-bold">
+                            {item.quantity}
+                          </div>
+                          <div className="w-[65px] text-right font-bold">
+                            {getSaleItemTotal(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1 mb-2 border-b border-dashed border-black pb-2 text-right">
+                    <div className="flex justify-between">
+                      <span>Sub Total</span>
+                      <span className="font-bold">{formatReceiptAmount(selectedSale.total_amount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total Discount</span>
+                      <span className="font-bold">{formatReceiptAmount(selectedSale.discount_amount)}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 mb-3 border-b border-dashed border-black pb-3 text-right">
+                    <div className="flex justify-between text-sm font-black">
+                      <span>Total</span>
+                      <span>{formatReceiptAmount(selectedSale.net_amount || selectedSale.total_amount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Paid {(selectedSale.payment_method || 'cash').replace('_', ' ').toUpperCase()}</span>
+                      <span className="font-bold">{formatReceiptAmount(selectedSale.net_amount || selectedSale.total_amount)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Balance</span>
+                      <span className="font-bold">0.00</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Outstanding</span>
+                      <span className="font-bold">0.00</span>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center my-3 relative -left-2 overflow-hidden w-full">
+                    {selectedSale.invoice_number && (
+                      <div className="origin-top scale-75 transform text-center">
+                        <Barcode
+                          value={selectedSale.invoice_number}
+                          displayValue={false}
+                          height={40}
+                          width={1.5}
+                          margin={10}
+                          background="#ffffff"
+                          lineColor="#000000"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-[9px] mt-4 leading-normal text-center">
+                    <p className="font-bold text-[10px] mb-1">Thank you for your business.</p>
+                    <p>Please keep this receipt for returns and warranty claims.</p>
+                  </div>
+                </div>
+
                 <div className="p-6 border-t border-border bg-muted/10 flex gap-4">
-                    <Button variant="outline" className="flex-1 gap-2 border-primary text-primary hover:bg-primary/5">
+                    <Button variant="outline" className="flex-1 gap-2 border-primary text-primary hover:bg-primary/5" onClick={handlePrintInvoice}>
                        <FileText className="w-4 h-4" /> RE-PRINT INVOICE
                     </Button>
                     <Button onClick={() => setSelectedSale(null)} className="px-8">CLOSE</Button>
