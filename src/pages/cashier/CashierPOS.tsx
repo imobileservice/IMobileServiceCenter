@@ -39,6 +39,20 @@ interface CartItem {
   image?: string
 }
 
+type PaymentMethod = 'cash' | 'card' | 'bank_transfer'
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank_transfer: 'Bank',
+  online: 'Online',
+}
+
+const formatPaymentMethod = (method?: string | null) => {
+  const value = method || 'cash'
+  return PAYMENT_METHOD_LABELS[value] || value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
 export default function CashierPOS() {
   const { cashier, tillSession } = useCashierStore()
   const [searchTerm, setSearchTerm] = useState("")
@@ -65,7 +79,7 @@ export default function CashierPOS() {
   const [walkInPhone, setWalkInPhone] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
   const [isSavingCustomer, setIsSavingCustomer] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
   const [lastSale, setLastSale] = useState<any>(null)
   const [showReceipt, setShowReceipt] = useState(false)
@@ -310,6 +324,9 @@ export default function CashierPOS() {
       // The receipt rendering layout expects the sale structure with items
       setLastSale({
         ...res.data,
+        customer_name: res.data?.customer_name || customerName,
+        customer_phone: res.data?.customer_phone || customerPhone,
+        payment_method: res.data?.payment_method || paymentMethod,
         items: cart.map(item => ({
           product_name: item.name,
           price: item.price,
@@ -716,13 +733,13 @@ export default function CashierPOS() {
             </h3>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { id: 'cash', icon: Banknote, label: 'Cash' },
-                { id: 'card', icon: CreditCard, label: 'Card' },
-                { id: 'bank_transfer', icon: History, label: 'Bank' },
+                { id: 'cash' as PaymentMethod, icon: Banknote, label: 'Cash' },
+                { id: 'card' as PaymentMethod, icon: CreditCard, label: 'Card' },
+                { id: 'bank_transfer' as PaymentMethod, icon: History, label: 'Bank' },
               ].map(method => (
                 <button
                   key={method.id}
-                  onClick={() => setPaymentMethod(method.id as any)}
+                  onClick={() => setPaymentMethod(method.id)}
                   className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all gap-1 ${
                     paymentMethod === method.id 
                       ? "border-primary bg-primary/5 text-primary" 
@@ -808,7 +825,8 @@ export default function CashierPOS() {
                       <p># {lastSale?.invoice_number}</p>
                       <p>Cashier : {cashier?.name || cashier?.email?.split('@')[0] || 'Admin'}</p>
                       <p>Till : {tillSession?.till?.code || lastSale?.till_code || 'N/A'}</p>
-                      <p>Customer : {selectedCustomer?.name || 'Walk-in Customer'}</p>
+                      <p>Customer : {lastSale?.customer_name || 'Walk-in Customer'}</p>
+                      <p>Payment : {formatPaymentMethod(lastSale?.payment_method || paymentMethod)}</p>
                     </div>
 
                     <div className="text-center font-bold border-y border-dashed border-black py-1 mb-2">
@@ -864,7 +882,7 @@ export default function CashierPOS() {
                         <span>{formatCurrency(lastSale?.net_amount || lastSale?.total_amount || 0).replace('Rs. ', '')}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Paid {paymentMethod.toUpperCase()}</span>
+                        <span>Paid {formatPaymentMethod(lastSale?.payment_method || paymentMethod).toUpperCase()}</span>
                         <span className="font-bold">{formatCurrency(lastSale?.net_amount || lastSale?.total_amount || 0).replace('Rs. ', '')}</span>
                       </div>
                       <div className="flex justify-between">
@@ -972,7 +990,7 @@ export default function CashierPOS() {
                          <p className="text-[10px] text-muted-foreground uppercase font-black mb-2">Transaction Total</p>
                          <div className="flex flex-col items-end">
                             <span className="font-black text-2xl text-primary">{formatCurrency(scannedSale.net_amount)}</span>
-                            <Badge variant="secondary" className="uppercase font-black text-xs">{scannedSale.payment_method?.replace('_', ' ')}</Badge>
+                            <Badge variant="secondary" className="uppercase font-black text-xs">{formatPaymentMethod(scannedSale.payment_method)}</Badge>
                          </div>
                       </div>
                    </div>

@@ -96,6 +96,17 @@ export default function SalesHistoryPage() {
     }
   }
 
+  const formatPaymentMethod = (method?: string | null) => {
+    const labels: Record<string, string> = {
+      cash: 'Cash',
+      card: 'Card',
+      bank_transfer: 'Bank',
+      online: 'Online',
+    }
+    const value = method || 'cash'
+    return labels[value] || value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+  }
+
   const formatReceiptAmount = (value: any) => {
     return formatCurrency(Number(value || 0)).replace('Rs. ', '')
   }
@@ -160,6 +171,7 @@ export default function SalesHistoryPage() {
           <p>Cashier : ${escapeHtml(sale.created_by || sale.cashier_name || 'Admin')}</p>
           <p>Till : ${escapeHtml(sale.till_code || 'N/A')}</p>
           <p>Customer : ${escapeHtml(sale.customer_name || 'Walk-in Customer')}</p>
+          <p>Payment : ${escapeHtml(formatPaymentMethod(sale.payment_method))}</p>
         </div>
 
         <div class="title">Receipt - Reprint Copy</div>
@@ -180,7 +192,7 @@ export default function SalesHistoryPage() {
 
         <div class="pay">
           <div class="grand"><span>Total</span><strong>${escapeHtml(formatReceiptAmount(sale.net_amount || sale.total_amount))}</strong></div>
-          <div><span>Paid ${escapeHtml((sale.payment_method || 'cash').replace('_', ' ').toUpperCase())}</span><strong>${escapeHtml(formatReceiptAmount(sale.net_amount || sale.total_amount))}</strong></div>
+          <div><span>Paid ${escapeHtml(formatPaymentMethod(sale.payment_method).toUpperCase())}</span><strong>${escapeHtml(formatReceiptAmount(sale.net_amount || sale.total_amount))}</strong></div>
           <div><span>Balance</span><strong>0.00</strong></div>
           <div><span>Outstanding</span><strong>0.00</strong></div>
         </div>
@@ -401,7 +413,7 @@ export default function SalesHistoryPage() {
                       <td className="p-4">
                          <div className="flex items-center gap-2">
                             {getPaymentIcon(sale.payment_method)}
-                            <span className="text-xs uppercase font-bold">{sale.payment_method?.replace('_', ' ')}</span>
+                            <span className="text-xs uppercase font-bold">{formatPaymentMethod(sale.payment_method)}</span>
                          </div>
                       </td>
                       <td className="p-4 text-right">
@@ -478,7 +490,7 @@ export default function SalesHistoryPage() {
                       <div className="text-right">
                          <p className="text-[10px] text-muted-foreground uppercase font-black mb-2">Transaction</p>
                          <div className="flex items-center justify-end gap-2">
-                            <span className="text-xs uppercase font-bold">{selectedSale.payment_method?.replace('_', ' ')}</span>
+                            <span className="text-xs uppercase font-bold">{formatPaymentMethod(selectedSale.payment_method)}</span>
                             <div className="p-2 bg-muted rounded-lg">
                                {getPaymentIcon(selectedSale.payment_method)}
                             </div>

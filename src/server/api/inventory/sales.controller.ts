@@ -108,7 +108,17 @@ router.post('/', async (req: Request, res: Response) => {
       throw error
     }
 
-    res.status(201).json({ data })
+    const responseData =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? {
+            ...data,
+            customer_name: (data as any).customer_name || customer_name || 'Walk-in Customer',
+            customer_phone: (data as any).customer_phone || customer_phone || null,
+            payment_method: (data as any).payment_method || payment_method || 'cash',
+          }
+        : data
+
+    res.status(201).json({ data: responseData })
   } catch (error: any) {
     console.error('[Inventory Sales] POST error:', error)
     res.status(error.statusCode || 500).json({ error: error.message })
