@@ -117,7 +117,7 @@ export async function loginCashierHandler(req: Request, res: Response) {
 
         const { data: till, error: tillError } = await adminClient
             .from('pos_tills')
-            .select('id, code_hint, label, shop, status')
+            .select('id, code_hint, label, shop, status, assigned_cashier_id')
             .eq('code_hash', hashSecret(normalizedTillCode))
             .single()
 
@@ -144,6 +144,32 @@ export async function loginCashierHandler(req: Request, res: Response) {
                 reason: 'inactive_till',
             })
             return res.status(403).json({ error: 'This till is not active' })
+        }
+
+        if (till.assigned_cashier_id && till.assigned_cashier_id !== admin.id) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                cashier_id: admin.id,
+                role: admin.role,
+                till_id: till.id,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'till_assigned_to_another_cashier',
+            })
+            return res.status(403).json({ error: 'This till code is assigned to another cashier' })
+        }
+
+        if (admin.role === 'cashier' && !till.assigned_cashier_id) {
+            await logPosAuthEvent(adminClient, req, {
+                cashier_email: normalizedEmail,
+                cashier_id: admin.id,
+                role: admin.role,
+                till_id: till.id,
+                event_type: 'login_failed',
+                success: false,
+                reason: 'unassigned_till_code',
+            })
+            return res.status(403).json({ error: 'This till code is not assigned to this cashier' })
         }
 
         const accountShop = admin.shop || DEFAULT_SHOP

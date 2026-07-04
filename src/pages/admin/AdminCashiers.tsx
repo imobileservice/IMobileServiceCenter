@@ -30,6 +30,7 @@ type Till = {
   label: string
   shop: string
   status: TillStatus
+  assigned_cashier_id?: string | null
   created_at: string
   updated_at?: string
 }
@@ -39,6 +40,7 @@ type TillDraft = {
   label: string
   shop: string
   status: TillStatus
+  assigned_cashier_id: string
 }
 
 function buildTillDrafts(items: Till[]) {
@@ -48,6 +50,7 @@ function buildTillDrafts(items: Till[]) {
       label: till.label || "",
       shop: till.shop || "Meegoda",
       status: till.status || "active",
+      assigned_cashier_id: till.assigned_cashier_id || "",
     }
     return acc
   }, {})
@@ -66,6 +69,7 @@ export default function AdminCashiers() {
   const [tillLabel, setTillLabel] = useState("")
   const [tillShop, setTillShop] = useState("Meegoda")
   const [tillStatus, setTillStatus] = useState<TillStatus>("active")
+  const [tillCashierId, setTillCashierId] = useState("")
   const [isAdding, setIsAdding] = useState(false)
   const [isAddingTill, setIsAddingTill] = useState(false)
   const [updatingShopId, setUpdatingShopId] = useState<string | null>(null)
@@ -108,6 +112,29 @@ export default function AdminCashiers() {
     }
   }
 
+  const getCashierById = (id?: string | null) => cashiers.find(c => c.id === id)
+
+  const getCashierLabel = (id?: string | null) => {
+    const cashier = getCashierById(id)
+    if (!id) return "Unassigned"
+    if (!cashier) return "Assigned cashier"
+    return `${cashier.name || cashier.email} (${cashier.shop || "Meegoda"})`
+  }
+
+  const handleNewTillCashierChange = (cashierId: string) => {
+    setTillCashierId(cashierId)
+    const cashier = getCashierById(cashierId)
+    if (cashier?.shop) setTillShop(cashier.shop)
+  }
+
+  const handleDraftCashierChange = (tillId: string, cashierId: string) => {
+    const cashier = getCashierById(cashierId)
+    updateTillDraft(tillId, {
+      assigned_cashier_id: cashierId,
+      ...(cashier?.shop ? { shop: cashier.shop } : {}),
+    })
+  }
+
   const handleAddCashier = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) return
@@ -136,6 +163,10 @@ export default function AdminCashiers() {
   const handleAddTill = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!tillCode.trim()) return
+    if (!tillCashierId) {
+      toast.error("Assign this till code to a cashier")
+      return
+    }
     try {
       setIsAddingTill(true)
       const res = await fetch(getApiUrl("/api/admin/tills"), {
@@ -146,6 +177,7 @@ export default function AdminCashiers() {
           label: tillLabel,
           shop: tillShop,
           status: tillStatus,
+          assigned_cashier_id: tillCashierId,
         }),
       })
       const json = await res.json()
@@ -155,6 +187,7 @@ export default function AdminCashiers() {
       setTillLabel("")
       setTillShop("Meegoda")
       setTillStatus("active")
+      setTillCashierId("")
       await fetchTills()
     } catch (err: any) {
       toast.error(err.message || "Failed to create till code")
@@ -215,6 +248,7 @@ export default function AdminCashiers() {
         label: till.label || "",
         shop: till.shop || "Meegoda",
         status: till.status || "active",
+        assigned_cashier_id: till.assigned_cashier_id || "",
       },
     }))
     setEditingTillId(null)
@@ -228,10 +262,16 @@ export default function AdminCashiers() {
     const nextCode = draft.code.trim().toUpperCase()
     const nextLabel = draft.label.trim()
 
+    if (!draft.assigned_cashier_id) {
+      toast.error("Assign this till code to a cashier")
+      return
+    }
+
     if (nextCode && nextCode !== till.code_hint) payload.code = nextCode
     if (nextLabel && nextLabel !== till.label) payload.label = nextLabel
     if (draft.shop !== till.shop) payload.shop = draft.shop
     if (draft.status !== till.status) payload.status = draft.status
+    if (draft.assigned_cashier_id !== (till.assigned_cashier_id || "")) payload.assigned_cashier_id = draft.assigned_cashier_id
 
     if (!Object.keys(payload).length) {
       setEditingTillId(null)
@@ -257,6 +297,7 @@ export default function AdminCashiers() {
           label: updatedTill.label || "",
           shop: updatedTill.shop || "Meegoda",
           status: updatedTill.status || "active",
+          assigned_cashier_id: updatedTill.assigned_cashier_id || "",
         },
       }))
       setEditingTillId(null)
@@ -428,8 +469,24 @@ export default function AdminCashiers() {
                 />
               </div>
               <div>
+                <label className="text-sm font-semibold mb-1 block">Assigned Cashier</label>
+                <select
+                  className={SELECT_CLASS}
+                  value={tillCashierId}
+                  onChange={e => handleNewTillCashierChange(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>{cashiers.length ? "Select cashier" : "Create a cashier first"}</option>
+                  {cashiers.map(cashier => (
+                    <option key={cashier.id} value={cashier.id}>
+                      {cashier.name || cashier.email} - {cashier.shop || "Meegoda"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="text-sm font-semibold mb-1 block">Shop</label>
-                <select className={SELECT_CLASS} value={tillShop} onChange={e => setTillShop(e.target.value)}>
+                <select className={SELECT_CLASS} value={tillShop} onChange={e => setTillShop(e.target.value)} disabled={Boolean(tillCashierId)}>
                   {SHOPS.map(shopName => (
                     <option key={shopName} value={shopName}>{shopName}</option>
                   ))}
@@ -443,7 +500,7 @@ export default function AdminCashiers() {
                   ))}
                 </select>
               </div>
-              <Button type="submit" className="w-full mt-2" disabled={isAddingTill}>
+              <Button type="submit" className="w-full mt-2" disabled={isAddingTill || !cashiers.length}>
                 {isAddingTill ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 {isAddingTill ? "Adding..." : "Add Till Code"}
               </Button>
@@ -471,6 +528,7 @@ export default function AdminCashiers() {
                     label: till.label || "",
                     shop: till.shop || "Meegoda",
                     status: till.status || "active",
+                    assigned_cashier_id: till.assigned_cashier_id || "",
                   }
 
                   return (
@@ -481,7 +539,7 @@ export default function AdminCashiers() {
                       className="p-4 border border-border rounded-lg bg-background hover:border-primary/50 transition-colors"
                     >
                       {isEditing ? (
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] xl:grid-cols-[1fr_1fr_150px_120px_auto] gap-3 items-end">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr] xl:grid-cols-[1fr_1fr_190px_150px_120px_auto] gap-3 items-end">
                           <div>
                             <label className="text-xs font-semibold mb-1 block text-muted-foreground">Till Code</label>
                             <Input
@@ -495,6 +553,17 @@ export default function AdminCashiers() {
                               value={draft.label}
                               onChange={e => updateTillDraft(till.id, { label: e.target.value })}
                             />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold mb-1 block text-muted-foreground">Cashier</label>
+                            <select className={SELECT_CLASS} value={draft.assigned_cashier_id} onChange={e => handleDraftCashierChange(till.id, e.target.value)}>
+                              <option value="" disabled>Assign cashier</option>
+                              {cashiers.map(cashier => (
+                                <option key={cashier.id} value={cashier.id}>
+                                  {cashier.name || cashier.email}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <div>
                             <label className="text-xs font-semibold mb-1 block text-muted-foreground">Shop</label>
@@ -537,6 +606,7 @@ export default function AdminCashiers() {
                               </div>
                               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-1">
                                 <span className="font-mono text-foreground">{till.code_hint}</span>
+                                <span className="flex items-center gap-1"><User className="w-3 h-3 text-green-500" /> {getCashierLabel(till.assigned_cashier_id)}</span>
                                 <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-blue-500" /> {till.shop}</span>
                                 <span>Updated {new Date(till.updated_at || till.created_at).toLocaleDateString()}</span>
                               </div>
