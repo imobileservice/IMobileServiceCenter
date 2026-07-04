@@ -99,6 +99,27 @@ function cleanRecoveryQueryParam() {
   }
 }
 
+function getFreshBuildUrl() {
+  const nextUrl = new URL(window.location.href)
+  nextUrl.searchParams.set(CHUNK_REFRESH_PARAM, String(Date.now()))
+  return nextUrl.toString()
+}
+
+function clearChunkRecoveryState() {
+  recoveryScheduled = false
+
+  if (reloadTimerId !== undefined) {
+    window.clearTimeout(reloadTimerId)
+    reloadTimerId = undefined
+  }
+
+  try {
+    window.sessionStorage.removeItem(CHUNK_RECOVERY_KEY)
+  } catch {
+    // Storage can be unavailable in private or restricted browsing modes.
+  }
+}
+
 export function isChunkLoadError(error: unknown) {
   const message = getErrorMessage(error)
   const hasKnownPattern = CHUNK_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
@@ -113,9 +134,15 @@ export function markChunkReloadAttempt(error: unknown) {
   if (recoveryScheduled) return true
 
   const now = Date.now()
+  const errorId = getChunkErrorId(error)
 
   try {
-    const state = getStoredRecoveryState(now)
+    let state = getStoredRecoveryState(now)
+
+    if ((state.attempts || 0) >= CHUNK_RELOAD_MAX_ATTEMPTS && state.lastErrorId !== errorId) {
+      state = { firstAttemptAt: now, attempts: 0, lastErrorId: undefined }
+    }
+
     if ((state.attempts || 0) >= CHUNK_RELOAD_MAX_ATTEMPTS) {
       return false
     }
@@ -125,7 +152,7 @@ export function markChunkReloadAttempt(error: unknown) {
       JSON.stringify({
         firstAttemptAt: state.firstAttemptAt || now,
         attempts: (state.attempts || 0) + 1,
-        lastErrorId: getChunkErrorId(error),
+        lastErrorId: errorId,
       })
     )
     recoveryScheduled = true
@@ -141,10 +168,15 @@ export function reloadForChunkError() {
   if (reloadTimerId !== undefined) return
 
   reloadTimerId = window.setTimeout(() => {
-    const nextUrl = new URL(window.location.href)
-    nextUrl.searchParams.set(CHUNK_REFRESH_PARAM, String(Date.now()))
-    window.location.replace(nextUrl.toString())
+    window.location.replace(getFreshBuildUrl())
   }, 100)
+}
+
+export function forceChunkRecoveryReload() {
+  if (typeof window === 'undefined') return
+
+  clearChunkRecoveryState()
+  window.location.replace(getFreshBuildUrl())
 }
 
 export function requestChunkRecovery(error: unknown) {

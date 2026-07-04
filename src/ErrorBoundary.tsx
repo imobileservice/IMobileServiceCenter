@@ -1,5 +1,9 @@
 import React from 'react'
-import { isChunkLoadError, requestChunkRecovery } from './lib/chunk-recovery'
+import {
+  forceChunkRecoveryReload,
+  isChunkLoadError,
+  requestChunkRecovery,
+} from './lib/chunk-recovery'
 
 interface ErrorBoundaryState {
   hasError: boolean
@@ -56,7 +60,7 @@ export class ErrorBoundary extends React.Component<
                 : this.state.error?.message || 'An unexpected error occurred'}
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={isChunkError ? forceChunkRecoveryReload : () => window.location.reload()}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
             >
               Reload Page
