@@ -108,9 +108,162 @@ export default function SalesHistoryPage() {
     return Number(item.total_price ?? (getSaleItemPrice(item) * Number(item.quantity || 0)))
   }
 
+  const escapeHtml = (value: any) => {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+  }
+
+  const formatReceiptDate = (value: any) => {
+    return new Date(value || Date.now())
+      .toLocaleString('en-GB', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+      .replace(',', '')
+  }
+
+  const buildPrintableReceipt = (sale: any, barcodeHtml: string) => {
+    const items = getSaleItems(sale)
+    const itemsHtml = items.map((item: any, idx: number) => {
+      const price = getSaleItemPrice(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      const total = getSaleItemTotal(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+      return `
+        <div class="item-row">
+          <div class="item-name">${idx + 1}) ${escapeHtml(item.product_name || 'PRODUCT').toUpperCase()}</div>
+          <div class="item-line">
+            <span></span>
+            <span class="net">${price}</span>
+            <span class="qty">${escapeHtml(item.quantity)}</span>
+            <span class="total">${total}</span>
+          </div>
+        </div>
+      `
+    }).join('')
+
+    return `
+      <div class="receipt">
+        <div class="center header">
+          <h1>IMobile Service & Repair Center</h1>
+          <p>Colombo Road, Negombo</p>
+          <p>Tel: 077 123 4567 / 077 765 4321</p>
+          <p class="mt">Date: ${escapeHtml(formatReceiptDate(sale.created_at))}</p>
+          <p># ${escapeHtml(sale.invoice_number)}</p>
+          <p>Cashier : ${escapeHtml(sale.created_by || sale.cashier_name || 'Admin')}</p>
+          <p>Till : ${escapeHtml(sale.till_code || 'N/A')}</p>
+          <p>Customer : ${escapeHtml(sale.customer_name || 'Walk-in Customer')}</p>
+        </div>
+
+        <div class="title">Receipt - Reprint Copy</div>
+
+        <div class="table-head">
+          <span>#Item</span>
+          <span class="net">Net</span>
+          <span class="qty">Qty</span>
+          <span class="total">Total</span>
+        </div>
+
+        <div class="items">${itemsHtml}</div>
+
+        <div class="totals">
+          <div><span>Sub Total</span><strong>${escapeHtml(formatReceiptAmount(sale.total_amount))}</strong></div>
+          <div><span>Total Discount</span><strong>${escapeHtml(formatReceiptAmount(sale.discount_amount))}</strong></div>
+        </div>
+
+        <div class="pay">
+          <div class="grand"><span>Total</span><strong>${escapeHtml(formatReceiptAmount(sale.net_amount || sale.total_amount))}</strong></div>
+          <div><span>Paid ${escapeHtml((sale.payment_method || 'cash').replace('_', ' ').toUpperCase())}</span><strong>${escapeHtml(formatReceiptAmount(sale.net_amount || sale.total_amount))}</strong></div>
+          <div><span>Balance</span><strong>0.00</strong></div>
+          <div><span>Outstanding</span><strong>0.00</strong></div>
+        </div>
+
+        <div class="barcode">${barcodeHtml || `<p>${escapeHtml(sale.invoice_number)}</p>`}</div>
+
+        <div class="center footer">
+          <p><strong>Thank you for your business.</strong></p>
+          <p>Please keep this receipt for returns and warranty claims.</p>
+        </div>
+      </div>
+    `
+  }
+
+  const buildPrintDocument = (sale: any, barcodeHtml: string) => {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Reprint ${escapeHtml(sale.invoice_number || 'invoice')}</title>
+  <style>
+    @page { size: 80mm auto; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: #000;
+      font-family: "Courier New", monospace;
+      font-size: 11px;
+      line-height: 1.25;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .receipt { width: 80mm; max-width: 80mm; padding: 4mm; background: #fff; color: #000; }
+    .center { text-align: center; }
+    .header { margin-bottom: 10px; }
+    .header h1 { font-size: 14px; margin: 0 0 4px; font-weight: 900; }
+    p { margin: 0; }
+    .mt { margin-top: 4px; }
+    .title { text-align: center; font-weight: 900; border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 4px 0; margin-bottom: 8px; }
+    .table-head, .item-line { display: grid; grid-template-columns: 1fr 60px 30px 65px; gap: 0; align-items: baseline; }
+    .table-head { font-weight: 900; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 8px; }
+    .items { border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
+    .item-row { margin-bottom: 8px; break-inside: avoid; }
+    .item-name { font-weight: 900; margin-bottom: 2px; }
+    .net, .total { text-align: right; }
+    .qty { text-align: center; font-weight: 900; }
+    .total { font-weight: 900; }
+    .totals, .pay { border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
+    .totals div, .pay div { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+    .grand { font-size: 14px; font-weight: 900; }
+    .barcode { display: flex; justify-content: center; overflow: hidden; margin: 10px 0; }
+    .barcode svg { max-width: 72mm; height: auto; }
+    .footer { font-size: 9px; margin-top: 12px; }
+  </style>
+</head>
+<body>${buildPrintableReceipt(sale, barcodeHtml)}</body>
+</html>`
+  }
+
   const handlePrintInvoice = () => {
     if (!selectedSale) return
-    window.print()
+    const printWindow = window.open('', '_blank', 'width=420,height=720')
+
+    if (!printWindow) {
+      toast.error("Please allow popups for this site to re-print invoices")
+      return
+    }
+
+    const barcodeHtml = document.getElementById('sales-reprint-barcode')?.innerHTML || ''
+    printWindow.document.write(buildPrintDocument(selectedSale, barcodeHtml))
+    printWindow.document.close()
+
+    let printed = false
+    const printOnce = () => {
+      if (printed) return
+      printed = true
+      printWindow.focus()
+      printWindow.print()
+    }
+
+    printWindow.onload = () => setTimeout(printOnce, 150)
+    setTimeout(printOnce, 700)
   }
 
   return (
@@ -370,101 +523,18 @@ export default function SalesHistoryPage() {
                    </div>
                 </div>
 
-                <div id="pos-receipt" className="fixed -left-[10000px] top-0 bg-white text-black p-4 font-mono text-[11px] leading-tight w-full max-w-[80mm]">
-                  <div className="text-center mb-3">
-                    <h2 className="text-sm font-black tracking-tight mb-1">IMobile Service & Repair Center</h2>
-                    <p>Colombo Road, Negombo</p>
-                    <p>Tel: 077 123 4567 / 077 765 4321</p>
-                    <p className="mt-1">Date: {new Date(selectedSale.created_at).toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '')}</p>
-                    <p># {selectedSale.invoice_number}</p>
-                    <p>Cashier : {selectedSale.created_by || selectedSale.cashier_name || 'Admin'}</p>
-                    <p>Till : {selectedSale.till_code || 'N/A'}</p>
-                    <p>Customer : {selectedSale.customer_name || 'Walk-in Customer'}</p>
-                  </div>
-
-                  <div className="text-center font-bold border-y border-dashed border-black py-1 mb-2">
-                    Receipt - Reprint Copy
-                  </div>
-
-                  <div className="flex justify-between border-b border-dashed border-black pb-1 mb-2 font-bold text-[11px]">
-                    <div className="flex-1">#Item</div>
-                    <div className="w-[60px] text-right">Net</div>
-                    <div className="w-[30px] text-center">Qty</div>
-                    <div className="w-[65px] text-right">Total</div>
-                  </div>
-
-                  <div className="space-y-2 mb-2 border-b border-dashed border-black pb-3">
-                    {getSaleItems(selectedSale).map((item: any, idx: number) => (
-                      <div key={item.id || idx}>
-                        <div className="font-bold text-[11px] mb-0.5">
-                          {idx + 1}) {(item.product_name || 'PRODUCT').toUpperCase()}
-                        </div>
-                        <div className="flex justify-between text-[10px]">
-                          <div className="flex-1"></div>
-                          <div className="w-[60px] text-right text-gray-700">
-                            {getSaleItemPrice(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                          <div className="w-[30px] text-center font-bold">
-                            {item.quantity}
-                          </div>
-                          <div className="w-[65px] text-right font-bold">
-                            {getSaleItemTotal(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-1 mb-2 border-b border-dashed border-black pb-2 text-right">
-                    <div className="flex justify-between">
-                      <span>Sub Total</span>
-                      <span className="font-bold">{formatReceiptAmount(selectedSale.total_amount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Total Discount</span>
-                      <span className="font-bold">{formatReceiptAmount(selectedSale.discount_amount)}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 mb-3 border-b border-dashed border-black pb-3 text-right">
-                    <div className="flex justify-between text-sm font-black">
-                      <span>Total</span>
-                      <span>{formatReceiptAmount(selectedSale.net_amount || selectedSale.total_amount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Paid {(selectedSale.payment_method || 'cash').replace('_', ' ').toUpperCase()}</span>
-                      <span className="font-bold">{formatReceiptAmount(selectedSale.net_amount || selectedSale.total_amount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Balance</span>
-                      <span className="font-bold">0.00</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Outstanding</span>
-                      <span className="font-bold">0.00</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center my-3 relative -left-2 overflow-hidden w-full">
-                    {selectedSale.invoice_number && (
-                      <div className="origin-top scale-75 transform text-center">
-                        <Barcode
-                          value={selectedSale.invoice_number}
-                          displayValue={false}
-                          height={40}
-                          width={1.5}
-                          margin={10}
-                          background="#ffffff"
-                          lineColor="#000000"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="text-[9px] mt-4 leading-normal text-center">
-                    <p className="font-bold text-[10px] mb-1">Thank you for your business.</p>
-                    <p>Please keep this receipt for returns and warranty claims.</p>
-                  </div>
+                <div id="sales-reprint-barcode" className="fixed -left-[10000px] top-0 bg-white">
+                  {selectedSale.invoice_number && (
+                    <Barcode
+                      value={selectedSale.invoice_number}
+                      displayValue={false}
+                      height={40}
+                      width={1.5}
+                      margin={10}
+                      background="#ffffff"
+                      lineColor="#000000"
+                    />
+                  )}
                 </div>
 
                 <div className="p-6 border-t border-border bg-muted/10 flex gap-4">
