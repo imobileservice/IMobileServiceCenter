@@ -99,10 +99,21 @@ router.delete('/hero-slides/:id', deleteSlideHandler)
 import { filtersRouter } from './filters'
 router.use('/filters', filtersRouter)
 
-import { getCashiersHandler, createCashierHandler, deleteCashierHandler, updateCashierHandler } from './cashiers'
+import {
+    getCashiersHandler,
+    createCashierHandler,
+    deleteCashierHandler,
+    updateCashierHandler,
+    getTillsHandler,
+    createTillHandler,
+    updateTillHandler,
+} from './cashiers'
 router.get('/cashiers', getCashiersHandler)
 router.post('/cashiers', createCashierHandler)
 router.put('/cashiers/:id', updateCashierHandler)
 router.delete('/cashiers/:id', deleteCashierHandler)
+router.get('/tills', getTillsHandler)
+router.post('/tills', createTillHandler)
+router.put('/tills/:id', updateTillHandler)
 
 export default router
