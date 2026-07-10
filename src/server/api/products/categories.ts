@@ -45,21 +45,27 @@ export async function categoriesHandler(req: Request, res: Response) {
         .order('sort_order', { ascending: true })
 
       if (!categoriesError && dbCategories && dbCategories.length > 0) {
-        // Fetch products to count - use category_id
+        // Fetch products to count - use category_id and brand
         const { data: products, error: productsError } = await supabase
           .from('products')
-          .select('category_id')
+          .select('category_id, brand')
 
         if (productsError) {
           console.warn('[Categories API] Error fetching products for counts:', productsError)
         }
 
-        // Count products per category_id
+        // Count products per category_id, and per category_id + brand
         const categoryCounts = new Map<string, number>()
+        const categoryBrandCounts = new Map<string, number>()
         products?.forEach((product: any) => {
           const catId = product.category_id
           if (catId) {
             categoryCounts.set(catId, (categoryCounts.get(catId) || 0) + 1)
+
+            if (product.brand) {
+              const key = `${catId}::${String(product.brand).toLowerCase()}`
+              categoryBrandCounts.set(key, (categoryBrandCounts.get(key) || 0) + 1)
+            }
           }
         })
 
@@ -92,7 +98,7 @@ export async function categoriesHandler(req: Request, res: Response) {
                  subcategories = brandField.options.map((brand: string) => ({
                    id: brand.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
                    name: brand,
-                   count: 0,
+                   count: categoryBrandCounts.get(`${dbCat.id}::${brand.toLowerCase()}`) || 0,
                    isBrand: true
                  }))
               }

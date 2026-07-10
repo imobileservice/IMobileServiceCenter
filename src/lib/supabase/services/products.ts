@@ -433,21 +433,27 @@ export const productsService = {
         if (categoriesResponse.ok) {
           const dbCategories: Array<{ id: string; name: string; slug: string; sort_order: number; field_config?: any }> = await categoriesResponse.json()
 
-          // Load products to count - use category_id
+          // Load products to count - use category_id and brand
           const { data: products, error } = await supabase
             .from('products')
-            .select('category_id')
+            .select('category_id, brand')
 
           if (error) {
             console.warn('Error fetching products for category counts:', error)
           }
 
-          // Count products per category_id
+          // Count products per category_id, and per category_id + brand
           const categoryCounts = new Map<string, number>()
+          const categoryBrandCounts = new Map<string, number>()
           products?.forEach((product: any) => {
             const catId = product.category_id
             if (catId) {
               categoryCounts.set(catId, (categoryCounts.get(catId) || 0) + 1)
+
+              if (product.brand) {
+                const key = `${catId}::${String(product.brand).toLowerCase()}`
+                categoryBrandCounts.set(key, (categoryBrandCounts.get(key) || 0) + 1)
+              }
             }
           })
 
@@ -483,7 +489,7 @@ export const productsService = {
                    subcategories = brandField.options.map((brand: string) => ({
                      id: brand.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
                      name: brand,
-                     count: 0,
+                     count: categoryBrandCounts.get(`${dbCat.id}::${brand.toLowerCase()}`) || 0,
                      isBrand: true
                    }))
                 }
