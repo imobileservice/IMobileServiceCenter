@@ -55,7 +55,6 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
                 id: admin.id,
                 email: normalizedEmail,
                 whatsapp: admin.whatsapp
-
             },
             message: 'Login successful'
         })
