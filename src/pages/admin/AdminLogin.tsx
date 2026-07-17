@@ -77,104 +77,43 @@ export default function AdminLoginPage() {
             </motion.div>
           )}
 
-          {step === "credentials" ? (
-            <form onSubmit={handleInitLogin} className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2">Admin Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@imobile.com"
-                    className="pl-10"
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold mb-2">Admin Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@imobile.com"
+                  className="pl-10"
+                  required
+                  disabled={isLoading}
+                />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="pl-10"
-                    required
-                    disabled={isLoading}
-                  />
-                </div>
+            <div>
+              <label className="block text-sm font-semibold mb-2">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="pl-10"
+                  required
+                  disabled={isLoading}
+                />
               </div>
+            </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Validating..." : "Log In"}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="email"
-                    value={email}
-                    disabled
-                    className="pl-10 bg-muted"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep("credentials")
-                    setOtp("")
-                    setOtpSent(false)
-                  }}
-                  className="text-xs text-primary mt-1 hover:underline"
-                >
-                  Change email
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-2">Email OTP Code</label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="Enter 6-digit Code"
-                    className="pl-10 text-center text-lg tracking-widest"
-                    required
-                    disabled={isLoading}
-                    maxLength={6}
-                  />
-                </div>
-                {otpSent && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Code sent to your email. (Valid for 10 minutes)
-                  </p>
-                )}
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isLoading || otp.length !== 6}>
-                {isLoading ? "Verifying..." : "Verify & Login"}
-              </Button>
-            </form>
-          )}
-
-          <div className="mt-6 p-4 bg-muted rounded-lg text-sm text-muted-foreground">
-            <p className="font-semibold mb-2">Security Notice:</p>
-            <p>1. Enter your admin credentials.</p>
-            <p>2. You will receive a verification code in your email.</p>
-            <p className="mt-2 text-xs">Ensure your email address is valid and accessible.</p>
-          </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Logging in..." : "Log In"}
+            </Button>
+          </form>
         </div>
       </motion.div>
     </div>
