@@ -1,12 +1,12 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
-import { sendEmail } from '../utils/email'
 import { verifyPassword } from '../utils/password'
 
 /**
  * POST /api/admin/login/init
- * Step 1: Validate credentials (email/password) and send WhatsApp OTP
+ * Validate credentials (email/password) and log the admin in directly.
+ * OTP verification has been disabled.
  */
 export async function initAdminLoginHandler(req: Request, res: Response) {
     console.log(`🔐 [Admin] Login init attempt for: ${req.body?.email}`)
@@ -46,62 +46,18 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
             return res.status(401).json({ error: 'Invalid email or password' })
         }
 
-        // WhatsApp check removed as we are using Email OTP
-        // if (!admin.whatsapp) { ... }
+        // OTP disabled: credentials valid -> log the admin in directly.
+        console.log(`[Admin] ✅ Login successful (OTP disabled) for ${normalizedEmail}`)
 
-        const profile = admin
-
-        // 3. Generate OTP
-        const otp = crypto.randomInt(100000, 999999).toString()
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes from now
-
-        // 4. Store HASHED OTP in admin_otps table (SHA-256 for security)
-        // Clean up old OTPs first
-        await adminClient
-            .from('admin_otps')
-            .delete()
-            .eq('email', normalizedEmail)
-
-        const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex')
-
-        const { error: otpError } = await adminClient
-            .from('admin_otps')
-            .insert({
+        return res.json({
+            success: true,
+            admin: {
+                id: admin.id,
                 email: normalizedEmail,
-                otp: hashedOtp,
-                expires_at: expiresAt.toISOString(),
-                used: false,
-            })
-
-        if (otpError) {
-            console.error('OTP storage error:', otpError)
-            return res.status(500).json({ error: 'Failed to generate OTP' })
-        }
-
-        // 5. Send OTP via Email (await it so errors are caught and logged)
-        try {
-            await sendEmail({
-                to: normalizedEmail,
-                subject: 'Admin Login Verification Code',
-                templateId: 'admin-verification-code',
-                templateVariables: {
-                    token: otp
-                }
-            })
-            console.log(`[Email] ✅ Admin OTP email sent successfully to ${normalizedEmail}`)
-
-            return res.json({
-                success: true,
-                message: 'Credentials valid. Verification code sent.',
-                otp: process.env.NODE_ENV === 'development' ? otp : undefined
-            })
-        } catch (emailError: any) {
-            console.error(`[Email] ❌ FAILED to send OTP email to ${normalizedEmail}:`, emailError.message)
-            return res.status(500).json({
-                error: 'Failed to send verification email. Check server configuration (SMTP).',
-                details: emailError.message
-            })
-        }
+                whatsapp: admin.whatsapp
+            },
+            message: 'Login successful'
+        })
 
     } catch (e: any) {
         console.error('Login Init Error:', e)
