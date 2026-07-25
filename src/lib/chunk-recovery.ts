@@ -210,9 +210,16 @@ export function installChunkRecovery() {
 
   window.addEventListener('vite:preloadError', (event) => {
     const preloadEvent = event as Event & { payload?: unknown }
-    if (requestChunkRecovery(preloadEvent.payload || preloadEvent)) {
-      event.preventDefault()
-    }
+    // Schedule a reload, but deliberately do NOT call preventDefault().
+    //
+    // Vite's __vitePreload only rethrows when the event was not cancelled:
+    //   window.dispatchEvent(e); if (!e.defaultPrevented) throw err
+    // Cancelling it makes the failed dynamic import resolve to `undefined`
+    // instead of rejecting, so React.lazy then reads `.default` off undefined
+    // and dies with "Cannot read properties of undefined (reading 'default')"
+    // before our reload can happen. Letting the error through lets
+    // lazyWithRetry() retry and then suspend cleanly while the reload lands.
+    requestChunkRecovery(preloadEvent.payload || preloadEvent)
   })
 
   window.addEventListener('unhandledrejection', (event) => {
