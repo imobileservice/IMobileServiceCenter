@@ -8,15 +8,18 @@ import {
   Database as DatabaseIcon,
   DollarSign,
   Download,
+  Layers,
   Package,
   PieChart as PieChartIcon,
   ShoppingCart,
   TrendingUp,
   Users,
+  Wallet,
 } from "lucide-react"
 import { ordersService } from "@/lib/supabase/services/orders"
 import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanced"
 import { customersService } from "@/lib/supabase/services/customers"
+import { categoriesService } from "@/lib/supabase/services/categories"
 import { inventoryCustomersService } from "@/lib/services/inventory.service"
 import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
@@ -281,6 +284,103 @@ function calculateItemsProfit(items: any[], productCosts: Map<string, number>) {
 
     return sum + (unitPrice - cost) * quantity
   }, 0)
+}
+
+/**
+ * Category-wise breakdown.
+ *
+ * The `category` a product carries can be a slug ("display-main") or a raw
+ * category_id UUID, depending on which endpoint served it, so everything is
+ * keyed on that raw value and only resolved to a human label for display.
+ */
+function getProductCategoryKey(product: any) {
+  const raw = product?.category ?? product?.category_id
+  const key = raw === undefined || raw === null ? "" : String(raw).trim()
+  return key || "uncategorised"
+}
+
+function buildCategoryLabelMap(categories: any[]) {
+  const map = new Map<string, string>()
+  categories.forEach(category => {
+    if (!category) return
+    const label = category.name || category.slug
+    if (!label) return
+    // Index by both id and slug so either shape of `category` resolves.
+    if (category.id) map.set(String(category.id), label)
+    if (category.slug) map.set(String(category.slug), label)
+  })
+  return map
+}
+
+function prettifyCategoryKey(key: string) {
+  if (key === "uncategorised") return "Uncategorised"
+  // Slugs look like "on-off-ribbon-main"; a bare UUID has no useful words.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(key)) return "Unnamed category"
+  return key
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+function buildProductCategoryMap(products: any[]) {
+  const map = new Map<string, string>()
+  products.forEach(product => {
+    if (!product?.id) return
+    map.set(String(product.id), getProductCategoryKey(product))
+  })
+  return map
+}
+
+/**
+ * Realised profit per category for the active period, mirroring
+ * calculateItemsProfit() exactly so these figures reconcile with the
+ * Revenue/Profit totals shown above.
+ */
+function buildCategorySalesMap(
+  buckets: ReportBucket[],
+  orders: any[],
+  posSales: any[],
+  products: any[]
+) {
+  const productCosts = buildCostMap(products)
+  const productCategories = buildProductCategoryMap(products)
+  const result = new Map<string, { revenue: number; profit: number; units: number }>()
+
+  const addItems = (items: any[]) => {
+    items.forEach(item => {
+      const productId = String(item?.product_id || item?.productId || item?.id || "")
+      if (!productId) return
+
+      const categoryKey = productCategories.get(productId)
+      if (!categoryKey) return
+
+      const quantity = toNumber(item.quantity || item.qty || 1)
+      const itemTotal = toNumber(item.total_price ?? item.total)
+      const unitPrice = toNumber(item.price ?? item.unit_price ?? (quantity > 0 ? itemTotal / quantity : 0))
+      const cost = productCosts.get(productId)
+
+      const entry = result.get(categoryKey) || { revenue: 0, profit: 0, units: 0 }
+      entry.revenue += unitPrice * quantity
+      entry.units += quantity
+      // Match calculateItemsProfit(): a product with no known cost contributes
+      // revenue but no profit, rather than counting its full price as profit.
+      if (cost !== undefined) entry.profit += (unitPrice - cost) * quantity
+      result.set(categoryKey, entry)
+    })
+  }
+
+  orders.filter(isRevenueOrder).forEach(order => {
+    if (!findBucket(buckets, order.created_at)) return
+    addItems(getWebOrderItems(order))
+  })
+
+  posSales.forEach(sale => {
+    if (!findBucket(buckets, sale.created_at)) return
+    addItems(sale.inv_sale_items || [])
+  })
+
+  return result
 }
 
 function isRevenueOrder(order: any) {
@@ -678,6 +778,8 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([])
   const [posSales, setPosSales] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
+  const [categories, setCategories] = useState<any[]>([])
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string>("")
   const [recentTransactions, setRecentTransactions] = useState<any[]>([])
   const [stats, setStats] = useState({
     totalRevenue: 0,
@@ -730,7 +832,7 @@ export default function AdminDashboard() {
             return { data: fallbackProducts }
           })
 
-        const [ordersData, posSalesResult, productStats, websiteCustomers, shopCustomersResult, productsResult] = await Promise.all([
+        const [ordersData, posSalesResult, productStats, websiteCustomers, shopCustomersResult, productsResult, categoriesData] = await Promise.all([
           ordersService.getAll().catch(err => {
             console.error("Error fetching orders:", err)
             return []
@@ -760,6 +862,10 @@ export default function AdminDashboard() {
               })
             : Promise.resolve({ data: [] }),
           productsRequest,
+          categoriesService.getAll().catch(err => {
+            console.error("Error fetching categories:", err)
+            return []
+          }),
         ])
 
         const posSalesData = posSalesResult.data || []
@@ -769,6 +875,7 @@ export default function AdminDashboard() {
         setOrders(ordersData || [])
         setPosSales(posSalesData)
         setProducts(productsData)
+        setCategories(Array.isArray(categoriesData) ? categoriesData : [])
 
         const revenueOrders = (ordersData || []).filter(isRevenueOrder)
         const webRevenue = revenueOrders.reduce((sum: number, order: any) => sum + toNumber(order.total), 0)
@@ -848,6 +955,74 @@ export default function AdminDashboard() {
     () => buildReportAnalytics(activePeriod, orders, posSales, products),
     [activePeriod, orders, posSales, products]
   )
+
+  // Only categories that actually have products, so the dropdown never offers
+  // an empty category.
+  const categoryOptions = useMemo(() => {
+    const labels = buildCategoryLabelMap(categories)
+    const grouped = new Map<string, { key: string; label: string; productCount: number }>()
+
+    products.forEach(product => {
+      const key = getProductCategoryKey(product)
+      const existing = grouped.get(key)
+      if (existing) {
+        existing.productCount += 1
+        return
+      }
+      grouped.set(key, {
+        key,
+        label: labels.get(key) || prettifyCategoryKey(key),
+        productCount: 1,
+      })
+    })
+
+    return Array.from(grouped.values()).sort((a, b) => a.label.localeCompare(b.label))
+  }, [products, categories])
+
+  // Keep the selection valid as products load or change.
+  useEffect(() => {
+    if (categoryOptions.length === 0) {
+      if (selectedCategoryKey) setSelectedCategoryKey("")
+      return
+    }
+    if (!categoryOptions.some(option => option.key === selectedCategoryKey)) {
+      setSelectedCategoryKey(categoryOptions[0].key)
+    }
+  }, [categoryOptions, selectedCategoryKey])
+
+  const categoryBreakdown = useMemo(() => {
+    const option = categoryOptions.find(item => item.key === selectedCategoryKey)
+    if (!option) return null
+
+    const inCategory = products.filter(product => getProductCategoryKey(product) === option.key)
+
+    // Same cost basis as buildCostMap()/calculateItemsProfit() so the Buy value
+    // and the profit figure are directly comparable.
+    let totalBuyValue = 0
+    let stockUnits = 0
+    inCategory.forEach(product => {
+      const quantity = getProductStockQuantity(product)
+      const unitCost = toNumber(product.cost_price ?? product.buy_price ?? product.inventory_price)
+      stockUnits += quantity
+      totalBuyValue += unitCost * quantity
+    })
+
+    const sales = buildCategorySalesMap(analytics.buckets, orders, posSales, products).get(option.key)
+    const revenue = sales?.revenue || 0
+    const profit = sales?.profit || 0
+    const unitsSold = sales?.units || 0
+    const margin = revenue > 0 ? (profit / revenue) * 100 : 0
+
+    return {
+      ...option,
+      stockUnits,
+      totalBuyValue,
+      revenue,
+      profit,
+      unitsSold,
+      margin,
+    }
+  }, [categoryOptions, selectedCategoryKey, products, analytics.buckets, orders, posSales])
 
   const summarySections = useMemo(() => [
     {
@@ -1075,6 +1250,82 @@ export default function AdminDashboard() {
                   </div>
                 )
               })}
+            </div>
+
+            {/* Category breakdown: pick a category, see its buy value and realised profit */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="border border-border rounded-lg p-4 bg-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-muted-foreground">Category</p>
+                    <select
+                      aria-label="Select a category"
+                      value={selectedCategoryKey}
+                      onChange={(e) => setSelectedCategoryKey(e.target.value)}
+                      disabled={categoryOptions.length === 0}
+                      className="mt-2 w-full h-10 px-2 border border-border rounded-lg bg-background text-sm font-bold disabled:opacity-60"
+                    >
+                      {categoryOptions.length === 0 ? (
+                        <option value="">No categories with products</option>
+                      ) : (
+                        categoryOptions.map(option => (
+                          <option key={option.key} value={option.key}>
+                            {option.label}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-2 truncate">
+                      {categoryBreakdown
+                        ? `${categoryBreakdown.productCount} product${categoryBreakdown.productCount === 1 ? "" : "s"} | ${categoryBreakdown.stockUnits} in stock`
+                        : "No products yet"}
+                    </p>
+                  </div>
+                  <div className="bg-blue-500 p-2 rounded-lg text-white flex-shrink-0">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-border rounded-lg p-4 bg-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground truncate">Total Buy Value</p>
+                    <p className="text-xl font-black mt-1 truncate">
+                      {formatCurrencyValue(categoryBreakdown?.totalBuyValue || 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      Buy price x stock on hand
+                    </p>
+                  </div>
+                  <div className="bg-amber-500 p-2 rounded-lg text-white flex-shrink-0">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-border rounded-lg p-4 bg-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground truncate">Profit ({analytics.rangeLabel})</p>
+                    <p
+                      className={`text-xl font-black mt-1 truncate ${
+                        (categoryBreakdown?.profit || 0) >= 0 ? "text-emerald-500" : "text-red-500"
+                      }`}
+                    >
+                      {formatCurrencyValue(categoryBreakdown?.profit || 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                      {categoryBreakdown && categoryBreakdown.unitsSold > 0
+                        ? `${categoryBreakdown.unitsSold} sold | ${categoryBreakdown.margin.toFixed(1)}% margin`
+                        : "No sales in this period"}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-500 p-2 rounded-lg text-white flex-shrink-0">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             <motion.div
