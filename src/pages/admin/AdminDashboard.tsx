@@ -1253,7 +1253,18 @@ export default function AdminDashboard() {
             </div>
 
             {/* Category breakdown: pick a category, see its buy value and realised profit */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <section className="pt-5 border-t border-border space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold">Category Breakdown</h2>
+                  <p className="text-xs text-muted-foreground">
+                    Stock buy value and profit for a single category &middot; {analytics.rangeLabel}
+                  </p>
+                </div>
+                <Layers className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="border border-border rounded-lg p-4 bg-card">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -1307,7 +1318,7 @@ export default function AdminDashboard() {
               <div className="border border-border rounded-lg p-4 bg-card">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-muted-foreground truncate">Profit ({analytics.rangeLabel})</p>
+                    <p className="text-xs font-medium text-muted-foreground truncate">Profit</p>
                     <p
                       className={`text-xl font-black mt-1 truncate ${
                         (categoryBreakdown?.profit || 0) >= 0 ? "text-emerald-500" : "text-red-500"
@@ -1326,7 +1337,8 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
-            </div>
+              </div>
+            </section>
 
             <motion.div
               key={activePeriod}
