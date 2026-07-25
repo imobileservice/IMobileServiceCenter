@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X } from "lucide-react"
+import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -34,6 +34,11 @@ export default function ProductsPage() {
   const [restockQtyPadukkaNew, setRestockQtyPadukkaNew] = useState("")
   const [restockCurrentStock, setRestockCurrentStock] = useState<any>(null)
   const [isRestocking, setIsRestocking] = useState(false)
+
+  // Inline "Qty Label" editing
+  const [editingQtyLabelId, setEditingQtyLabelId] = useState<string | null>(null)
+  const [qtyLabelDraft, setQtyLabelDraft] = useState("")
+  const [savingQtyLabel, setSavingQtyLabel] = useState(false)
 
   const fetchProducts = async (silent = false) => {
     try {
@@ -207,6 +212,34 @@ export default function ProductsPage() {
     }
   }
 
+  const startEditQtyLabel = (product: any) => {
+    setEditingQtyLabelId(product.id)
+    setQtyLabelDraft(product.qty_label || "")
+  }
+
+  const cancelEditQtyLabel = () => {
+    setEditingQtyLabelId(null)
+    setQtyLabelDraft("")
+  }
+
+  const handleSaveQtyLabel = async (productId: string) => {
+    if (savingQtyLabel) return
+    const value = qtyLabelDraft.trim()
+    setSavingQtyLabel(true)
+    try {
+      await productsService.update(productId, { qty_label: value || null })
+      setProducts(prev => prev.map(p => (p.id === productId ? { ...p, qty_label: value || null } : p)))
+      toast.success(value ? 'Qty label updated' : 'Qty label removed')
+      cancelEditQtyLabel()
+      setTimeout(() => notifyUpdate('product'), 300)
+    } catch (error: any) {
+      console.error('Failed to update qty label:', error)
+      toast.error(error?.message || 'Failed to update qty label')
+    } finally {
+      setSavingQtyLabel(false)
+    }
+  }
+
   const getDisplayName = (product: any) => {
     const model = product.specs?.model;
     if (model && !product.name.includes(model)) {
@@ -313,14 +346,15 @@ export default function ProductsPage() {
                       onChange={toggleAll}
                     />
                   </th>
-                  <th className="text-left py-4 px-4 font-semibold">Product Name</th>
-                  <th className="text-left py-4 px-4 font-semibold">Category</th>
+                  <th className="text-left py-4 px-3 font-semibold">Product Name</th>
+                  <th className="text-left py-4 px-3 font-semibold">Category</th>
                   <th className="text-right py-4 px-2 font-semibold text-xs">Buy</th>
                   <th className="text-right py-4 px-2 font-semibold text-xs">Inventory</th>
                   <th className="text-right py-4 px-2 font-semibold text-xs">Website</th>
                   <th className="text-right py-4 px-2 font-semibold text-xs">Discount</th>
-                  <th className="text-left py-4 px-4 font-semibold">Stock</th>
-                  <th className="text-left py-4 px-4 font-semibold">Actions</th>
+                  <th className="text-left py-4 px-3 font-semibold whitespace-nowrap">Stock</th>
+                  <th className="text-left py-4 px-3 font-semibold whitespace-nowrap">Qty Label</th>
+                  <th className="text-left py-4 px-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -339,17 +373,17 @@ export default function ProductsPage() {
                       onChange={() => toggleSelection(product.id)}
                     />
                   </td>
-                  <td className="py-4 px-4">
+                  <td className="py-4 px-3">
                     <div className="flex items-center gap-3">
                       <img
                         src={product.image || "/placeholder.svg"}
                         alt={product.name}
-                        className="w-10 h-10 rounded object-cover border border-border"
+                        className="w-10 h-10 rounded object-cover border border-border shrink-0"
                       />
                       <span className="font-semibold text-sm">{getDisplayName(product)}</span>
                     </div>
                   </td>
-                  <td className="py-4 px-4 text-sm">{product.category}</td>
+                  <td className="py-4 px-3 text-sm">{product.category}</td>
                   <td className="py-4 px-2 text-right text-xs text-muted-foreground">
                     {(product as any).cost_price ? formatCurrency((product as any).cost_price) : <span className="text-muted-foreground/40">—</span>}
                   </td>
@@ -366,9 +400,9 @@ export default function ProductsPage() {
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-4 px-4">
+                  <td className="py-4 px-3">
                     <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap ${
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
                         product.stock >= 10
                           ? "bg-green-100 text-green-800"
                           : product.stock >= 5
@@ -379,13 +413,75 @@ export default function ProductsPage() {
                       {product.stock} units
                     </span>
                   </td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center gap-2">
+                  <td className="py-4 px-3">
+                    {editingQtyLabelId === product.id ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          autoFocus
+                          type="text"
+                          value={qtyLabelDraft}
+                          onChange={(e) => setQtyLabelDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleSaveQtyLabel(product.id)
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault()
+                              cancelEditQtyLabel()
+                            }
+                          }}
+                          placeholder="e.g. Box of 25"
+                          maxLength={40}
+                          disabled={savingQtyLabel}
+                          className="h-8 w-32 text-xs"
+                        />
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => handleSaveQtyLabel(product.id)}
+                          disabled={savingQtyLabel}
+                          className="w-8 h-8 shrink-0 text-green-600 hover:text-green-700 bg-transparent border-border hover:bg-green-50"
+                          title="Save qty label (Enter)"
+                        >
+                          {savingQtyLabel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={cancelEditQtyLabel}
+                          disabled={savingQtyLabel}
+                          className="w-8 h-8 shrink-0 text-muted-foreground bg-transparent border-border hover:bg-muted"
+                          title="Cancel (Esc)"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startEditQtyLabel(product)}
+                        className="text-left"
+                        title="Click to edit qty label"
+                      >
+                        {(product as any).qty_label ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors">
+                            {(product as any).qty_label}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap border border-dashed border-border text-muted-foreground/60 hover:text-foreground hover:border-foreground/40 transition-colors">
+                            + Add label
+                          </span>
+                        )}
+                      </button>
+                    )}
+                  </td>
+                  <td className="py-4 px-3">
+                    <div className="flex items-center gap-1.5">
                       <Button 
                         size="icon" 
                         variant="outline" 
                         onClick={() => handleOpenRestock(product)} 
-                        className="w-8 h-8 text-blue-600 hover:text-blue-700 bg-transparent border-border hover:bg-blue-50"
+                        className="w-8 h-8 shrink-0 text-blue-600 hover:text-blue-700 bg-transparent border-border hover:bg-blue-50"
                         title="Restock in Inventory"
                       >
                         <PackagePlus className="w-4 h-4" />
@@ -394,7 +490,7 @@ export default function ProductsPage() {
                         size="icon" 
                         variant="outline" 
                         onClick={() => handleEdit(product.id)} 
-                        className="w-8 h-8 text-foreground bg-transparent border-border hover:bg-muted"
+                        className="w-8 h-8 shrink-0 text-foreground bg-transparent border-border hover:bg-muted"
                         title="Edit Product"
                       >
                         <Edit2 className="w-4 h-4" />
@@ -404,7 +500,7 @@ export default function ProductsPage() {
                         variant="outline"
                         onClick={() => (product as any).barcode && setPrintingProducts([{ id: product.id, name: getDisplayName(product), barcode: (product as any).barcode, price: product.price }])}
                         disabled={!(product as any).barcode}
-                        className="w-8 h-8 text-foreground bg-transparent border-border hover:bg-muted"
+                        className="w-8 h-8 shrink-0 text-foreground bg-transparent border-border hover:bg-muted"
                         title={(product as any).barcode ? "Print Barcode Label" : "No barcode generated"}
                       >
                         <Tag className="w-4 h-4" />
@@ -413,7 +509,7 @@ export default function ProductsPage() {
                         size="icon"
                         variant="outline"
                         onClick={() => handleDelete(product.id)}
-                        className="w-8 h-8 text-red-600 hover:text-red-700 bg-transparent border-border hover:bg-red-50"
+                        className="w-8 h-8 shrink-0 text-red-600 hover:text-red-700 bg-transparent border-border hover:bg-red-50"
                         title="Delete Product"
                       >
                         <Trash2 className="w-4 h-4" />

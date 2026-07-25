@@ -57,6 +57,7 @@ export interface Database {
           discount_price: number | null
           original_price: number | null
           stock: number
+          qty_label: string | null
           image: string | null
           images: string[] | null
           category: string
@@ -79,6 +80,7 @@ export interface Database {
           discount_price?: number | null
           original_price?: number | null
           stock?: number
+          qty_label?: string | null
           image?: string | null
           images?: string[] | null
           category: string
@@ -101,6 +103,7 @@ export interface Database {
           discount_price?: number | null
           original_price?: number | null
           stock?: number
+          qty_label?: string | null
           image?: string | null
           images?: string[] | null
           category?: string

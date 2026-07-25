@@ -42,6 +42,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     sell_price: "",
     discount_price: "",
     stock: "",
+    qty_label: "",
     qty_meegoda: "0",
     qty_padukka: "0",
     qty_padukka_new: "0",
@@ -202,6 +203,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               sell_price: (product as any).sell_price?.toString() || product.price?.toString() || "",
               discount_price: (product as any).discount_price?.toString() || "",
               stock: product.stock?.toString() || "0",
+              qty_label: (product as any).qty_label || "",
               image: product.image || product.images?.[0] || "",
               images: product.images || [],
               description: product.description || "",
@@ -238,6 +240,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         sell_price: "",
         discount_price: "",
         stock: "",
+        qty_label: "",
         qty_meegoda: "0",
         qty_padukka: "0",
         qty_padukka_new: "0",
@@ -648,6 +651,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         sell_price: sellPrice,
         discount_price: discountPrice,
         stock: totalStock,
+        qty_label: formData.qty_label.trim() || null,
         qty_meegoda: qtyMeegoda,
         qty_padukka: qtyPadukka,
         qty_padukka_new: qtyPadukkaNew,
@@ -1006,6 +1010,21 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     />
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-2">Qty Label</label>
+                <Input
+                  type="text"
+                  name="qty_label"
+                  value={formData.qty_label}
+                  onChange={handleChange}
+                  placeholder="e.g. Box of 25, Pair, Set of 4"
+                  maxLength={40}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Optional. Only for items that always come in a fixed unit. Leave empty for normal products.
+                </p>
               </div>
             </div>
 
