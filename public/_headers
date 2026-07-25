@@ -81,8 +81,16 @@
   Pragma: no-cache
   Expires: 0
 
+# Asset filenames are content-hashed, so a long max-age is safe.
+#
+# Deliberately NOT "immutable": if a deploy race makes the host answer an
+# /assets/* request with the SPA fallback page (HTTP 200 + text/html), the
+# browser would otherwise cache that HTML *as* the JS/CSS file and never
+# revalidate it - not even on reload - permanently white-screening the site
+# with "Failed to load module script: ... MIME type of text/html".
+# Without "immutable" a normal refresh revalidates and self-heals.
 /assets/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, max-age=31536000
 
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
