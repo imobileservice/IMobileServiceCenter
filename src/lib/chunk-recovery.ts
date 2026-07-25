@@ -18,6 +18,14 @@ const CHUNK_ERROR_PATTERNS = [
 
 const ASSET_URL_PATTERN = /(?:https?:\/\/[^\s)'"<>]+)?\/assets\/[^\s)'"<>]+\.(?:js|mjs|css)(?:\?[^\s)'"<>]*)?/i
 
+// Browser extensions load their own ES modules and fail with the *exact* same
+// wording we look for ("Failed to fetch dynamically imported module: ..."),
+// and they often ship their files under an /assets/ path too, so
+// ASSET_URL_PATTERN matches them as well. Treating an extension's failure as
+// ours triggers a pointless location.replace() reload loop that renders the
+// page white. Anything carrying an extension scheme is never our bundle.
+const EXTENSION_URL_PATTERN = /(?:chrome|chrome-untrusted|moz|safari-web|safari|ms-browser|extension):\/\//i
+
 let recoveryScheduled = false
 let reloadTimerId: number | undefined
 let recoveryListenersInstalled = false
@@ -78,6 +86,8 @@ function getFailedResourceUrl(target: EventTarget | null) {
 }
 
 function isAssetUrl(value: string) {
+  // An extension asset is not one of ours (see EXTENSION_URL_PATTERN).
+  if (EXTENSION_URL_PATTERN.test(value)) return false
   return ASSET_URL_PATTERN.test(value)
 }
 
@@ -122,6 +132,10 @@ function clearChunkRecoveryState() {
 
 export function isChunkLoadError(error: unknown) {
   const message = getErrorMessage(error)
+
+  // Never claim an extension's module failure as our own (see EXTENSION_URL_PATTERN).
+  if (EXTENSION_URL_PATTERN.test(message)) return false
+
   const hasKnownPattern = CHUNK_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
   const hasAssetUrl = isAssetUrl(message)
   const hasLoadFailureWords = /failed|fetch|load|loading|module|mime|html|404/i.test(message)
