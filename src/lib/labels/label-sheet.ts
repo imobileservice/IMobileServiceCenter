@@ -93,6 +93,18 @@ export const buildLabelSheetHtml = (items: LabelProduct[], mode: PrintMode): str
     ? `display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:0;padding:0;margin:0;`
     : `display:block;`
 
+  // Shown only on screen (never printed) so staff who cancel the dialog see why.
+  const setupHtml = isA4 ? '' : `<div class="setup">
+<b>Printer settings for these stickers</b>
+<ol>
+<li><b>Destination:</b> XP-365B (not Save as PDF)</li>
+<li><b>Paper size:</b> the ${LABEL_W_MM} x ${LABEL_H_MM} mm label stock</li>
+<li><b>Margins:</b> None &nbsp; <b>Scale:</b> Default / 100%</li>
+</ol>
+<p>If the preview shows a big page with a date, a title, <i>about:blank</i> or <i>1/1</i>
+around the sticker, the paper size above is still wrong - fix it and those disappear.</p>
+</div>`
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -108,10 +120,20 @@ html, body {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
+/* Screen-only helper. @media print keeps it out of the printed sticker entirely. */
+.setup {
+  font-size: 13px; line-height: 1.5; color: #111;
+  border: 1px solid #bbb; border-radius: 6px;
+  padding: 10px 14px; margin: 0 0 14px; max-width: 460px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.setup ol { margin: 6px 0 6px 18px; }
+.setup p { margin-top: 6px; color: #444; }
+@media print { .setup { display: none !important; } }
 .grid { ${gridStyle} }
 .label {
-  width: ${isA4 ? LABEL_W_MM : LABEL_W_MM}mm;
-  height: ${isA4 ? LABEL_H_MM : LABEL_H_MM}mm;
+  width: ${LABEL_W_MM}mm;
+  height: ${LABEL_H_MM}mm;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -159,6 +181,6 @@ html, body {
 .tagline { font-size: 4pt; font-weight: 600; line-height: 1; margin: 0.5mm 0 0; color: #555; }
 </style>
 </head>
-<body><div class="grid">${labelsHtml}</div></body>
+<body>${setupHtml}<div class="grid">${labelsHtml}</div></body>
 </html>`
 }
