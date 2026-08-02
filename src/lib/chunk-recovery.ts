@@ -177,12 +177,50 @@ export function markChunkReloadAttempt(error: unknown) {
   }
 }
 
-export function reloadForChunkError() {
+/**
+ * Overwrites poisoned HTTP cache entries before we reload.
+ *
+ * A missing /assets/* file is answered by the SPA fallback with HTTP 200 +
+ * text/html under a long max-age, so the browser can cache that HTML *as* a
+ * chunk. Reloading the page alone never fixes it: the chunk URLs are unchanged,
+ * so the browser serves the same poisoned entries and we just burn the retry
+ * budget and sit on the loading spinner forever.
+ *
+ * `cache: 'reload'` bypasses the cache AND replaces the stored entry, so the
+ * reload that follows sees real JavaScript. We repair the failed URL plus every
+ * asset the document references, since a single fallback window normally
+ * poisons several of them at once.
+ */
+async function repairPoisonedAssets(error: unknown) {
+  const urls = new Set<string>()
+
+  const failed = getErrorMessage(error).match(ASSET_URL_PATTERN)
+  if (failed && isAssetUrl(failed[0])) urls.add(failed[0])
+
+  document.querySelectorAll<HTMLScriptElement>('script[src]').forEach((el) => {
+    if (isAssetUrl(el.src)) urls.add(el.src)
+  })
+  document.querySelectorAll<HTMLLinkElement>('link[href]').forEach((el) => {
+    if (isAssetUrl(el.href)) urls.add(el.href)
+  })
+
+  await Promise.all(
+    Array.from(urls).map((url) =>
+      fetch(url, { cache: 'reload', credentials: 'same-origin' }).catch(() => {
+        // A still-missing asset stays broken; the reload below reports it normally.
+      })
+    )
+  )
+}
+
+export function reloadForChunkError(error?: unknown) {
   if (typeof window === 'undefined') return
   if (reloadTimerId !== undefined) return
 
   reloadTimerId = window.setTimeout(() => {
-    window.location.replace(getFreshBuildUrl())
+    repairPoisonedAssets(error).finally(() => {
+      window.location.replace(getFreshBuildUrl())
+    })
   }, 100)
 }
 
@@ -190,7 +228,9 @@ export function forceChunkRecoveryReload() {
   if (typeof window === 'undefined') return
 
   clearChunkRecoveryState()
-  window.location.replace(getFreshBuildUrl())
+  repairPoisonedAssets(undefined).finally(() => {
+    window.location.replace(getFreshBuildUrl())
+  })
 }
 
 export function requestChunkRecovery(error: unknown) {
@@ -198,7 +238,7 @@ export function requestChunkRecovery(error: unknown) {
     return false
   }
 
-  reloadForChunkError()
+  reloadForChunkError(error)
   return true
 }
 
