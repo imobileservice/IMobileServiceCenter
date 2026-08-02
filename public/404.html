@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Page not found - IMobile Service Center</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+      background: #0b0b0c;
+      color: #f4f4f5;
+      text-align: center;
+      padding: 24px;
+    }
+
+    .box { max-width: 420px; }
+    h1 { font-size: 56px; margin: 0 0 8px; letter-spacing: -0.02em; }
+    p { color: #a1a1aa; line-height: 1.6; margin: 0 0 20px; }
+    a {
+      display: inline-block; padding: 10px 20px; border-radius: 8px;
+      background: #f4f4f5; color: #0b0b0c; text-decoration: none; font-weight: 600;
+    }
+  </style>
+</head>
+
+<body>
+  <!--
+    This file exists for a specific reason beyond being a nice 404 page.
+
+    Without it, Cloudflare answered a request for a MISSING /assets/*.js chunk with
+    index.html at HTTP 200 + text/html, while the /assets/* rule in _headers stamped
+    it "max-age=31536000". A browser could therefore cache the fallback HTML *as* the
+    entry bundle for a year and white-screen permanently with:
+
+      Failed to load module script: Expected a JavaScript-or-Wasm module script but
+      the server responded with a MIME type of "text/html".
+
+    With a 404.html present, a missing file returns a real 404 instead of a 200 that
+    pretends to be JavaScript, so nothing can be cached under a bundle's name.
+    Do not delete this file. Known client routes are rewritten to index.html by
+    _redirects, so real app routes never reach here.
+  -->
+  <div class="box">
+    <h1>404</h1>
+    <p>This page does not exist. If you reached here from a link inside the app,
+      please refresh the page and try again.</p>
+    <a href="/">Back to home</a>
+  </div>
+</body>
+
+</html>

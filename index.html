@@ -22,6 +22,39 @@
 
 <body style="margin: 0; padding: 0;">
   <div id="root"></div>
+
+  <!--
+    Last-resort recovery for a poisoned entry bundle.
+
+    If a browser ever cached the SPA fallback HTML *as* /assets/index-<hash>.js, the
+    module script below fails before a single line of app code runs - so the router,
+    the ErrorBoundary and any in-app chunk recovery never execute and the user just
+    sees a white page. This has to live here, as a classic (non-module) script, to be
+    running before that happens.
+
+    Re-fetching with cache:'reload' bypasses and *overwrites* the poisoned HTTP cache
+    entry, after which a reload boots normally. Guarded by sessionStorage so a genuine
+    outage cannot turn into a reload loop.
+  -->
+  <script>
+    (function () {
+      var KEY = '__entry_recovery__';
+      window.addEventListener('error', function (e) {
+        var el = e.target;
+        if (!el || el.tagName !== 'SCRIPT' || el.type !== 'module' || !el.src) return;
+        if (sessionStorage.getItem(KEY)) return;
+        sessionStorage.setItem(KEY, '1');
+        fetch(el.src, { cache: 'reload' })
+          .catch(function () { })
+          .then(function () { location.reload(); });
+      }, true); // capture: resource load errors do not bubble
+      window.addEventListener('load', function () {
+        var r = document.getElementById('root');
+        if (r && r.childNodes.length) sessionStorage.removeItem(KEY);
+      });
+    })();
+  </script>
+
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

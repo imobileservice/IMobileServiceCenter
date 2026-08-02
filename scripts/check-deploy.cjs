@@ -1,0 +1,73 @@
+/*
+ * Post-deploy health check for the live site.
+ *
+ *   npm run check:deploy
+ *   npm run check:deploy -- https://staging.example.com
+ *
+ * Guards the failure that has white-screened this site twice: a MISSING /assets/*
+ * chunk being answered with index.html at HTTP 200 + text/html while the /assets/*
+ * rule stamps it max-age=31536000, so browsers cache the fallback page *as* the
+ * entry bundle and never recover.
+ *
+ * Run this AFTER every deploy, before telling anyone it is fixed.
+ */
+const https = require('https');
+const { URL } = require('url');
+
+const BASE = (process.argv[2] || 'https://imobileservicecenter.lk').replace(/\/$/, '');
+
+const get = (url) => new Promise((resolve, reject) => {
+  https.get(url, { headers: { 'User-Agent': 'deploy-check' } }, (res) => {
+    let body = '';
+    res.on('data', c => body += c);
+    res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+  }).on('error', reject);
+});
+
+const results = [];
+const ok = (name, pass, detail) => results.push({ name, pass, detail });
+
+(async () => {
+  // 1. entry HTML must never be cached, or clients pin an old bundle reference
+  const index = await get(`${BASE}/`);
+  const cc = index.headers['cache-control'] || '';
+  ok('index.html is not cached',
+    /no-store|no-cache/.test(cc),
+    `status ${index.status}, cache-control: ${cc || '(none)'}`);
+
+  // 2. the bundle the live HTML references must actually exist and be JS
+  const ref = (index.body.match(/src="(\/assets\/[^"]+\.js)"/) || [])[1];
+  if (!ref) {
+    ok('entry bundle reference found in HTML', false, 'no /assets/*.js <script> in index.html');
+  } else {
+    const entry = await get(`${BASE}${ref}`);
+    const ct = entry.headers['content-type'] || '';
+    ok('referenced entry bundle serves JavaScript',
+      entry.status === 200 && /javascript|ecmascript/i.test(ct),
+      `${ref} -> ${entry.status} ${ct}`);
+  }
+
+  // 3. THE BIG ONE: a missing asset must not masquerade as a cacheable module
+  const missing = await get(`${BASE}/assets/does-not-exist-${Date.now()}.js`);
+  const mct = missing.headers['content-type'] || '';
+  const mcc = missing.headers['cache-control'] || '';
+  const poisonable = missing.status === 200 && /text\/html/i.test(mct);
+  ok('missing asset does NOT return 200 text/html',
+    !poisonable,
+    `${missing.status} ${mct}, cache-control: ${mcc || '(none)'}`);
+
+  const longCachedHtml = poisonable && /max-age=\d{6,}/.test(mcc);
+  ok('missing asset is not long-cached as HTML',
+    !longCachedHtml,
+    longCachedHtml
+      ? 'fallback HTML carries a multi-day max-age - browsers will cache it AS the bundle'
+      : 'ok');
+
+  console.log(`\n  Deploy check - ${BASE}\n`);
+  for (const r of results) {
+    console.log(`  ${r.pass ? 'PASS' : 'FAIL'}  ${r.name}\n        ${r.detail}`);
+  }
+  const failed = results.filter(r => !r.pass).length;
+  console.log(`\n  ${failed === 0 ? 'ALL CHECKS PASSED' : failed + ' CHECK(S) FAILED'}\n`);
+  process.exit(failed === 0 ? 0 : 1);
+})().catch(e => { console.error('check-deploy error:', e.message); process.exit(2); });
