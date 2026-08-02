@@ -3,12 +3,40 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Printer, Minus, Plus, Tag, ScrollText, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Barcode from 'react-barcode'
+import JsBarcode from 'jsbarcode'
 
 export interface LabelProduct {
   id: string
   name: string
   barcode: string | null
   price?: number
+}
+
+/** Physical sticker size on the thermal roll (Xprinter XP-365B, 203 dpi). */
+const LABEL_W_MM = 38
+const LABEL_H_MM = 25
+/** Bar block is kept a couple of mm inside the sticker so the gap sensor drift never clips it. */
+const BARCODE_W_MM = 32
+const BARCODE_H_MM = 10
+
+/** Renders a real, scannable CODE128 bar block as standalone SVG markup for the print window. */
+const buildBarcodeSvg = (value: string): string => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  try {
+    JsBarcode(svg, value, {
+      format: 'CODE128',
+      displayValue: false,
+      width: 2,
+      height: 60,
+      margin: 0,
+      background: '#ffffff',
+      lineColor: '#000000',
+      xmlDocument: document,
+    })
+  } catch {
+    return ''
+  }
+  return new XMLSerializer().serializeToString(svg)
 }
 
 interface BarcodeLabelModalProps {
@@ -19,7 +47,7 @@ interface BarcodeLabelModalProps {
 
 export default function BarcodeLabelModal({ isOpen, onClose, products }: BarcodeLabelModalProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({})
-  const [printMode, setPrintMode] = useState<'thermal' | 'a4'>('a4')
+  const [printMode, setPrintMode] = useState<'thermal' | 'a4'>('thermal')
   const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -56,47 +84,44 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
     if (printItems.length === 0) return
 
     const isA4 = printMode === 'a4'
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+    // Build each distinct bar block once, then reuse it for every copy.
+    const svgCache: Record<string, string> = {}
+    printItems.forEach(p => {
+      const code = p.barcode || ''
+      if (code && svgCache[code] === undefined) svgCache[code] = buildBarcodeSvg(code)
+    })
 
     const pageStyle = isA4
       ? `@page { size: A4 portrait; margin: 5mm; }`
-      : `@page { size: 50mm 25mm; margin: 0; }`
+      : `@page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }`
 
     const labelsHtml = printItems.map((prod, i) => {
       const isDisplay = prod.name?.toLowerCase().includes('display')
+      // Thermal: every sticker is its own page so the printer feeds them one by one.
       const pageBreak = !isA4 && i < printItems.length - 1
-        ? 'page-break-after: always;'
+        ? 'page-break-after: always; break-after: page;'
         : ''
 
       return `
-        <div style="
-          width:50mm; height:25mm;
-          background:#fff; color:#000;
-          display:flex; flex-direction:column;
-          align-items:center; justify-content:center;
-          padding:1mm 2mm; box-sizing:border-box;
-          overflow:hidden;
-          font-family: Arial, sans-serif;
-          ${isA4 ? 'border:0.1mm dashed #ccc;' : ''}
-          ${pageBreak}
-        ">
-          <p style="font-size:5.5pt;font-weight:800;margin:0;text-align:center;line-height:1.1;letter-spacing:0.01em;width:100%;">
+        <div class="label" style="${pageBreak}${isA4 ? 'border:0.1mm dashed #ccc;' : ''}">
+          <p class="shop">
             ${isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service &amp; Repair Center'}
           </p>
 
-          <p style="font-size:9pt;font-weight:900;letter-spacing:0.15em;margin:1.5mm 0 0;text-align:center;line-height:1;font-family:monospace;">
-            ${prod.barcode || ''}
-          </p>
+          <div class="bars">${svgCache[prod.barcode || ''] || ''}</div>
 
-          <p style="font-size:5pt;font-weight:700;margin:1mm 0 0;line-height:1.1;max-width:46mm;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;">
-            ${(prod.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-          </p>
+          <p class="code">${esc(prod.barcode || '')}</p>
+
+          <p class="name">${esc(prod.name || '')}</p>
 
           ${!isDisplay && prod.price !== undefined
-            ? `<p style="font-size:4.5pt;font-weight:800;margin:0.5mm 0 0;line-height:1;">Rs. ${prod.price.toLocaleString()}</p>`
+            ? `<p class="price">Rs. ${prod.price.toLocaleString()}</p>`
             : ''
           }
           ${isDisplay
-            ? `<p style="font-size:4pt;font-weight:600;margin:0.5mm 0 0;line-height:1;color:#555;">Display Part</p>`
+            ? `<p class="tagline">Display Part</p>`
             : ''
           }
         </div>
@@ -115,8 +140,51 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
   <style>
     ${pageStyle}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #fff; font-family: Arial, sans-serif; }
+    html, body {
+      background: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
     .grid { ${gridStyle} }
+    .label {
+      width: ${LABEL_W_MM}mm;
+      height: ${LABEL_H_MM}mm;
+      background: #fff;
+      color: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1mm 1.5mm;
+      overflow: hidden;
+    }
+    .shop {
+      font-size: 5pt; font-weight: 800; line-height: 1.1;
+      text-align: center; width: 100%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .bars { line-height: 0; margin: 0.8mm 0 0; }
+    /* Bounding box for the bars. JsBarcode emits a viewBox, so the SVG scales to
+       fit this box without distortion no matter how long the code is. */
+    .bars svg {
+      display: block;
+      width: ${BARCODE_W_MM}mm !important;
+      height: ${BARCODE_H_MM}mm !important;
+    }
+    .code {
+      font-size: 7.5pt; font-weight: 900; letter-spacing: 0.12em;
+      font-family: "Courier New", monospace;
+      line-height: 1; margin: 0.6mm 0 0; text-align: center;
+    }
+    .name {
+      font-size: 5pt; font-weight: 700; line-height: 1.1;
+      margin: 0.8mm 0 0; text-align: center;
+      max-width: ${LABEL_W_MM - 3}mm;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .price { font-size: 5.5pt; font-weight: 800; line-height: 1; margin: 0.5mm 0 0; }
+    .tagline { font-size: 4pt; font-weight: 600; line-height: 1; margin: 0.5mm 0 0; color: #555; }
   </style>
 </head>
 <body>
@@ -131,15 +199,20 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
     }
     win.document.write(html)
     win.document.close()
-    win.onload = () => {
-      win.focus()
-      win.print()
-      setTimeout(() => win.close(), 500)
+
+    let sent = false
+    const send = () => {
+      if (sent) return
+      sent = true
+      try {
+        win.focus()
+        win.print()
+      } catch (_) { /* window already gone */ }
+      setTimeout(() => { try { win.close() } catch (_) {} }, 1200)
     }
-    // Fallback if onload doesn't fire
-    setTimeout(() => {
-      try { win.focus(); win.print(); setTimeout(() => win.close(), 500) } catch (_) {}
-    }, 900)
+    win.onload = send
+    // Fallback if onload doesn't fire (document.write windows sometimes skip it)
+    setTimeout(send, 900)
   }
 
   return (
@@ -184,7 +257,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
               {/* Scrollable Area */}
               <div className="px-6 py-6 flex flex-col items-center gap-6 overflow-y-auto">
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Label Preview Size (50mm × 25mm)
+                  Label Preview Size ({LABEL_W_MM}mm × {LABEL_H_MM}mm)
                 </div>
 
                 {/* The label preview */}
@@ -195,8 +268,9 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                       <div
                         className="bg-white text-black border border-gray-400 shadow-sm"
                         style={{
-                          width: '188px',
-                          height: '94px',
+                          /* 5px per mm, so the preview keeps the real sticker's proportions */
+                          width: `${LABEL_W_MM * 5}px`,
+                          height: `${LABEL_H_MM * 5}px`,
                           padding: '4px 6px',
                           display: 'flex',
                           flexDirection: 'column',
@@ -209,12 +283,22 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                           {isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service & Repair Center'}
                         </p>
 
-                        <div style={{ margin: '0', padding: 0, lineHeight: 0, transform: 'scale(0.95)', transformOrigin: 'center' }}>
+                        {/* Same physical footprint as the printed bar block (32mm × 8.5mm at 5px/mm) */}
+                        <div
+                          className="[&_svg]:block [&_svg]:!w-full [&_svg]:!h-full"
+                          style={{
+                            width: `${BARCODE_W_MM * 5}px`,
+                            height: `${BARCODE_H_MM * 5}px`,
+                            margin: '4px 0 0',
+                            padding: 0,
+                            lineHeight: 0,
+                          }}
+                        >
                           <Barcode
                             value={previewProduct.barcode}
                             displayValue={false}
-                            height={26}
-                            width={1.3}
+                            height={60}
+                            width={2}
                             margin={0}
                             background="#ffffff"
                             lineColor="#000000"
@@ -256,7 +340,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                     <ScrollText className="w-6 h-6" />
                     <div className="text-center">
                       <p className="font-bold text-sm leading-tight">Thermal Roll</p>
-                      <p className="text-[10px] leading-tight mt-0.5 opacity-80">Label Printer</p>
+                      <p className="text-[10px] leading-tight mt-0.5 opacity-80">{LABEL_W_MM} × {LABEL_H_MM} mm · one per sticker</p>
                     </div>
                   </button>
                   <button
