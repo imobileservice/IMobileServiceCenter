@@ -27,7 +27,26 @@ const get = (url) => new Promise((resolve, reject) => {
 const results = [];
 const ok = (name, pass, detail) => results.push({ name, pass, detail });
 
+/*
+ * Client-side routes. Each must return 200 AND the app shell, with no redirect.
+ *
+ * These exist because a change that made missing files return 404 also took out
+ * the SPA fallback that was routing /admin/*, so the whole admin panel 404'd in
+ * production. Asset checks alone did not catch it. Routes are checked first now.
+ */
+const ROUTES = ['/', '/shop', '/product/123', '/admin/login', '/admin/products', '/cashier/pos'];
+
 (async () => {
+  // 0. every client route must serve the app shell directly - no 404, no redirect
+  for (const route of ROUTES) {
+    const r = await get(`${BASE}${route}`);
+    const isShell = /<script[^>]+src="\/assets\/[^"]+\.js"/.test(r.body);
+    const loc = r.headers.location ? ` -> ${r.headers.location}` : '';
+    ok(`route ${route} serves the app`,
+      r.status === 200 && isShell,
+      `${r.status}${loc}` + (r.status === 200 && !isShell ? ' (200 but not the app shell)' : ''));
+  }
+
   // 1. entry HTML must never be cached, or clients pin an old bundle reference
   const index = await get(`${BASE}/`);
   const cc = index.headers['cache-control'] || '';
