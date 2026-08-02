@@ -46,3 +46,6 @@ Thumbs.db
 # Logs
 logs
 *.log
+
+# label print check artifacts
+scripts/label-check/.out/

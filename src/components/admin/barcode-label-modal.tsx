@@ -3,41 +3,16 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Printer, Minus, Plus, Tag, ScrollText, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Barcode from 'react-barcode'
-import JsBarcode from 'jsbarcode'
+import {
+  buildLabelSheetHtml,
+  LABEL_W_MM,
+  LABEL_H_MM,
+  BARCODE_W_MM,
+  BARCODE_H_MM,
+  type LabelProduct,
+} from '@/lib/labels/label-sheet'
 
-export interface LabelProduct {
-  id: string
-  name: string
-  barcode: string | null
-  price?: number
-}
-
-/** Physical sticker size on the thermal roll (Xprinter XP-365B, 203 dpi). */
-const LABEL_W_MM = 38
-const LABEL_H_MM = 25
-/** Bar block is kept a couple of mm inside the sticker so the gap sensor drift never clips it. */
-const BARCODE_W_MM = 32
-const BARCODE_H_MM = 10
-
-/** Renders a real, scannable CODE128 bar block as standalone SVG markup for the print window. */
-const buildBarcodeSvg = (value: string): string => {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  try {
-    JsBarcode(svg, value, {
-      format: 'CODE128',
-      displayValue: false,
-      width: 2,
-      height: 60,
-      margin: 0,
-      background: '#ffffff',
-      lineColor: '#000000',
-      xmlDocument: document,
-    })
-  } catch {
-    return ''
-  }
-  return new XMLSerializer().serializeToString(svg)
-}
+export type { LabelProduct }
 
 interface BarcodeLabelModalProps {
   isOpen: boolean
@@ -83,114 +58,8 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
   const handlePrint = () => {
     if (printItems.length === 0) return
 
-    const isA4 = printMode === 'a4'
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const html = buildLabelSheetHtml(printItems, printMode)
 
-    // Build each distinct bar block once, then reuse it for every copy.
-    const svgCache: Record<string, string> = {}
-    printItems.forEach(p => {
-      const code = p.barcode || ''
-      if (code && svgCache[code] === undefined) svgCache[code] = buildBarcodeSvg(code)
-    })
-
-    const pageStyle = isA4
-      ? `@page { size: A4 portrait; margin: 5mm; }`
-      : `@page { size: ${LABEL_W_MM}mm ${LABEL_H_MM}mm; margin: 0; }`
-
-    const labelsHtml = printItems.map((prod, i) => {
-      const isDisplay = prod.name?.toLowerCase().includes('display')
-      // Thermal: every sticker is its own page so the printer feeds them one by one.
-      const pageBreak = !isA4 && i < printItems.length - 1
-        ? 'page-break-after: always; break-after: page;'
-        : ''
-
-      return `
-        <div class="label" style="${pageBreak}${isA4 ? 'border:0.1mm dashed #ccc;' : ''}">
-          <p class="shop">
-            ${isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service &amp; Repair Center'}
-          </p>
-
-          <div class="bars">${svgCache[prod.barcode || ''] || ''}</div>
-
-          <p class="code">${esc(prod.barcode || '')}</p>
-
-          <p class="name">${esc(prod.name || '')}</p>
-
-          ${!isDisplay && prod.price !== undefined
-            ? `<p class="price">Rs. ${prod.price.toLocaleString()}</p>`
-            : ''
-          }
-          ${isDisplay
-            ? `<p class="tagline">Display Part</p>`
-            : ''
-          }
-        </div>
-      `
-    }).join('')
-
-    const gridStyle = isA4
-      ? `display:flex;flex-wrap:wrap;align-items:flex-start;align-content:flex-start;gap:0;padding:0;margin:0;`
-      : `display:block;`
-
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>Barcode Labels — IMobile</title>
-  <style>
-    ${pageStyle}
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      background: #fff;
-      font-family: Arial, Helvetica, sans-serif;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    .grid { ${gridStyle} }
-    .label {
-      width: ${LABEL_W_MM}mm;
-      height: ${LABEL_H_MM}mm;
-      background: #fff;
-      color: #000;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 1mm 1.5mm;
-      overflow: hidden;
-    }
-    .shop {
-      font-size: 5pt; font-weight: 800; line-height: 1.1;
-      text-align: center; width: 100%;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .bars { line-height: 0; margin: 0.8mm 0 0; }
-    /* Bounding box for the bars. JsBarcode emits a viewBox, so the SVG scales to
-       fit this box without distortion no matter how long the code is. */
-    .bars svg {
-      display: block;
-      width: ${BARCODE_W_MM}mm !important;
-      height: ${BARCODE_H_MM}mm !important;
-    }
-    .code {
-      font-size: 7.5pt; font-weight: 900; letter-spacing: 0.12em;
-      font-family: "Courier New", monospace;
-      line-height: 1; margin: 0.6mm 0 0; text-align: center;
-    }
-    .name {
-      font-size: 5pt; font-weight: 700; line-height: 1.1;
-      margin: 0.8mm 0 0; text-align: center;
-      max-width: ${LABEL_W_MM - 3}mm;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .price { font-size: 5.5pt; font-weight: 800; line-height: 1; margin: 0.5mm 0 0; }
-    .tagline { font-size: 4pt; font-weight: 600; line-height: 1; margin: 0.5mm 0 0; color: #555; }
-  </style>
-</head>
-<body>
-  <div class="grid">${labelsHtml}</div>
-</body>
-</html>`
 
     const win = window.open('', '_blank', 'width=800,height=600')
     if (!win) {

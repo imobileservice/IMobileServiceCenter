@@ -12,6 +12,9 @@
     "build:all": "npm run build && npm run build:server",
     "deploy": "wrangler pages deploy dist",
     "deploy:worker": "wrangler deploy --assets=./dist",
+    "check:labels": "node scripts/label-check/check-labels.cjs",
+    "check:labels:proof": "node scripts/label-check/check-labels.cjs --proof",
+    "check:labels:controls": "node scripts/label-check/negative-controls.cjs",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "test": "echo \"Error: no test specified\" && exit 1",
     "e2e": "echo \"Error: no e2e test specified\" && exit 1"
