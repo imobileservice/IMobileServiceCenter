@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Printer, Minus, Plus, Tag, ScrollText, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Barcode from 'react-barcode'
+import { printLabels } from '@/lib/labels/print-labels'
 import {
-  buildLabelSheetHtml,
   LABEL_W_MM,
   LABEL_H_MM,
   BARCODE_W_MM,
@@ -57,31 +57,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
 
   const handlePrint = () => {
     if (printItems.length === 0) return
-
-    const html = buildLabelSheetHtml(printItems, printMode)
-
-
-    const win = window.open('', '_blank', 'width=800,height=600')
-    if (!win) {
-      alert('Please allow popups for this site to print labels.')
-      return
-    }
-    win.document.write(html)
-    win.document.close()
-
-    let sent = false
-    const send = () => {
-      if (sent) return
-      sent = true
-      try {
-        win.focus()
-        win.print()
-      } catch (_) { /* window already gone */ }
-      setTimeout(() => { try { win.close() } catch (_) {} }, 1200)
-    }
-    win.onload = send
-    // Fallback if onload doesn't fire (document.write windows sometimes skip it)
-    setTimeout(send, 900)
+    printLabels(printItems, printMode)
   }
 
   return (
@@ -227,6 +203,17 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                     </div>
                   </button>
                 </div>
+
+                {/* One-time printer setup reminder - wrong paper size is what prints
+                    the date / about:blank / 1/1 text across the sticker roll. */}
+                {printMode === 'thermal' && (
+                  <div className="w-full text-[11px] leading-snug text-muted-foreground border border-border/60 rounded-lg px-3 py-2 flex-shrink-0">
+                    <span className="font-semibold text-foreground">First time on this printer:</span>{' '}
+                    in the print dialog choose <b>XP-365B</b>, set <b>Paper size</b> to the{' '}
+                    {LABEL_W_MM} × {LABEL_H_MM} mm label, <b>Margins: None</b>, and untick{' '}
+                    <b>Headers and footers</b>. Chrome remembers it after that.
+                  </div>
+                )}
 
                 {/* Quantity List */}
                 <div className="w-full bg-muted/30 border border-border rounded-xl p-3 flex-shrink-0">
