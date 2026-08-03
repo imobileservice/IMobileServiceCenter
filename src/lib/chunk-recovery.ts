@@ -204,9 +204,15 @@ async function repairPoisonedAssets(error: unknown) {
     if (isAssetUrl(el.href)) urls.add(el.href)
   })
 
+  // `cache: 'reload'` only bypasses THIS browser's cache. When the bad copy is in
+  // the CDN edge cache the repair fetch is served the same poisoned bytes, the
+  // reload hits the same URLs, and recovery burns all three attempts for nothing.
+  // A unique query string is a different edge cache key, so it reaches origin.
+  const bust = (url: string) => `${url}${url.includes('?') ? '&' : '?'}imobile_cb=${Date.now()}`
+
   await Promise.all(
     Array.from(urls).map((url) =>
-      fetch(url, { cache: 'reload', credentials: 'same-origin' }).catch(() => {
+      fetch(bust(url), { cache: 'reload', credentials: 'same-origin' }).catch(() => {
         // A still-missing asset stays broken; the reload below reports it normally.
       })
     )

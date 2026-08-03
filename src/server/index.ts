@@ -135,13 +135,42 @@ app.use('/api', apiRouter)
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../../dist')
-  app.use(express.static(distPath))
 
-  // Serve index.html for all non-API routes (SPA fallback)
+  app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+      // Build output is content-hashed and per-build unique, so it is safe to
+      // cache; the app shell never is, or clients pin themselves to an old build.
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate')
+      }
+    },
+  }))
+
+  // A missing build asset must be a real 404.
+  //
+  // Answering it with the app shell (HTTP 200 + text/html) is what has taken this
+  // site down repeatedly: the CDN and the browser then cache that HTML *as* the
+  // stylesheet or module, and every visitor gets "Refused to apply style ... MIME
+  // type ('text/html')" or "Failed to load module script" until the entry expires
+  // hours later. A 404 cannot be mistaken for an asset, so it cannot poison a cache.
+  const ASSET_REQUEST = /^\/assets\/|\.(?:js|mjs|css|map|json|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|eot)$/i
+
   app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(distPath, 'index.html'))
+    if (req.path.startsWith('/api')) {
+      res.status(404).json({ error: 'Not found' })
+      return
     }
+
+    if (ASSET_REQUEST.test(req.path)) {
+      res.status(404).type('text/plain').send('Not found')
+      return
+    }
+
+    // Real client route: serve the app shell, uncacheable.
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.sendFile(path.join(distPath, 'index.html'))
   })
 }
 
