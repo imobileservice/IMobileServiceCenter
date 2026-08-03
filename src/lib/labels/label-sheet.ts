@@ -95,14 +95,22 @@ export const buildLabelSheetHtml = (items: LabelProduct[], mode: PrintMode): str
 
   // Shown only on screen (never printed) so staff who cancel the dialog see why.
   const setupHtml = isA4 ? '' : `<div class="setup">
-<b>Printer settings for these stickers</b>
+<b>One sticker per label? Set these in the print dialog once.</b>
+<p class="why">A date, a title, a web address or <i>1/1</i> around the sticker, or one label
+spread over several stickers, always means the <b>paper size is still wrong</b>. Chrome draws
+that text itself - the app cannot remove it, but the two settings below do.</p>
 <ol>
 <li><b>Destination:</b> XP-365B (not Save as PDF)</li>
+<li>Click <b>More settings</b> to open the rest of this list</li>
 <li><b>Paper size:</b> the ${LABEL_W_MM} x ${LABEL_H_MM} mm label stock</li>
-<li><b>Margins:</b> None &nbsp; <b>Scale:</b> Default / 100%</li>
+<li><b>Margins:</b> None &nbsp; &nbsp; <b>Scale:</b> Default / 100%</li>
+<li><b>Headers and footers:</b> untick it</li>
 </ol>
-<p>If the preview shows a big page with a date, a title, <i>about:blank</i> or <i>1/1</i>
-around the sticker, the paper size above is still wrong - fix it and those disappear.</p>
+<p class="win"><b>No ${LABEL_W_MM} x ${LABEL_H_MM} mm in the paper size list?</b> Add it in Windows first:
+Settings &rsaquo; Printers &amp; scanners &rsaquo; <b>Xprinter XP-365B</b> &rsaquo; Printing preferences
+&rsaquo; Page Setup &rsaquo; Paper Size &rsaquo; <b>New / Custom</b> - width ${LABEL_W_MM} mm, height
+${LABEL_H_MM} mm - save it, set it as the default, then reopen this print window.</p>
+<p class="keep">Chrome remembers all of this for the XP-365B, so it is a one-time job.</p>
 </div>`
 
   return `<!DOCTYPE html>
@@ -122,13 +130,17 @@ html, body {
 }
 /* Screen-only helper. @media print keeps it out of the printed sticker entirely. */
 .setup {
-  font-size: 13px; line-height: 1.5; color: #111;
-  border: 1px solid #bbb; border-radius: 6px;
-  padding: 10px 14px; margin: 0 0 14px; max-width: 460px;
+  font-size: 13px; line-height: 1.55; color: #111;
+  border: 2px solid #d33; border-radius: 8px;
+  padding: 12px 16px; margin: 0 0 14px; max-width: 520px;
   font-family: Arial, Helvetica, sans-serif;
 }
-.setup ol { margin: 6px 0 6px 18px; }
-.setup p { margin-top: 6px; color: #444; }
+.setup > b { font-size: 14px; }
+.setup ol { margin: 8px 0 8px 18px; }
+.setup li { margin: 2px 0; }
+.setup p { margin-top: 8px; color: #333; }
+.setup .why { color: #a11; }
+.setup .keep { color: #666; font-size: 12px; }
 @media print { .setup { display: none !important; } }
 .grid { ${gridStyle} }
 .label {

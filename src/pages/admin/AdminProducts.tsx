@@ -124,8 +124,8 @@ export default function ProductsPage() {
   }
 
   const handleProductSaved = (product: { name: string; barcode: string; price: number }) => {
-    // Newly created product: send its sticker straight to the printer
-    handleQuickPrint(product)
+    // Auto-open barcode print modal for newly created products
+    setPrintingProducts([{ name: product.name, barcode: product.barcode, price: product.price }])
     // Refresh product list
     fetchProducts(true)
   }
@@ -516,13 +516,13 @@ export default function ProductsPage() {
                           const barcode = (product as any).barcode
                           if (!barcode) return
                           const item = { id: product.id, name: getDisplayName(product), barcode, price: product.price }
-                          // Shift/Ctrl-click still opens the modal when a different quantity is needed.
-                          if (e.shiftKey || e.ctrlKey || e.metaKey) setPrintingProducts([item])
-                          else handleQuickPrint(item)
+                          // Shift/Ctrl-click skips the modal and sends one sticker straight out.
+                          if (e.shiftKey || e.ctrlKey || e.metaKey) handleQuickPrint(item)
+                          else setPrintingProducts([item])
                         }}
                         disabled={!(product as any).barcode}
                         className="w-8 h-8 shrink-0 text-foreground bg-transparent border-border hover:bg-muted"
-                        title={(product as any).barcode ? "Print Barcode Label (Shift+Click to choose quantity)" : "No barcode generated"}
+                        title={(product as any).barcode ? "Print Barcode Label (Shift+Click prints 1 immediately)" : "No barcode generated"}
                       >
                         <Tag className="w-4 h-4" />
                       </Button>

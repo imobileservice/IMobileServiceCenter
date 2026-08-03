@@ -204,15 +204,38 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                   </button>
                 </div>
 
-                {/* One-time printer setup reminder - wrong paper size is what prints
-                    the date / about:blank / 1/1 text across the sticker roll. */}
+                {/* One-time printer setup. A wrong paper size is what prints the date /
+                    web address / 1-1 text and spreads one label across several stickers. */}
                 {printMode === 'thermal' && (
-                  <div className="w-full text-[11px] leading-snug text-muted-foreground border border-border/60 rounded-lg px-3 py-2 flex-shrink-0">
-                    <span className="font-semibold text-foreground">First time on this printer:</span>{' '}
-                    in the print dialog choose <b>XP-365B</b>, set <b>Paper size</b> to the{' '}
-                    {LABEL_W_MM} × {LABEL_H_MM} mm label, <b>Margins: None</b>, and untick{' '}
-                    <b>Headers and footers</b>. Chrome remembers it after that.
-                  </div>
+                  <details className="w-full text-xs border border-amber-500/40 bg-amber-500/5 rounded-lg flex-shrink-0">
+                    <summary className="cursor-pointer select-none px-3 py-2 font-semibold text-amber-600">
+                      Sticker printing wrong? Set the printer up once →
+                    </summary>
+                    <div className="px-3 pb-3 pt-1 text-muted-foreground leading-relaxed space-y-2">
+                      <p>
+                        Extra text around the sticker (date, web address, <b>1/1</b>) or one label
+                        spread over several stickers always means the <b>paper size is wrong</b>.
+                        Chrome draws that text itself — the app cannot remove it, these settings can.
+                      </p>
+                      <p className="font-semibold text-foreground">In the print dialog</p>
+                      <ol className="list-decimal ml-4 space-y-0.5">
+                        <li><b>Destination:</b> Xprinter XP-365B</li>
+                        <li>Click <b>More settings</b></li>
+                        <li><b>Paper size:</b> {LABEL_W_MM} × {LABEL_H_MM} mm label</li>
+                        <li><b>Margins: None</b> · <b>Scale:</b> Default</li>
+                        <li>Untick <b>Headers and footers</b></li>
+                      </ol>
+                      <p className="font-semibold text-foreground">
+                        No {LABEL_W_MM} × {LABEL_H_MM} mm in that list? Add it in Windows first
+                      </p>
+                      <p>
+                        Settings › Printers &amp; scanners › <b>Xprinter XP-365B</b> › Printing
+                        preferences › Page Setup › Paper Size › <b>New / Custom</b> — width{' '}
+                        {LABEL_W_MM} mm, height {LABEL_H_MM} mm — save it and set it as the default.
+                      </p>
+                      <p className="text-[11px]">Chrome remembers this for the XP-365B afterwards.</p>
+                    </div>
+                  </details>
                 )}
 
                 {/* Quantity List */}
