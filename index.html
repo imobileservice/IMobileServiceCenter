@@ -39,16 +39,54 @@
   <script>
     (function () {
       var KEY = '__entry_recovery__';
+
+      // A poisoned copy usually sits in the CDN edge cache, not just this browser,
+      // so cache:'reload' alone still gets served the same bad bytes. A unique query
+      // string is a different edge cache key, which is what actually reaches origin.
+      var bust = function (url) {
+        return url + (url.indexOf('?') < 0 ? '?' : '&') + 'cb=' + Date.now();
+      };
+
+      // Poisoned entry bundle. Re-request it past both caches and run the real one.
       window.addEventListener('error', function (e) {
         var el = e.target;
         if (!el || el.tagName !== 'SCRIPT' || el.type !== 'module' || !el.src) return;
         if (sessionStorage.getItem(KEY)) return;
         sessionStorage.setItem(KEY, '1');
-        fetch(el.src, { cache: 'reload' })
-          .catch(function () { })
-          .then(function () { location.reload(); });
+        var s = document.createElement('script');
+        s.type = 'module';
+        s.src = bust(el.src);
+        s.onerror = function () { location.reload(); };
+        document.head.appendChild(s);
       }, true); // capture: resource load errors do not bubble
+
       window.addEventListener('load', function () {
+        // A stylesheet refused for its MIME type fires NO error event (verified in
+        // Chrome), and link.sheet is still set - only it parses to zero rules. So the
+        // parsed result is the signal. Inlining the refetched CSS restores styling
+        // immediately; a reload would just hit the same poisoned URL again.
+        var links = document.querySelectorAll('link[rel="stylesheet"]');
+        for (var i = 0; i < links.length; i++) {
+          var link = links[i];
+          // Build output only. Cross-origin sheets (fonts) throw on cssRules access.
+          if (!link.href || link.href.indexOf(location.origin + '/assets/') !== 0) continue;
+          var rules = -1;
+          try { rules = link.sheet ? link.sheet.cssRules.length : 0; } catch (err) { rules = -1; }
+          if (rules !== 0) continue;
+          (function (href) {
+            fetch(bust(href), { cache: 'reload' })
+              .then(function (res) { return res.ok ? res.text() : ''; })
+              .then(function (css) {
+                if (!css || css.charAt(0) === '<') return; // still the fallback page
+                var style = document.createElement('style');
+                style.setAttribute('data-recovered-from', href);
+                style.textContent = css;
+                document.head.appendChild(style);
+              })
+              .catch(function () { });
+          })(link.href);
+        }
+
         var r = document.getElementById('root');
         if (r && r.childNodes.length) sessionStorage.removeItem(KEY);
       });
