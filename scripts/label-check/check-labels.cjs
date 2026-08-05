@@ -26,11 +26,18 @@ const OUT = path.join(HERE, '.out');
 const MM_PER_PT = 25.4 / 72;
 
 const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  // Windows (the shop PC)
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   process.env.LOCALAPPDATA + '/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
   'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+  // macOS / Linux (dev machines)
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
 ];
 const CHROME = CHROME_CANDIDATES.find(p => p && fs.existsSync(p));
 if (!CHROME) {

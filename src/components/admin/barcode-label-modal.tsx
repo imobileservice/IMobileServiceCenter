@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Printer, Minus, Plus, Tag, ScrollText, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Barcode from 'react-barcode'
+import { printLabels } from '@/lib/labels/print-labels'
 import {
-  buildLabelSheetHtml,
   LABEL_W_MM,
   LABEL_H_MM,
   BARCODE_W_MM,
@@ -57,31 +57,7 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
 
   const handlePrint = () => {
     if (printItems.length === 0) return
-
-    const html = buildLabelSheetHtml(printItems, printMode)
-
-
-    const win = window.open('', '_blank', 'width=800,height=600')
-    if (!win) {
-      alert('Please allow popups for this site to print labels.')
-      return
-    }
-    win.document.write(html)
-    win.document.close()
-
-    let sent = false
-    const send = () => {
-      if (sent) return
-      sent = true
-      try {
-        win.focus()
-        win.print()
-      } catch (_) { /* window already gone */ }
-      setTimeout(() => { try { win.close() } catch (_) {} }, 1200)
-    }
-    win.onload = send
-    // Fallback if onload doesn't fire (document.write windows sometimes skip it)
-    setTimeout(send, 900)
+    printLabels(printItems, printMode)
   }
 
   return (
@@ -227,6 +203,40 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                     </div>
                   </button>
                 </div>
+
+                {/* One-time printer setup. A wrong paper size is what prints the date /
+                    web address / 1-1 text and spreads one label across several stickers. */}
+                {printMode === 'thermal' && (
+                  <details className="w-full text-xs border border-amber-500/40 bg-amber-500/5 rounded-lg flex-shrink-0">
+                    <summary className="cursor-pointer select-none px-3 py-2 font-semibold text-amber-600">
+                      Sticker printing wrong? Set the printer up once →
+                    </summary>
+                    <div className="px-3 pb-3 pt-1 text-muted-foreground leading-relaxed space-y-2">
+                      <p>
+                        Extra text around the sticker (date, web address, <b>1/1</b>) or one label
+                        spread over several stickers always means the <b>paper size is wrong</b>.
+                        Chrome draws that text itself — the app cannot remove it, these settings can.
+                      </p>
+                      <p className="font-semibold text-foreground">In the print dialog</p>
+                      <ol className="list-decimal ml-4 space-y-0.5">
+                        <li><b>Destination:</b> Xprinter XP-365B</li>
+                        <li>Click <b>More settings</b></li>
+                        <li><b>Paper size:</b> {LABEL_W_MM} × {LABEL_H_MM} mm label</li>
+                        <li><b>Margins: None</b> · <b>Scale:</b> Default</li>
+                        <li>Untick <b>Headers and footers</b></li>
+                      </ol>
+                      <p className="font-semibold text-foreground">
+                        No {LABEL_W_MM} × {LABEL_H_MM} mm in that list? Add it in Windows first
+                      </p>
+                      <p>
+                        Settings › Printers &amp; scanners › <b>Xprinter XP-365B</b> › Printing
+                        preferences › Page Setup › Paper Size › <b>New / Custom</b> — width{' '}
+                        {LABEL_W_MM} mm, height {LABEL_H_MM} mm — save it and set it as the default.
+                      </p>
+                      <p className="text-[11px]">Chrome remembers this for the XP-365B afterwards.</p>
+                    </div>
+                  </details>
+                )}
 
                 {/* Quantity List */}
                 <div className="w-full bg-muted/30 border border-border rounded-xl p-3 flex-shrink-0">

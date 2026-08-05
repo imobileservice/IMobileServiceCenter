@@ -12,6 +12,7 @@ import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
 import BarcodeLabelModal from "@/components/admin/barcode-label-modal"
+import { printLabelCopies } from "@/lib/labels/print-labels"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 
@@ -107,6 +108,19 @@ export default function ProductsPage() {
     setIsModalOpen(false)
     setEditingProduct(null)
     // Products will be refetched via the event listener
+  }
+
+  /** One sticker straight to the printer - no modal in between. */
+  const handleQuickPrint = (product: { id?: string; name: string; barcode: string; price?: number }) => {
+    if (!product.barcode) return
+    const sent = printLabelCopies({
+      id: product.id || product.barcode,
+      name: product.name,
+      barcode: product.barcode,
+      price: product.price,
+    }, 1)
+    if (sent) toast.success(`Printing label · ${product.barcode}`)
+    else toast.error('Could not open the printer')
   }
 
   const handleProductSaved = (product: { name: string; barcode: string; price: number }) => {
@@ -498,10 +512,17 @@ export default function ProductsPage() {
                       <Button
                         size="icon"
                         variant="outline"
-                        onClick={() => (product as any).barcode && setPrintingProducts([{ id: product.id, name: getDisplayName(product), barcode: (product as any).barcode, price: product.price }])}
+                        onClick={(e) => {
+                          const barcode = (product as any).barcode
+                          if (!barcode) return
+                          const item = { id: product.id, name: getDisplayName(product), barcode, price: product.price }
+                          // Shift/Ctrl-click skips the modal and sends one sticker straight out.
+                          if (e.shiftKey || e.ctrlKey || e.metaKey) handleQuickPrint(item)
+                          else setPrintingProducts([item])
+                        }}
                         disabled={!(product as any).barcode}
                         className="w-8 h-8 shrink-0 text-foreground bg-transparent border-border hover:bg-muted"
-                        title={(product as any).barcode ? "Print Barcode Label" : "No barcode generated"}
+                        title={(product as any).barcode ? "Print Barcode Label (Shift+Click prints 1 immediately)" : "No barcode generated"}
                       >
                         <Tag className="w-4 h-4" />
                       </Button>

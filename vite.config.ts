@@ -2,6 +2,22 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+/*
+ * Every deploy gets its own asset filenames.
+ *
+ * Vite names files purely by content hash, so a deploy that does not change the
+ * CSS re-uses the exact same /assets/ URL. When a CDN is holding a poisoned copy
+ * of that URL (the SPA fallback page cached as the stylesheet), redeploying
+ * therefore fixes nothing - the site stays broken until the entry expires, which
+ * is how a working build kept serving a black screen.
+ *
+ * A per-build id in the name means a new deploy always lands on URLs no cache has
+ * ever seen, so shipping a fix is enough on its own. The server-side 404 for
+ * missing /assets/* (see src/server/index.ts) stops the poisoning at the source;
+ * this is the belt to that pair of braces.
+ */
+const BUILD_ID = Date.now().toString(36)
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -54,5 +70,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        entryFileNames: `assets/[name]-${BUILD_ID}-[hash].js`,
+        chunkFileNames: `assets/[name]-${BUILD_ID}-[hash].js`,
+        assetFileNames: `assets/[name]-${BUILD_ID}-[hash][extname]`,
+      },
+    },
   }
 })
