@@ -1,12 +1,96 @@
 import { Request, Response } from 'express'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { verifyPassword } from '../utils/password'
+import { sendEmail } from '../utils/email'
+import { buildAdminOtpEmail } from './otp-email'
+
+const OTP_TTL_MINUTES = 10
+const OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1000
+const MAX_ATTEMPTS = 5
+const RESEND_COOLDOWN_MS = 60 * 1000
+
+const isProduction = () => process.env.NODE_ENV === 'production'
+
+const hashOtp = (otp: string) => crypto.createHash('sha256').update(String(otp).trim()).digest('hex')
+
+/** admin@example.com -> a****n@example.com, so the UI can confirm where the code went. */
+const maskEmail = (email: string) => {
+    const [local, domain] = email.split('@')
+    if (!domain) return email
+    if (local.length <= 2) return `${local[0]}***@${domain}`
+    return `${local[0]}${'*'.repeat(Math.min(local.length - 2, 6))}${local[local.length - 1]}@${domain}`
+}
+
+const getAdminClient = (): SupabaseClient | null => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!supabaseUrl || !supabaseServiceKey) return null
+    return createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+    })
+}
+
+/** Fetch the admin row and check the password. Returns null when the credentials are wrong. */
+const authenticateAdmin = async (client: SupabaseClient, email: string, password: string) => {
+    const { data: admin, error } = await client
+        .from('admins')
+        .select('id, email, whatsapp, password')
+        .eq('email', email)
+        .single()
+
+    if (error || !admin) return null
+    if (!verifyPassword(password, admin.password)) return null
+    return admin
+}
+
+/**
+ * Creates a fresh code for this admin, stores only its hash and emails it.
+ * Throws when the email could not be delivered.
+ */
+const issueOtp = async (client: SupabaseClient, email: string) => {
+    const otp = crypto.randomInt(100000, 1000000).toString()
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS)
+
+    // Any earlier code for this admin becomes invalid.
+    await client.from('admin_otps').delete().eq('email', email).eq('used', false)
+
+    const { error: insertError } = await client.from('admin_otps').insert({
+        email,
+        otp: hashOtp(otp),
+        expires_at: expiresAt.toISOString(),
+        used: false,
+    })
+
+    if (insertError) {
+        console.error('[Admin OTP] Failed to store code:', insertError)
+        throw Object.assign(new Error('Could not create a verification code'), { status: 500 })
+    }
+
+    // Always available to whoever can read the server logs, so a mail outage
+    // never locks the shop out of its own admin panel.
+    console.log(`[Admin OTP] Code for ${email}: ${otp} (valid ${OTP_TTL_MINUTES} min)`)
+
+    const { html, text, subject } = buildAdminOtpEmail(otp, OTP_TTL_MINUTES)
+
+    try {
+        await sendEmail({ to: email, subject, html, text })
+    } catch (mailError: any) {
+        console.error('[Admin OTP] Email delivery failed:', mailError?.message)
+        throw Object.assign(
+            new Error(
+                'Could not send the verification email. Check RESEND_API_KEY and EMAIL_FROM in your .env, then try again.'
+            ),
+            { status: 502, otp }
+        )
+    }
+
+    return { otp, expiresAt }
+}
 
 /**
  * POST /api/admin/login/init
- * Validate credentials (email/password) and log the admin in directly.
- * OTP verification has been disabled.
+ * Step 1: validate email + password, then email a one-time code.
  */
 export async function initAdminLoginHandler(req: Request, res: Response) {
     console.log(`🔐 [Admin] Login init attempt for: ${req.body?.email}`)
@@ -17,48 +101,50 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
             return res.status(400).json({ error: 'Email and password are required' })
         }
 
-        // Normalize email to match verification handler
-        const normalizedEmail = email.toLowerCase().trim()
+        const normalizedEmail = String(email).toLowerCase().trim()
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-        if (!supabaseUrl || !supabaseKey || !supabaseServiceKey) {
+        const adminClient = getAdminClient()
+        if (!adminClient) {
             return res.status(503).json({ error: 'Server configuration error (Supabase)' })
         }
 
-        // 1. Fetch admin details from dedicated 'admins' table
-        const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-        const { data: admin, error: adminError } = await adminClient
-            .from('admins')
-            .select('id, whatsapp, password')
-            .eq('email', normalizedEmail)
-            .single()
-
-        if (adminError || !admin) {
-            console.error('Admin fetch error:', adminError)
+        const admin = await authenticateAdmin(adminClient, normalizedEmail, password)
+        if (!admin) {
             return res.status(401).json({ error: 'Invalid email or password' })
         }
 
-        // 2. Validate Password
-        if (!verifyPassword(password, admin.password)) {
-            return res.status(401).json({ error: 'Invalid email or password' })
+        try {
+            await issueOtp(adminClient, normalizedEmail)
+        } catch (otpError: any) {
+            const status = otpError?.status || 500
+            // In development the code is returned so local work is not blocked by
+            // an unconfigured mailbox. Never in production.
+            if (status === 502 && !isProduction() && otpError?.otp) {
+                return res.json({
+                    success: true,
+                    requiresOtp: true,
+                    email: normalizedEmail,
+                    maskedEmail: maskEmail(normalizedEmail),
+                    expiresIn: OTP_TTL_MS / 1000,
+                    emailDelivered: false,
+                    devOtp: otpError.otp,
+                    message: 'Email delivery failed - using the development code below',
+                })
+            }
+            return res.status(status).json({ error: otpError.message })
         }
 
-        // OTP disabled: credentials valid -> log the admin in directly.
-        console.log(`[Admin] ✅ Login successful (OTP disabled) for ${normalizedEmail}`)
+        console.log(`[Admin] ✅ Verification code sent to ${normalizedEmail}`)
 
         return res.json({
             success: true,
-            admin: {
-                id: admin.id,
-                email: normalizedEmail,
-                whatsapp: admin.whatsapp
-            },
-            message: 'Login successful'
+            requiresOtp: true,
+            email: normalizedEmail,
+            maskedEmail: maskEmail(normalizedEmail),
+            expiresIn: OTP_TTL_MS / 1000,
+            emailDelivered: true,
+            message: 'Verification code sent to your email',
         })
-
     } catch (e: any) {
         console.error('Login Init Error:', e)
         return res.status(500).json({ error: 'Internal Server Error' })
@@ -66,32 +152,106 @@ export async function initAdminLoginHandler(req: Request, res: Response) {
 }
 
 /**
+ * POST /api/admin/login/resend
+ * Re-sends the code. Credentials are re-checked so this cannot be used to
+ * spam an admin's inbox.
+ */
+export async function resendAdminOtpHandler(req: Request, res: Response) {
+    try {
+        const { email, password } = req.body
+
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' })
+        }
+
+        const normalizedEmail = String(email).toLowerCase().trim()
+
+        const adminClient = getAdminClient()
+        if (!adminClient) {
+            return res.status(503).json({ error: 'Server configuration error (Supabase)' })
+        }
+
+        const admin = await authenticateAdmin(adminClient, normalizedEmail, password)
+        if (!admin) {
+            return res.status(401).json({ error: 'Invalid email or password' })
+        }
+
+        // Cooldown so the button cannot be hammered.
+        const { data: recent } = await adminClient
+            .from('admin_otps')
+            .select('created_at')
+            .eq('email', normalizedEmail)
+            .eq('used', false)
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+        const lastCreatedAt = recent?.[0]?.created_at ? new Date(recent[0].created_at).getTime() : 0
+        const elapsed = Date.now() - lastCreatedAt
+        if (lastCreatedAt && elapsed < RESEND_COOLDOWN_MS) {
+            return res.status(429).json({
+                error: `Please wait ${Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1000)}s before requesting another code`,
+                retryAfter: Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1000),
+            })
+        }
+
+        try {
+            await issueOtp(adminClient, normalizedEmail)
+        } catch (otpError: any) {
+            const status = otpError?.status || 500
+            if (status === 502 && !isProduction() && otpError?.otp) {
+                return res.json({
+                    success: true,
+                    expiresIn: OTP_TTL_MS / 1000,
+                    emailDelivered: false,
+                    devOtp: otpError.otp,
+                    message: 'Email delivery failed - using the development code below',
+                })
+            }
+            return res.status(status).json({ error: otpError.message })
+        }
+
+        return res.json({
+            success: true,
+            expiresIn: OTP_TTL_MS / 1000,
+            emailDelivered: true,
+            maskedEmail: maskEmail(normalizedEmail),
+            message: 'A new verification code is on its way',
+        })
+    } catch (e: any) {
+        console.error('Login Resend Error:', e)
+        return res.status(500).json({ error: 'Internal Server Error' })
+    }
+}
+
+/**
  * POST /api/admin/login/verify
- * Step 2: Verify OTP and return Session
+ * Step 2: check the code and return the admin session.
  */
 export async function verifyAdminLoginHandler(req: Request, res: Response) {
     try {
         const { email, password, otp } = req.body
 
         if (!email || !password || !otp) {
-            return res.status(400).json({ error: 'Email, password, and OTP are required' })
+            return res.status(400).json({ error: 'Email, password, and code are required' })
         }
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+        const normalizedEmail = String(email).toLowerCase().trim()
+        const normalizedOtp = String(otp).trim()
 
-        if (!supabaseUrl || !supabaseKey || !supabaseServiceKey) {
+        if (!/^\d{6}$/.test(normalizedOtp)) {
+            return res.status(400).json({ error: 'Enter the 6-digit code from your email' })
+        }
+
+        const adminClient = getAdminClient()
+        if (!adminClient) {
             return res.status(503).json({ error: 'Server configuration error' })
         }
 
-        const adminClient = createClient(supabaseUrl, supabaseServiceKey)
-
-        const normalizedEmail = email.toLowerCase().trim()
-        const normalizedOtp = String(otp).trim()
-
-        // 1. Verify OTP - Fetch by email first to give better error messages
-        console.log(`[Verify] Checking OTP for ${normalizedEmail}. Input: ${normalizedOtp}`)
+        // Password is re-validated so a leaked code alone is not enough.
+        const admin = await authenticateAdmin(adminClient, normalizedEmail, password)
+        if (!admin) {
+            return res.status(401).json({ error: 'Invalid email or password' })
+        }
 
         const { data: otpList, error: otpFetchError } = await adminClient
             .from('admin_otps')
@@ -106,55 +266,49 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
         }
 
         if (!otpList || otpList.length === 0) {
-            console.warn(`[Verify] No OTP record found for ${normalizedEmail}`)
-            return res.status(401).json({ error: 'No OTP request found for this email' })
+            return res.status(401).json({ error: 'No code was requested for this email. Start again.' })
         }
 
         const otpData = otpList[0]
 
-        if (String(otpData.otp) !== normalizedOtp) {
-            // Also try hashed comparison (in case stored as hash)
-            const hashedInput = crypto.createHash('sha256').update(normalizedOtp).digest('hex')
-            if (otpData.otp !== hashedInput) {
-                console.warn(`[Verify] OTP Mismatch. Input hash: ${hashedInput}, Stored: ${otpData.otp}`)
-                return res.status(401).json({ error: 'Invalid verification code' })
-            }
-        }
-
         if (otpData.used) {
-            console.warn(`[Verify] OTP already used. ID: ${otpData.id}`)
-            return res.status(401).json({ error: 'This code has already been used' })
+            return res.status(401).json({ error: 'This code has already been used. Request a new one.' })
         }
 
-        // Check expiration
         if (new Date(otpData.expires_at) < new Date()) {
-            return res.status(401).json({ error: 'OTP has expired' })
+            return res.status(401).json({ error: 'This code has expired. Request a new one.' })
         }
 
-        // Mark as used
-        await adminClient
-            .from('admin_otps')
-            .update({ used: true })
-            .eq('id', otpData.id)
-
-        // 2. Fetch admin details (password was already validated in init step)
-        console.log(`[Verify] Fetching admin details for ${normalizedEmail}`)
-        const { data: admin, error: adminError } = await adminClient
-            .from('admins')
-            .select('id, email, whatsapp, password')
-            .eq('email', normalizedEmail)
-            .single()
-
-        if (adminError || !admin) {
-            console.error('[Verify] Admin fetch error:', adminError)
-            return res.status(401).json({ error: 'Admin not found' })
+        const attempts = Number(otpData.attempts || 0)
+        if (attempts >= MAX_ATTEMPTS) {
+            await adminClient.from('admin_otps').update({ used: true }).eq('id', otpData.id)
+            return res.status(429).json({ error: 'Too many incorrect attempts. Request a new code.' })
         }
 
-        // Verify password matches (double-check security)
-        if (!verifyPassword(password, admin.password)) {
-            console.error('[Verify] Password mismatch')
-            return res.status(401).json({ error: 'Invalid credentials' })
+        // Stored as a SHA-256 hash; the plain comparison keeps codes issued by
+        // the older handler working until they expire.
+        const matches = otpData.otp === hashOtp(normalizedOtp) || String(otpData.otp) === normalizedOtp
+
+        if (!matches) {
+            const nextAttempts = attempts + 1
+            const { error: attemptError } = await adminClient
+                .from('admin_otps')
+                .update({ attempts: nextAttempts })
+                .eq('id', otpData.id)
+
+            // Column missing (migration not run yet) - the code still works, just without the counter.
+            if (attemptError) console.warn('[Verify] Could not record attempt:', attemptError.message)
+
+            const remaining = Math.max(0, MAX_ATTEMPTS - nextAttempts)
+            return res.status(401).json({
+                error: remaining > 0
+                    ? `Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} left.`
+                    : 'Incorrect code. Request a new one.',
+                attemptsRemaining: remaining,
+            })
         }
+
+        await adminClient.from('admin_otps').update({ used: true }).eq('id', otpData.id)
 
         console.log(`[Verify] ✅ Login successful for ${normalizedEmail}`)
 
@@ -163,11 +317,10 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
             admin: {
                 id: admin.id,
                 email: admin.email,
-                whatsapp: admin.whatsapp
+                whatsapp: admin.whatsapp,
             },
-            message: 'Login successful'
+            message: 'Login successful',
         })
-
     } catch (e: any) {
         console.error('Login Verify Error:', e)
         return res.status(500).json({ error: 'Internal Server Error' })

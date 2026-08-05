@@ -177,6 +177,8 @@ export interface CreatePurchasePayload {
   supplier_name?: string
   notes?: string
   created_by?: string
+  /** Shop the goods are received into. Defaults to Meegoda. */
+  shop?: string
   items: PurchaseItem[]
 }
 
@@ -193,10 +195,92 @@ export const inventoryPurchasesService = {
 
 // ─── SUPPLIERS ───────────────────────────────────────
 
-export const inventorySuppliersService = {
-  getAll: () => apiFetch('/suppliers'),
+export type RestockStatus = 'out' | 'low' | 'ok'
 
-  create: (supplier: { name: string; contact_person?: string; phone?: string; email?: string; address?: string }) =>
+export interface Supplier {
+  id: string
+  name: string
+  contact_person?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  notes?: string | null
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SupplierStats {
+  products: number
+  out_of_stock: number
+  low_stock: number
+  healthy: number
+  needed_units: number
+  estimated_cost: number
+}
+
+export interface SupplierWithStats extends Supplier {
+  stats: SupplierStats
+  last_purchase_at: string | null
+  purchase_count: number
+  total_spent: number
+}
+
+export interface RestockItem {
+  product_id: string
+  name: string
+  raw_name: string
+  barcode: string | null
+  brand: string | null
+  category: string | null
+  image: string | null
+  quantity: number
+  damaged_quantity: number
+  low_stock_threshold: number
+  target_stock_level: number
+  is_target_auto: boolean
+  qty_meegoda: number
+  qty_padukka: number
+  qty_padukka_new: number
+  status: RestockStatus
+  /** Units missing to reach the restock target. */
+  needed_qty: number
+  /** Units to actually order (needed qty, rounded up to the supplier pack size). */
+  suggested_qty: number
+  unit_cost: number
+  estimated_cost: number
+  link_id: string | null
+  supplier_sku: string | null
+  supplier_cost_price: number | null
+  reorder_qty: number
+  lead_time_days: number | null
+  is_preferred: boolean
+  link_notes: string | null
+  suppliers?: Array<{ id: string; name: string; phone?: string | null; email?: string | null; is_preferred?: boolean }>
+}
+
+export interface SupplierProductInput {
+  product_id: string
+  supplier_sku?: string
+  cost_price?: number | null
+  reorder_qty?: number
+  lead_time_days?: number | null
+  is_preferred?: boolean
+  notes?: string
+}
+
+export const inventorySuppliersService = {
+  getAll: (params?: { withStats?: boolean; search?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.withStats) qs.set('with_stats', 'true')
+    if (params?.search) qs.set('search', params.search)
+    const query = qs.toString() ? `?${qs.toString()}` : ''
+    return apiFetch<{ data: SupplierWithStats[]; migration_required?: boolean }>(`/suppliers${query}`)
+  },
+
+  getById: (id: string) => apiFetch<{ data: Supplier }>(`/suppliers/${id}`),
+
+  create: (supplier: { name: string; contact_person?: string; phone?: string; email?: string; address?: string; notes?: string; is_active?: boolean }) =>
     apiFetch('/suppliers', { method: 'POST', body: JSON.stringify(supplier) }),
 
   update: (id: string, updates: any) => apiFetch(`/suppliers/${id}`, {
@@ -205,6 +289,47 @@ export const inventorySuppliersService = {
   }),
 
   delete: (id: string) => apiFetch(`/suppliers/${id}`, { method: 'DELETE' }),
+
+  /** Everything that is low or out of stock, with the supplier(s) that can deliver it. */
+  getRestockSummary: (params?: { status?: 'all' | 'low' | 'out' | 'needed'; supplier_id?: string; search?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.supplier_id) qs.set('supplier_id', params.supplier_id)
+    if (params?.search) qs.set('search', params.search)
+    const query = qs.toString() ? `?${qs.toString()}` : ''
+    return apiFetch<{
+      data: RestockItem[]
+      totals: SupplierStats & { unassigned: number; suppliers: number }
+      migration_required?: boolean
+    }>(`/suppliers/restock-summary${query}`)
+  },
+
+  getProducts: (id: string) =>
+    apiFetch<{ data: RestockItem[]; totals: SupplierStats; migration_required?: boolean }>(`/suppliers/${id}/products`),
+
+  getAvailableProducts: (id: string, search?: string) => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : ''
+    return apiFetch<{ data: Array<{ id: string; name: string; barcode: string | null; brand: string | null; image: string | null; unit_cost: number; stock: number }> }>(
+      `/suppliers/${id}/available-products${query}`
+    )
+  },
+
+  addProducts: (id: string, payload: { product_ids?: string[]; items?: SupplierProductInput[] }) =>
+    apiFetch(`/suppliers/${id}/products`, { method: 'POST', body: JSON.stringify(payload) }),
+
+  updateProduct: (
+    id: string,
+    productId: string,
+    updates: Partial<SupplierProductInput> & { target_stock_level?: number; low_stock_threshold?: number }
+  ) => apiFetch(`/suppliers/${id}/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  }),
+
+  removeProduct: (id: string, productId: string) =>
+    apiFetch(`/suppliers/${id}/products/${productId}`, { method: 'DELETE' }),
+
+  getPurchases: (id: string) => apiFetch(`/suppliers/${id}/purchases`),
 }
 
 // ─── CUSTOMERS ───────────────────────────────────────

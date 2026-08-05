@@ -7,7 +7,7 @@ const router = Router()
 router.post('/', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
-    const { supplier_id, supplier_name, notes, created_by, items } = req.body
+    const { supplier_id, supplier_name, notes, created_by, items, shop } = req.body
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'At least one item is required' })
@@ -19,13 +19,23 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    const { data, error } = await supabase.rpc('process_purchase', {
+    const rpcArgs: Record<string, any> = {
       p_supplier_id: supplier_id || null,
       p_supplier_name: supplier_name || null,
       p_notes: notes || null,
       p_created_by: created_by || 'admin',
       p_items: items,
-    })
+      p_shop: shop || 'Meegoda',
+    }
+
+    let { data, error } = await supabase.rpc('process_purchase', rpcArgs)
+
+    // Database still on the pre-supplier_management version of process_purchase
+    // (no p_shop argument). Retry without it so purchases keep working.
+    if (error && /p_shop|function .*process_purchase/i.test(`${error.message} ${error.details || ''}`)) {
+      delete rpcArgs.p_shop
+      ;({ data, error } = await supabase.rpc('process_purchase', rpcArgs))
+    }
 
     if (error) throw error
 

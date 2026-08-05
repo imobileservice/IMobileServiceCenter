@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { motion } from "framer-motion"
-import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen, Database, Barcode } from "lucide-react"
+import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen, Database, Barcode, Truck } from "lucide-react"
 import { useAdminStore } from "@/lib/admin-store"
 import { Button } from "@/components/ui/button"
 
@@ -12,6 +12,7 @@ const MENU_ITEMS = [
   { icon: Package, label: "Products", href: "/admin/products" },
   { icon: FolderTree, label: "Categories", href: "/admin/categories" },
   { icon: Database, label: "Inventory", href: "/admin/inventory", color: "text-green-500" },
+  { icon: Truck, label: "Suppliers", href: "/admin/suppliers", color: "text-blue-500" },
   { icon: Barcode, label: "Sales History", href: "/admin/sales", color: "text-purple-500" },
   { icon: ShoppingCart, label: "Orders", href: "/admin/orders" },
   { icon: Users, label: "Customers", href: "/admin/customers" },

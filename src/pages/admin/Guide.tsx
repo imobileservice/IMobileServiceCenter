@@ -70,6 +70,13 @@ const guideSteps = [
         contentEn: "The Settings section allows you to configure basic information about your site, such as the contact email, store address, social media links, and other fundamental configurations.",
         contentSi: "සැකසුම් (Settings) පිටුව මඟින් ඔබට අමතන්නට අවශ්‍ය ඊමේල් ලිපිනය, වෙළඳසැලේ ලිපිනය, සමාජ මාධ්‍ය සබැඳි සහ වෙනත් මූලික සැකසුම් වැනි ඔබේ වෙබ් අඩවිය පිළිබඳ මූලික තොරතුරු වින්‍යාස කිරීමට (configure) ඉඩ ලබා දේ.",
     },
+    {
+        value: "item-10",
+        titleEn: "Suppliers & Restocking",
+        titleSi: "සැපයුම්කරුවන් සහ තොග නැවත පිරවීම (Suppliers)",
+        contentEn: "The Suppliers page shows what is out of stock, what is running low, and exactly how many units you need to order. Add a supplier with 'Add Supplier', open it with 'Manage Stock', and attach the products that supplier delivers. Set a 'Target' quantity for each product to control how many units the system asks for; leave it blank and it is calculated automatically. When goods arrive, tick the products, check the quantities and press 'Receive Stock' — the stock is added to the shop you select and the purchase is recorded against the supplier.",
+        contentSi: "සැපයුම්කරුවන් (Suppliers) පිටුවෙන් තොග අවසන් වූ භාණ්ඩ, තොග අඩු වෙමින් පවතින භාණ්ඩ සහ ඇණවුම් කළ යුතු ප්‍රමාණය හරියටම පෙන්වයි. 'Add Supplier' මඟින් සැපයුම්කරුවෙකු එක් කර, 'Manage Stock' ඔබා ඔහු සපයන නිෂ්පාදන එකතු කරන්න. සෑම නිෂ්පාදනයකටම 'Target' ප්‍රමාණයක් සකසන්න; හිස්ව තැබුවහොත් එය ස්වයංක්‍රීයව ගණනය වේ. භාණ්ඩ ලැබුණු විට, නිෂ්පාදන තෝරා ප්‍රමාණය පරීක්ෂා කර 'Receive Stock' ඔබන්න — තෝරාගත් වෙළඳසැලට තොගය එකතු වන අතර එම ගැනුම සැපයුම්කරු යටතේ සටහන් වේ.",
+    },
 ]
 
 export default function AdminGuide() {

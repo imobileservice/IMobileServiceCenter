@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { initAdminLoginHandler, verifyAdminLoginHandler } from './login'
+import { initAdminLoginHandler, verifyAdminLoginHandler, resendAdminOtpHandler } from './login'
 import { getOrdersHandler, getOrderByIdHandler, getCustomersHandler, getMessagesHandler, getStatsHandler } from './data'
 import {
   createProductHandler,
@@ -38,8 +38,9 @@ router.use((req, res, next) => {
     next();
 });
 
-// New 2-Factor Login Flow
+// Two-step login: credentials -> emailed one-time code
 router.post('/login/init', initAdminLoginHandler)
+router.post('/login/resend', resendAdminOtpHandler)
 router.post('/login/verify', verifyAdminLoginHandler)
 
 // Diagnostic SMTP test (Admin only)

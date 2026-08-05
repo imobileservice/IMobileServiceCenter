@@ -34,6 +34,7 @@ const AdminGuide = lazyWithRetry(() => import('./pages/admin/Guide'))
 const AdminCashiers = lazyWithRetry(() => import('./pages/admin/AdminCashiers'))
 const AdminInventory = lazyWithRetry(() => import('./pages/admin/inventory/InventoryPage'))
 const AdminSales = lazyWithRetry(() => import('./pages/admin/inventory/SalesPage'))
+const AdminSuppliers = lazyWithRetry(() => import('./pages/admin/suppliers/SuppliersPage'))
 const CashierLogin = lazyWithRetry(() => import('./pages/cashier/CashierLogin'))
 const CashierPOS = lazyWithRetry(() => import('./pages/cashier/CashierPOS'))
 const CashierWebsiteTerminal = lazyWithRetry(() => import('./pages/cashier/CashierWebsiteTerminal'))
@@ -81,6 +82,7 @@ export default function App() {
         <Route path="/admin/guide" element={<AdminGuide />} />
         <Route path="/admin/inventory" element={<AdminInventory />} />
         <Route path="/admin/sales" element={<AdminSales />} />
+        <Route path="/admin/suppliers" element={<AdminSuppliers />} />
         <Route path="/admin/cashiers" element={<AdminCashiers />} />
         <Route path="/cashier/login" element={<CashierLogin />} />
         <Route path="/cashier" element={<CashierPOS />} />
