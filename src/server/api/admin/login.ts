@@ -4,13 +4,14 @@ import crypto from 'crypto'
 import { verifyPassword } from '../utils/password'
 import { sendEmail } from '../utils/email'
 import { buildAdminOtpEmail } from './otp-email'
+// Shared so a whitespace-padded NODE_ENV cannot quietly turn this into the
+// development path, which returns the one-time code to the caller.
+import { isProduction } from '../../env'
 
 const OTP_TTL_MINUTES = 10
 const OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1000
 const MAX_ATTEMPTS = 5
 const RESEND_COOLDOWN_MS = 60 * 1000
-
-const isProduction = () => process.env.NODE_ENV === 'production'
 
 const hashOtp = (otp: string) => crypto.createHash('sha256').update(String(otp).trim()).digest('hex')
 
@@ -77,9 +78,13 @@ const issueOtp = async (client: SupabaseClient, email: string) => {
         await sendEmail({ to: email, subject, html, text })
     } catch (mailError: any) {
         console.error('[Admin OTP] Email delivery failed:', mailError?.message)
+        // Carry the provider's own wording through. The caller has already passed
+        // the password check, and a generic "could not send" hid the one detail
+        // that identified the fault ("You can only send testing emails to your
+        // own email address") behind logs nobody was reading.
         throw Object.assign(
             new Error(
-                'Could not send the verification email. Check RESEND_API_KEY and EMAIL_FROM in your .env, then try again.'
+                `Could not send the verification email. ${mailError?.message || 'Unknown mail error.'}`
             ),
             { status: 502, otp }
         )

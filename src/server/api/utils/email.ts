@@ -33,11 +33,31 @@ export const sendEmail = async ({
 }) => {
     const apiKey = process.env.RESEND_API_KEY
 
-    // Default sender - use 'onboarding@resend.dev' for testing before domain verification
-    const fromEmail = process.env.EMAIL_FROM || 'IMobile Service Center <onboarding@resend.dev>'
+    /*
+     * The default MUST be an address on our own verified domain.
+     *
+     * It used to fall back to Resend's shared onboarding@resend.dev, which is a
+     * testing sender: Resend accepts it only when the recipient is the account
+     * owner and answers every other recipient with
+     *   403 "You can only send testing emails to your own email address".
+     * With EMAIL_FROM unset on the host, that turned into "email delivery
+     * failed" for every real customer and admin while the API key itself was
+     * perfectly valid - so the key kept getting rotated to fix a sender problem.
+     *
+     * imobileservicecenter.lk is verified in Resend (DKIM + SPF + MX are live),
+     * so this default works without any dashboard variable at all.
+     */
+    const fromEmail = process.env.EMAIL_FROM || 'IMobile Service Center <noreply@imobileservicecenter.lk>'
 
     if (!apiKey) {
         throw new Error('[Email] Missing RESEND_API_KEY. Get one free at https://resend.com')
+    }
+
+    if (/@resend\.dev>?\s*$/i.test(fromEmail)) {
+        console.warn(
+            `[Email] ⚠️ Sending from ${fromEmail}. Resend only delivers this sender to the account owner; ` +
+            'set EMAIL_FROM to an address on a verified domain.'
+        )
     }
 
     console.log(`[Email] Sending via Resend API to: ${to} | From: ${fromEmail} | Subject: ${subject || templateId}`)

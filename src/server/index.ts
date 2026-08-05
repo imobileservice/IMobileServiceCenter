@@ -1,4 +1,6 @@
-import 'dotenv/config'
+// Must stay the first import: it loads .env and normalises NODE_ENV before any
+// other module can read it. See src/server/env.ts.
+import './env'
 // SURGICAL FIX: Force correct Supabase URL if Railway dashboard has stale/broken ones
 // This MUST be at the very top of the entry point to override variables before other modules load
 const CORRECT_URL = 'https://jzdsgqdwpmfrrspxpehi.supabase.co';
