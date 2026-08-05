@@ -1,20 +1,33 @@
 # Cloudflare Pages SPA rewrites for known client routes.
-# Keep this narrow so missing /assets/*.js chunks return a real missing-file response.
-/about /index.html 200
-/shop /index.html 200
-/product/* /index.html 200
-/cart /index.html 200
-/checkout /index.html 200
-/invoice/* /index.html 200
-/contact /index.html 200
-/profile /index.html 200
-/signin /index.html 200
-/signup /index.html 200
-/verify-email /index.html 200
-/problem /index.html 200
-/test-supabase /index.html 200
-/auth/* /index.html 200
-/admin /index.html 200
-/admin/* /index.html 200
-/cashier /index.html 200
-/cashier/* /index.html 200
+#
+# Keep this narrow so a missing /assets/*.js chunk falls through to 404.html and
+# returns a real 404 instead of the app shell. Serving HTML for a missing chunk is
+# what white-screens this site: browsers cache that HTML *as* the module and then
+# fail with "Failed to load module script: ... MIME type of text/html" for hours.
+#
+# The destination MUST be "/" and never "/index.html". Pages normalises a request
+# for /index.html with a 308 redirect to /, and that 308 leaks out to the browser
+# instead of the rewrite being served - which had quietly turned every route below
+# into a redirect to the homepage. Rewriting to "/" serves the same app shell with
+# a plain 200.
+#
+# Every route in src/App.tsx needs an entry here, or it lands on 404.html.
+# Verify after deploying with: npm run check:deploy
+/about / 200
+/shop / 200
+/product/* / 200
+/cart / 200
+/checkout / 200
+/invoice/* / 200
+/contact / 200
+/profile / 200
+/signin / 200
+/signup / 200
+/verify-email / 200
+/problem / 200
+/test-supabase / 200
+/auth/* / 200
+/admin / 200
+/admin/* / 200
+/cashier / 200
+/cashier/* / 200

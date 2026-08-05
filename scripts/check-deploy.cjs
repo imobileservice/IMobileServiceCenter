@@ -12,12 +12,15 @@
  * Run this AFTER every deploy, before telling anyone it is fixed.
  */
 const https = require('https');
+const http = require('http');
 const { URL } = require('url');
 
 const BASE = (process.argv[2] || 'https://imobileservicecenter.lk').replace(/\/$/, '');
 
+// http:// is allowed so the same checks can run against `wrangler pages dev`
+// BEFORE a deploy, which is where the fallback behaviour is cheapest to catch.
 const get = (url) => new Promise((resolve, reject) => {
-  https.get(url, { headers: { 'User-Agent': 'deploy-check' } }, (res) => {
+  (url.startsWith('http://') ? http : https).get(url, { headers: { 'User-Agent': 'deploy-check' } }, (res) => {
     let body = '';
     res.on('data', c => body += c);
     res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
@@ -34,7 +37,16 @@ const ok = (name, pass, detail) => results.push({ name, pass, detail });
  * the SPA fallback that was routing /admin/*, so the whole admin panel 404'd in
  * production. Asset checks alone did not catch it. Routes are checked first now.
  */
-const ROUTES = ['/', '/shop', '/product/123', '/admin/login', '/admin/products', '/cashier/pos'];
+/*
+ * One route per rule family in public/_redirects - plain paths and splats both,
+ * because they fail independently. A rewrite pointed at /index.html returns a 308
+ * to / rather than the app shell, so a redirect here is a failure, not a pass.
+ */
+const ROUTES = [
+  '/', '/shop', '/about', '/cart', '/contact', '/signin',
+  '/product/123', '/invoice/123', '/auth/callback',
+  '/admin', '/admin/login', '/admin/products', '/cashier/pos',
+];
 
 (async () => {
   // 0. every client route must serve the app shell directly - no 404, no redirect
@@ -74,6 +86,14 @@ const ROUTES = ['/', '/shop', '/product/123', '/admin/login', '/admin/products',
   ok('missing asset does NOT return 200 text/html',
     !poisonable,
     `${missing.status} ${mct}, cache-control: ${mcc || '(none)'}`);
+
+  // 3b. the SPA fallback must stay narrow. If an unknown page still answers with
+  // the app shell, the rewrite is a catch-all again and check 3 only passes by
+  // luck - the next missing chunk goes straight back to being served as HTML.
+  const unknown = await get(`${BASE}/no-such-page-${Date.now()}`);
+  ok('unknown route does NOT return the app shell',
+    unknown.status === 404,
+    `${unknown.status} ${unknown.headers['content-type'] || ''}`);
 
   const longCachedHtml = poisonable && /max-age=\d{6,}/.test(mcc);
   ok('missing asset is not long-cached as HTML',

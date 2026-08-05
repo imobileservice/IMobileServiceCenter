@@ -13,6 +13,7 @@ import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import { toast } from "sonner"
 import { MODELS_BY_BRAND, BRANDS } from "@/constants/models"
 import { createClient } from "@/lib/supabase/client"
+import { getApiUrl } from "@/lib/utils/api"
 
 const EXCLUDED_CATEGORIES = ["accessories", "tempered-glass", "smart-watch"]
 
@@ -422,7 +423,10 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     try {
       setAutoSearchStatus('Fetching specifications & AI insights...')
 
-      const response = await fetch('/api/admin/product-search', {
+      // Must go through getApiUrl: the API lives on the Railway backend, not on
+      // the Pages origin that serves this app. A relative /api/* URL hits Pages,
+      // which has no such route, so the response is HTML and .json() blows up.
+      const response = await fetch(getApiUrl('/api/admin/product-search'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

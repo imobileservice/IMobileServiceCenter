@@ -210,12 +210,32 @@ async function repairPoisonedAssets(error: unknown) {
   // A unique query string is a different edge cache key, so it reaches origin.
   const bust = (url: string) => `${url}${url.includes('?') ? '&' : '?'}imobile_cb=${Date.now()}`
 
+  // Both fetches are required, and the order matters.
+  //
+  // The HTTP cache is keyed on the FULL url, query string included, so fetching
+  // only the busted url replaces the entry for `chunk.js?imobile_cb=...` and
+  // leaves the poisoned entry for the bare `chunk.js` exactly where it was. The
+  // reload then re-imports the bare url, gets the same HTML back, and we sit on
+  // the loading spinner until the retry budget runs out - which is how a poisoned
+  // client stayed broken across every reload.
+  //
+  // So: bust first to pull clean bytes through the edge for this path, then fetch
+  // the bare url with `cache: 'reload'` to overwrite the entry the app will
+  // actually use.
   await Promise.all(
-    Array.from(urls).map((url) =>
-      fetch(bust(url), { cache: 'reload', credentials: 'same-origin' }).catch(() => {
+    Array.from(urls).map(async (url) => {
+      try {
+        await fetch(bust(url), { cache: 'reload', credentials: 'same-origin' })
+      } catch {
+        // Ignore; the bare refetch below is the one that has to land.
+      }
+
+      try {
+        await fetch(url, { cache: 'reload', credentials: 'same-origin' })
+      } catch {
         // A still-missing asset stays broken; the reload below reports it normally.
-      })
-    )
+      }
+    })
   )
 }
 
