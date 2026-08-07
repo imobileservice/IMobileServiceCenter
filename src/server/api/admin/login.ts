@@ -32,15 +32,22 @@ const getAdminClient = (): SupabaseClient | null => {
     })
 }
 
-/** Fetch the admin row and check the password. Returns null when the credentials are wrong. */
+/**
+ * Fetch the admin row and check the password. Returns null when the credentials are wrong.
+ *
+ * `admins` also holds POS cashier accounts (role='cashier'), which must never reach
+ * the admin panel - the OTP is sent to the account's own inbox, so a cashier could
+ * otherwise complete this flow with their till password.
+ */
 const authenticateAdmin = async (client: SupabaseClient, email: string, password: string) => {
     const { data: admin, error } = await client
         .from('admins')
-        .select('id, email, whatsapp, password')
+        .select('id, email, whatsapp, password, role')
         .eq('email', email)
         .single()
 
     if (error || !admin) return null
+    if (admin.role !== 'admin') return null
     if (!verifyPassword(password, admin.password)) return null
     return admin
 }
