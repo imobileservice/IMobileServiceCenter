@@ -113,6 +113,10 @@ router.get('/', async (req: Request, res: Response) => {
 // Declared before /:id so the literal path wins.
 
 // GET /api/inventory/suppliers/restock-summary?status=all|low|out|needed&supplier_id=&search=
+// Must stay above GET /:id, which would otherwise match "available-products"
+// as a supplier id. Used by the Add Supplier form, where there is no id yet.
+router.get('/available-products', (req, res) => listAvailableProducts(undefined, req, res))
+
 router.get('/restock-summary', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
@@ -385,12 +389,19 @@ router.delete('/:id/products/:productId', async (req: Request, res: Response) =>
 })
 
 // GET /api/inventory/suppliers/:id/available-products?search= - products not yet linked
-router.get('/:id/available-products', async (req: Request, res: Response) => {
+/**
+ * Products this supplier could be given, newest search first.
+ *
+ * supplierId is optional so the Add Supplier form can offer the same picker
+ * before the supplier exists: with no id there is nothing linked yet, so the
+ * whole catalogue is on offer.
+ */
+const listAvailableProducts = async (supplierId: string | undefined, req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
     const { search } = req.query
 
-    const links = await fetchSupplierLinks(supabase, req.params.id)
+    const links = supplierId ? await fetchSupplierLinks(supabase, supplierId) : []
     const linkedIds = new Set((links || []).map((link: any) => link.product_id))
 
     let query = supabase
@@ -424,7 +435,9 @@ router.get('/:id/available-products', async (req: Request, res: Response) => {
     console.error('[Inventory Suppliers] available-products error:', error)
     res.status(500).json({ error: error.message })
   }
-})
+}
+
+router.get('/:id/available-products', (req, res) => listAvailableProducts(req.params.id, req, res))
 
 // GET /api/inventory/suppliers/:id/purchases - order history for one supplier
 router.get('/:id/purchases', async (req: Request, res: Response) => {

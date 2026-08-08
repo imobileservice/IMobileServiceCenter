@@ -22,9 +22,15 @@ export const LABEL_H_MM = 25
 export const LABEL_SAFE_W_MM = 37.4
 export const LABEL_SAFE_H_MM = 24.4
 
-/** Bounding box for the bar block, kept inside the safe area. */
+/**
+ * Bounding box for the bar block, kept inside the safe area.
+ *
+ * 9mm rather than 10: the extra millimetre goes to the shop name and product
+ * name, which were too small to read once printed. CODE128 scans reliably well
+ * below this height - the bar WIDTH is what a scanner needs, not the height.
+ */
 export const BARCODE_W_MM = 31
-export const BARCODE_H_MM = 10
+export const BARCODE_H_MM = 9
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -81,7 +87,7 @@ export const buildLabelSheetHtml = (items: LabelProduct[], mode: PrintMode): str
     const taglineHtml = isDisplay ? `<p class="tagline">Display Part</p>` : ''
 
     return `<div class="${cls}"><div class="inner">` +
-      `<p class="shop">${isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service &amp; Repair Center'}</p>` +
+      `<p class="shop${isDisplay ? '' : ' long'}">${isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service &amp; Repair Center'}</p>` +
       `<div class="bars">${svgCache[prod.barcode || ''] || ''}</div>` +
       `<p class="code">${esc(prod.barcode || '')}</p>` +
       `<p class="name">${esc(prod.name || '')}</p>` +
@@ -165,12 +171,21 @@ html, body {
   justify-content: center;
   overflow: hidden;
 }
+/* Type sizes below are set for a 203 dpi thermal head. Anything under ~6pt
+   lands on too few dots to form a readable letter and prints as a smudge,
+   which is why these are not smaller. Everything is pure black and bold:
+   the head is 1-bit, so grey is dithered away to almost nothing. */
 .shop {
-  font-size: 5pt; font-weight: 800; line-height: 1.1;
+  font-size: 7pt; font-weight: 800; line-height: 1.15; color: #000;
   text-align: center; width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bars { line-height: 0; margin: 0.8mm 0 0; }
+/* "IMobile Service & Repair Center" fills the full 37.4mm at 6pt with nothing
+   to spare, so it would ellipsise the moment Arial is substituted. 5.5pt keeps
+   roughly a tenth of the width in hand. The short .lk variant has no such
+   problem and stays at 7pt. */
+.shop.long { font-size: 5.5pt; letter-spacing: -0.01em; }
+.bars { line-height: 0; margin: 0.7mm 0 0; }
 /* Bounding box for the bars. JsBarcode emits a viewBox, so the SVG scales to
    fit this box without distortion no matter how long the code is. */
 .bars svg {
@@ -179,18 +194,19 @@ html, body {
   height: ${BARCODE_H_MM}mm !important;
 }
 .code {
-  font-size: 7.5pt; font-weight: 900; letter-spacing: 0.12em;
+  font-size: 8pt; font-weight: 900; letter-spacing: 0.12em; color: #000;
   font-family: "Courier New", monospace;
-  line-height: 1; margin: 0.6mm 0 0; text-align: center;
+  line-height: 1; margin: 0.5mm 0 0; text-align: center;
 }
 .name {
-  font-size: 5pt; font-weight: 700; line-height: 1.1;
-  margin: 0.8mm 0 0; text-align: center;
+  font-size: 6.5pt; font-weight: 700; line-height: 1.15; color: #000;
+  margin: 0.6mm 0 0; text-align: center;
   max-width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.price { font-size: 5.5pt; font-weight: 800; line-height: 1; margin: 0.5mm 0 0; }
-.tagline { font-size: 4pt; font-weight: 600; line-height: 1; margin: 0.5mm 0 0; color: #555; }
+.price { font-size: 7pt; font-weight: 800; line-height: 1.1; margin: 0.4mm 0 0; color: #000; }
+/* Was 4pt grey, which the thermal head dropped almost entirely. */
+.tagline { font-size: 5.5pt; font-weight: 700; line-height: 1.1; margin: 0.4mm 0 0; color: #000; }
 </style>
 </head>
 <body>${setupHtml}<div class="grid">${labelsHtml}</div></body>

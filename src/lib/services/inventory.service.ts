@@ -230,6 +230,17 @@ export interface SupplierWithStats extends Supplier {
   total_spent: number
 }
 
+export type SupplierResponseStatus = 'pending' | 'can_supply' | 'unavailable'
+
+/** What a supplier answered for one product in their own portal (/supplier). */
+export interface SupplierResponse {
+  status: SupplierResponseStatus
+  available_qty: number | null
+  expected_date: string | null
+  note: string | null
+  responded_at: string
+}
+
 export interface RestockItem {
   product_id: string
   name: string
@@ -260,7 +271,26 @@ export interface RestockItem {
   lead_time_days: number | null
   is_preferred: boolean
   link_notes: string | null
-  suppliers?: Array<{ id: string; name: string; phone?: string | null; email?: string | null; is_preferred?: boolean }>
+  suppliers?: Array<{
+    id: string
+    name: string
+    phone?: string | null
+    email?: string | null
+    is_preferred?: boolean
+    /** Their portal reply for this product. Null until they answer. */
+    response?: SupplierResponse | null
+  }>
+}
+
+/** A product that can still be assigned to a supplier. */
+export interface AvailableProduct {
+  id: string
+  name: string
+  barcode: string | null
+  brand: string | null
+  image: string | null
+  unit_cost: number
+  stock: number
 }
 
 export interface SupplierProductInput {
@@ -311,11 +341,11 @@ export const inventorySuppliersService = {
   getProducts: (id: string) =>
     apiFetch<{ data: RestockItem[]; totals: SupplierStats; migration_required?: boolean }>(`/suppliers/${id}/products`),
 
-  getAvailableProducts: (id: string, search?: string) => {
+  /** Pass no id from the Add Supplier form — nothing is linked yet, so everything is available. */
+  getAvailableProducts: (id: string | null, search?: string) => {
     const query = search ? `?search=${encodeURIComponent(search)}` : ''
-    return apiFetch<{ data: Array<{ id: string; name: string; barcode: string | null; brand: string | null; image: string | null; unit_cost: number; stock: number }> }>(
-      `/suppliers/${id}/available-products${query}`
-    )
+    const path = id ? `/suppliers/${id}/available-products` : '/suppliers/available-products'
+    return apiFetch<{ data: AvailableProduct[] }>(`${path}${query}`)
   },
 
   addProducts: (id: string, payload: { product_ids?: string[]; items?: SupplierProductInput[] }) =>

@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Info,
   KeyRound,
+  MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +40,7 @@ import {
 import { toast } from "sonner"
 
 type StatusFilter = "needed" | "out" | "low" | "all"
+type ReplyFilter = "all" | "can_supply" | "unavailable" | "waiting"
 
 const STATUS_FILTERS: Array<{ id: StatusFilter; label: string; activeClass: string }> = [
   { id: "needed", label: "Needs Restock", activeClass: "bg-card shadow-sm text-primary" },
@@ -46,6 +48,33 @@ const STATUS_FILTERS: Array<{ id: StatusFilter; label: string; activeClass: stri
   { id: "low", label: "Low Stock", activeClass: "bg-card shadow-sm text-amber-600" },
   { id: "all", label: "All Products", activeClass: "bg-card shadow-sm text-foreground" },
 ]
+
+const REPLY_FILTERS: Array<{ id: ReplyFilter; label: string; activeClass: string }> = [
+  { id: "all", label: "Any reply", activeClass: "bg-card shadow-sm text-foreground" },
+  { id: "can_supply", label: "Can supply", activeClass: "bg-card shadow-sm text-green-600" },
+  { id: "unavailable", label: "Not available", activeClass: "bg-card shadow-sm text-red-600" },
+  { id: "waiting", label: "Awaiting reply", activeClass: "bg-card shadow-sm text-amber-600" },
+]
+
+/** How each portal answer reads in the restock table. */
+const REPLY_META: Record<string, { label: string; dotClass: string; textClass: string }> = {
+  can_supply: { label: "Can supply", dotClass: "bg-green-500", textClass: "text-green-600" },
+  unavailable: { label: "Not available", dotClass: "bg-red-500", textClass: "text-red-600" },
+  pending: { label: "Reply pending", dotClass: "bg-amber-500", textClass: "text-amber-600" },
+}
+
+/** "2026-08-20" -> "20 Aug". The raw date stays in the tooltip. */
+const formatExpectedDate = (value: string) => {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString(undefined, { day: "numeric", month: "short" })
+}
+
+const formatRepliedAt = (value: string) => {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+}
 
 const EMPTY_TOTALS = {
   products: 0,
@@ -71,6 +100,7 @@ export default function SuppliersPage() {
 
   const [status, setStatus] = useState<StatusFilter>("needed")
   const [supplierFilter, setSupplierFilter] = useState("")
+  const [replyFilter, setReplyFilter] = useState<ReplyFilter>("all")
   const [search, setSearch] = useState("")
   const [supplierSearch, setSupplierSearch] = useState("")
 
@@ -178,6 +208,31 @@ export default function SuppliersPage() {
       toast.error(error.message || "Failed to assign supplier")
     }
   }
+
+  /**
+   * The reply filter is applied here rather than server-side: the restock
+   * payload already carries every supplier's answer, so re-fetching to narrow
+   * it would only add a round trip.
+   *
+   * When one supplier is selected above, only that supplier's answer counts —
+   * otherwise "can supply" would match a product any other supplier confirmed.
+   */
+  const visibleItems = useMemo(() => {
+    if (replyFilter === "all") return items
+    const scoped = (item: RestockItem) => {
+      const list = item.suppliers || []
+      const isRealSupplier = supplierFilter && supplierFilter !== "unassigned"
+      return isRealSupplier ? list.filter((s) => s.id === supplierFilter) : list
+    }
+    if (replyFilter === "waiting") {
+      return items.filter((item) => {
+        const list = scoped(item)
+        // Nobody to wait on is not the same as waiting.
+        return list.length > 0 && list.every((s) => !s.response || s.response.status === "pending")
+      })
+    }
+    return items.filter((item) => scoped(item).some((s) => s.response?.status === replyFilter))
+  }, [items, replyFilter, supplierFilter])
 
   const filteredSuppliers = useMemo(() => {
     const term = supplierSearch.trim().toLowerCase()
@@ -372,6 +427,31 @@ export default function SuppliersPage() {
               </div>
             </div>
 
+            {/* Portal replies */}
+            <div className="flex flex-wrap items-center gap-3 -mt-1">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <MessageSquare className="w-3.5 h-3.5" /> Supplier replies
+              </span>
+              <div className="flex bg-muted p-1 rounded-lg overflow-x-auto">
+                {REPLY_FILTERS.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setReplyFilter(option.id)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold whitespace-nowrap transition-all ${
+                      replyFilter === option.id ? option.activeClass : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {replyFilter !== "all" && (
+                <span className="text-xs text-muted-foreground font-medium">
+                  {visibleItems.length} of {items.length} shown
+                </span>
+              )}
+            </div>
+
             {/* Restock table */}
             <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
@@ -408,20 +488,22 @@ export default function SuppliersPage() {
                           <td className="p-4"><div className="h-4 w-20 bg-muted rounded ml-auto" /></td>
                         </tr>
                       ))
-                    ) : items.length === 0 ? (
+                    ) : visibleItems.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="p-16 text-center">
                           <Package className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
                           <p className="text-muted-foreground font-medium">
-                            {status === "needed" || status === "out" || status === "low"
-                              ? "Nothing needs restocking right now. "
-                              : "No products found. "}
-                            {(supplierFilter || search) && "Try clearing the filters."}
+                            {replyFilter !== "all" && items.length > 0
+                              ? "No product matches that reply yet. "
+                              : status === "needed" || status === "out" || status === "low"
+                                ? "Nothing needs restocking right now. "
+                                : "No products found. "}
+                            {(supplierFilter || search || replyFilter !== "all") && "Try clearing the filters."}
                           </p>
                         </td>
                       </tr>
                     ) : (
-                      items.map((item) => (
+                      visibleItems.map((item) => (
                         <tr key={item.product_id} className="border-b border-border hover:bg-muted/30 transition-colors">
                           <td className="p-4">
                             <div className="flex items-center gap-3">
@@ -474,20 +556,48 @@ export default function SuppliersPage() {
                           </td>
                           <td className="p-4">
                             {item.suppliers && item.suppliers.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {item.suppliers.map((supplier) => (
-                                  <button
-                                    key={supplier.id}
-                                    onClick={() => {
-                                      const full = suppliers.find((s) => s.id === supplier.id)
-                                      if (full) setActiveSupplier(full)
-                                    }}
-                                    className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border border-border bg-muted/50 hover:bg-primary/10 hover:text-primary transition-colors"
-                                  >
-                                    {supplier.name}
-                                    <ChevronRight className="w-3 h-3" />
-                                  </button>
-                                ))}
+                              <div className="flex flex-col gap-1.5">
+                                {item.suppliers.map((supplier) => {
+                                  const reply = supplier.response
+                                  const meta = reply ? REPLY_META[reply.status] : null
+                                  return (
+                                    <div key={supplier.id} className="flex flex-col gap-0.5 items-start">
+                                      <button
+                                        onClick={() => {
+                                          const full = suppliers.find((s) => s.id === supplier.id)
+                                          if (full) setActiveSupplier(full)
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full border border-border bg-muted/50 hover:bg-primary/10 hover:text-primary transition-colors"
+                                      >
+                                        {supplier.name}
+                                        <ChevronRight className="w-3 h-3" />
+                                      </button>
+                                      {reply && meta ? (
+                                        <span
+                                          title={[
+                                            `Replied ${formatRepliedAt(reply.responded_at)}`,
+                                            reply.expected_date ? `Expected ${reply.expected_date}` : "",
+                                            reply.note ? `Note: ${reply.note}` : "",
+                                          ]
+                                            .filter(Boolean)
+                                            .join("\n")}
+                                          className={`inline-flex items-center gap-1 pl-2 text-[10px] font-bold ${meta.textClass}`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dotClass}`} />
+                                          {meta.label}
+                                          {reply.available_qty != null && ` · ${reply.available_qty} units`}
+                                          {reply.expected_date && ` · by ${formatExpectedDate(reply.expected_date)}`}
+                                          {reply.note && <MessageSquare className="w-2.5 h-2.5 opacity-70" />}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 pl-2 text-[10px] font-medium text-muted-foreground">
+                                          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-muted-foreground/40" />
+                                          No reply yet
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
                               </div>
                             ) : assigningProduct?.product_id === item.product_id ? (
                               <div className="flex items-center gap-1.5">

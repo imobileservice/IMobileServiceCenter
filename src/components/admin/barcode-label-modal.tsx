@@ -14,6 +14,16 @@ import {
 
 export type { LabelProduct }
 
+/**
+ * The preview is drawn at 5px per mm, but the print stylesheet in label-sheet.ts
+ * sizes its type in pt. These convert, so the two stay honest about each other:
+ * change a size in the stylesheet and mirror the same number here.
+ */
+const PREVIEW_PX_PER_MM = 5
+const MM_PER_PT = 0.3528
+const mm = (value: number) => value * PREVIEW_PX_PER_MM
+const pt = (value: number) => value * MM_PER_PT * PREVIEW_PX_PER_MM
+
 interface BarcodeLabelModalProps {
   isOpen: boolean
   onClose: () => void
@@ -124,17 +134,17 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                           boxSizing: 'border-box'
                         }}
                       >
-                        <p style={{ fontSize: '8px', fontWeight: 800, margin: 0, lineHeight: 1.1, letterSpacing: '0.01em', textAlign: 'center', width: '100%' }}>
+                        <p style={{ fontSize: `${pt(isDisplay ? 7 : 5.5)}px`, fontWeight: 800, margin: 0, lineHeight: 1.15, letterSpacing: isDisplay ? 0 : '-0.01em', textAlign: 'center', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service & Repair Center'}
                         </p>
 
-                        {/* Same physical footprint as the printed bar block (32mm × 8.5mm at 5px/mm) */}
+                        {/* Same physical footprint as the printed bar block, at 5px/mm */}
                         <div
                           className="[&_svg]:block [&_svg]:!w-full [&_svg]:!h-full"
                           style={{
                             width: `${BARCODE_W_MM * 5}px`,
                             height: `${BARCODE_H_MM * 5}px`,
-                            margin: '4px 0 0',
+                            margin: `${mm(0.7)}px 0 0`,
                             padding: 0,
                             lineHeight: 0,
                           }}
@@ -150,20 +160,20 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                           />
                         </div>
 
-                        <p style={{ fontSize: '13px', fontWeight: 900, letterSpacing: '0.12em', textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
+                        <p style={{ fontSize: `${pt(8)}px`, fontWeight: 900, letterSpacing: '0.12em', fontFamily: '"Courier New", monospace', textAlign: 'center', margin: `${mm(0.5)}px 0 0`, lineHeight: 1 }}>
                           {previewProduct.barcode}
                         </p>
 
-                        <p style={{ fontSize: '7.5px', fontWeight: 700, textAlign: 'center', margin: '2px 0 0', lineHeight: 1.1, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <p style={{ fontSize: `${pt(6.5)}px`, fontWeight: 700, textAlign: 'center', margin: `${mm(0.6)}px 0 0`, lineHeight: 1.15, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {previewProduct.name}
                         </p>
                         {!isDisplay && previewProduct.price !== undefined && (
-                          <p style={{ fontSize: '7px', fontWeight: 800, textAlign: 'center', margin: '1px 0 0', lineHeight: 1 }}>
+                          <p style={{ fontSize: `${pt(7)}px`, fontWeight: 800, textAlign: 'center', margin: `${mm(0.4)}px 0 0`, lineHeight: 1.1 }}>
                             Rs. {previewProduct.price.toLocaleString()}
                           </p>
                         )}
                         {isDisplay && (
-                          <p style={{ fontSize: '6px', fontWeight: 600, textAlign: 'center', margin: '1px 0 0', lineHeight: 1, color: '#666' }}>
+                          <p style={{ fontSize: `${pt(5.5)}px`, fontWeight: 700, textAlign: 'center', margin: `${mm(0.4)}px 0 0`, lineHeight: 1.1 }}>
                             Display Part
                           </p>
                         )}
