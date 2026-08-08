@@ -12,6 +12,7 @@ import emailRouter from './email'
 import inventoryRouter from './inventory'
 import { testEnvHandler } from './test-env'
 import cashierRouter from './cashier'
+import supplierRouter from './supplier'
 
 const router = Router()
 
@@ -35,6 +36,7 @@ router.use('/auth', authRouter)
 router.use('/products', productsRouter)
 router.use('/admin', adminRouter)
 router.use('/cashier', cashierRouter)
+router.use('/supplier', supplierRouter)
 router.use('/orders', ordersRouter)
 router.use('/addresses', addressesRouter)
 router.use('/profile', profileRouter)

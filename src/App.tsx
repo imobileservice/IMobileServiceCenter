@@ -40,6 +40,8 @@ const CashierPOS = lazyWithRetry(() => import('./pages/cashier/CashierPOS'))
 const CashierWebsiteTerminal = lazyWithRetry(() => import('./pages/cashier/CashierWebsiteTerminal'))
 const CashierDashboard = lazyWithRetry(() => import('./pages/cashier/CashierDashboard'))
 const CashierInventory = lazyWithRetry(() => import('./pages/cashier/CashierInventory'))
+const SupplierLogin = lazyWithRetry(() => import('./pages/supplier/SupplierLogin'))
+const SupplierPortal = lazyWithRetry(() => import('./pages/supplier/SupplierPortal'))
 
 // Loading component
 const PageLoading = () => (
@@ -90,6 +92,8 @@ export default function App() {
         <Route path="/cashier/website" element={<CashierWebsiteTerminal />} />
         <Route path="/cashier/dashboard" element={<CashierDashboard />} />
         <Route path="/cashier/inventory" element={<CashierInventory />} />
+        <Route path="/supplier/login" element={<SupplierLogin />} />
+        <Route path="/supplier" element={<SupplierPortal />} />
       </Routes>
     </Suspense>
   )

@@ -3,6 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { hashPassword } from '../utils/password'
 
+/*
+ * Cashiers live in their own table as of
+ * 20260805_split_cashiers_from_admins.sql. `admins` is administrators only, so
+ * every query here targets `cashiers` and the old `.eq('role', 'cashier')`
+ * filters are gone - the table itself is the filter now, and a CHECK constraint
+ * keeps the role column pinned to 'cashier' for the admin UI that reads it.
+ */
+const CASHIERS_TABLE = 'cashiers'
+
 const DEFAULT_SHOP = 'Meegoda'
 const VALID_TILL_STATUSES = new Set(['active', 'inactive'])
 const TILL_SELECT = 'id, code_hint, label, shop, status, assigned_cashier_id, created_at, updated_at'
@@ -38,10 +47,9 @@ async function getTillCashier(supabase: any, cashierId: string) {
     }
 
     const { data, error } = await supabase
-        .from('admins')
+        .from(CASHIERS_TABLE)
         .select('id, email, name, role, shop')
         .eq('id', cashierId)
-        .eq('role', 'cashier')
         .single()
 
     if (error || !data) {
@@ -59,9 +67,8 @@ export async function getCashiersHandler(req: Request, res: Response) {
     try {
         const supabase = getAdminClient()
         const { data, error } = await supabase
-            .from('admins')
+            .from(CASHIERS_TABLE)
             .select('id, email, name, role, created_at, shop')
-            .eq('role', 'cashier')
             .order('created_at', { ascending: false })
 
         if (error) throw error
@@ -78,21 +85,29 @@ export async function createCashierHandler(req: Request, res: Response) {
         if (!email || !password) { return res.status(400).json({ error: 'Email and password required' }) }
 
         const supabase = getAdminClient()
-        
-        // Ensure email isn't already used
-        const { data: existing } = await supabase.from('admins').select('id').eq('email', email.toLowerCase()).single()
-        if (existing) {
+        const normalizedEmail = String(email).toLowerCase().trim()
+
+        // Both tables, not just this one. An address that already belongs to an
+        // administrator must not also become a cashier: the POS resolves a login
+        // by looking in cashiers first, so a duplicate would shadow the admin
+        // account with a different password.
+        const [{ data: existingCashier }, { data: existingAdmin }] = await Promise.all([
+            supabase.from(CASHIERS_TABLE).select('id').eq('email', normalizedEmail).maybeSingle(),
+            supabase.from('admins').select('id').eq('email', normalizedEmail).maybeSingle(),
+        ])
+
+        if (existingCashier || existingAdmin) {
             return res.status(400).json({ error: 'Email already exists' })
         }
 
         const { data, error } = await supabase
-            .from('admins')
+            .from(CASHIERS_TABLE)
             .insert({
-                email: email.toLowerCase(),
+                email: normalizedEmail,
                 password: hashPassword(password),
                 name: name || 'New Cashier',
                 role: 'cashier',
-                shop: shop || 'Meegoda'
+                shop: shop || DEFAULT_SHOP
             })
             .select('id, email, name, role, created_at, shop')
             .single()
@@ -110,7 +125,7 @@ export async function deleteCashierHandler(req: Request, res: Response) {
         const { id } = req.params
 
         const supabase = getAdminClient()
-        const { error } = await supabase.from('admins').delete().eq('id', id).eq('role', 'cashier')
+        const { error } = await supabase.from(CASHIERS_TABLE).delete().eq('id', id)
 
         if (error) throw error
         res.json({ success: true })
@@ -127,10 +142,9 @@ export async function updateCashierHandler(req: Request, res: Response) {
 
         const supabase = getAdminClient()
         const { data, error } = await supabase
-            .from('admins')
+            .from(CASHIERS_TABLE)
             .update({ shop })
             .eq('id', id)
-            .eq('role', 'cashier')
             .select('id, email, name, role, created_at, shop')
             .single()
 

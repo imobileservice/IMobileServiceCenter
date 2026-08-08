@@ -20,6 +20,7 @@ import {
   Link2,
   ChevronRight,
   Info,
+  KeyRound,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +28,7 @@ import { Badge } from "@/components/ui/badge"
 import AdminLayout from "@/components/admin-layout"
 import SupplierModal from "@/components/admin/supplier-modal"
 import SupplierDetailModal from "@/components/admin/supplier-detail-modal"
+import SupplierPortalModal from "@/components/admin/supplier-portal-modal"
 import { formatCurrency } from "@/lib/utils/currency"
 import {
   inventorySuppliersService,
@@ -75,6 +77,7 @@ export default function SuppliersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const [activeSupplier, setActiveSupplier] = useState<Supplier | null>(null)
+  const [portalSupplier, setPortalSupplier] = useState<SupplierWithStats | null>(null)
   const [assigningProduct, setAssigningProduct] = useState<RestockItem | null>(null)
   const [assignTarget, setAssignTarget] = useState("")
 
@@ -672,7 +675,33 @@ export default function SuppliersPage() {
                         </p>
                       )}
 
-                      <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+                      <div className="mt-4 pt-4 border-t border-border">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                              Supplier portal
+                            </p>
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              {supplier.portal_enabled
+                                ? supplier.portal_last_login_at
+                                  ? `Last sign-in ${new Date(supplier.portal_last_login_at).toLocaleDateString("en-GB")}`
+                                  : "Enabled - not signed in yet"
+                                : "No access"}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 shrink-0"
+                            onClick={() => setPortalSupplier(supplier)}
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            {supplier.portal_enabled ? "Manage" : "Give access"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
                         <Button size="sm" className="flex-1 font-bold" onClick={() => setActiveSupplier(supplier)}>
                           Manage Stock
                         </Button>
@@ -733,6 +762,16 @@ export default function SuppliersPage() {
               setModalOpen(true)
             }}
             onChanged={refreshAll}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {portalSupplier && (
+          <SupplierPortalModal
+            supplier={portalSupplier}
+            onClose={() => setPortalSupplier(null)}
+            onSaved={refreshAll}
           />
         )}
       </AnimatePresence>

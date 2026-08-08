@@ -30,6 +30,41 @@ function hashSecret(value: string) {
     return crypto.createHash('sha256').update(value).digest('hex')
 }
 
+/**
+ * Find the account behind a POS login, in either table.
+ *
+ * Cashiers moved to their own table in
+ * 20260805_split_cashiers_from_admins.sql, but the POS has always accepted an
+ * administrator too (see POS_ROLES), so both are looked up here. `cashiers`
+ * comes first because that is who signs in at a till all day; an email can only
+ * exist in one of the two.
+ *
+ * The role is lower-cased on the way out. It is compared against POS_ROLES and
+ * against 'cashier' below, and the admins table used to hold both 'Admin' and
+ * 'admin' - the capitalised spelling silently failed every one of those checks.
+ */
+async function findPosAccount(adminClient: any, normalizedEmail: string) {
+    const columns = 'id, email, name, password, role, shop'
+
+    const { data: cashier } = await adminClient
+        .from('cashiers')
+        .select(columns)
+        .eq('email', normalizedEmail)
+        .maybeSingle()
+
+    const { data: account } = cashier
+        ? { data: cashier }
+        : await adminClient
+            .from('admins')
+            .select(columns)
+            .eq('email', normalizedEmail)
+            .maybeSingle()
+
+    if (!account) return null
+
+    return { ...account, role: String(account.role ?? '').trim().toLowerCase() }
+}
+
 function getClientIp(req: Request) {
     const forwardedFor = req.headers['x-forwarded-for']
     if (Array.isArray(forwardedFor)) return forwardedFor[0]
@@ -87,13 +122,9 @@ export async function loginCashierHandler(req: Request, res: Response) {
         const { supabaseUrl, supabaseServiceKey } = getSupabaseConfig()
         adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
-        const { data: admin, error: adminError } = await adminClient
-            .from('admins')
-            .select('id, email, name, password, role, shop')
-            .eq('email', normalizedEmail)
-            .single()
+        const account = await findPosAccount(adminClient, normalizedEmail)
 
-        if (adminError || !admin || !verifyPassword(String(password), admin.password)) {
+        if (!account || !verifyPassword(String(password), account.password)) {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
                 event_type: 'login_failed',
@@ -103,11 +134,11 @@ export async function loginCashierHandler(req: Request, res: Response) {
             return res.status(401).json({ error: 'Invalid email or password' })
         }
 
-        if (!POS_ROLES.has(admin.role)) {
+        if (!POS_ROLES.has(account.role)) {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
-                cashier_id: admin.id,
-                role: admin.role,
+                cashier_id: account.id,
+                role: account.role,
                 event_type: 'login_failed',
                 success: false,
                 reason: 'unauthorized_role',
@@ -124,8 +155,8 @@ export async function loginCashierHandler(req: Request, res: Response) {
         if (tillError || !till) {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
-                cashier_id: admin.id,
-                role: admin.role,
+                cashier_id: account.id,
+                role: account.role,
                 event_type: 'login_failed',
                 success: false,
                 reason: 'invalid_till_code',
@@ -136,8 +167,8 @@ export async function loginCashierHandler(req: Request, res: Response) {
         if (till.status !== 'active') {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
-                cashier_id: admin.id,
-                role: admin.role,
+                cashier_id: account.id,
+                role: account.role,
                 till_id: till.id,
                 event_type: 'login_failed',
                 success: false,
@@ -146,11 +177,11 @@ export async function loginCashierHandler(req: Request, res: Response) {
             return res.status(403).json({ error: 'This till is not active' })
         }
 
-        if (till.assigned_cashier_id && till.assigned_cashier_id !== admin.id) {
+        if (till.assigned_cashier_id && till.assigned_cashier_id !== account.id) {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
-                cashier_id: admin.id,
-                role: admin.role,
+                cashier_id: account.id,
+                role: account.role,
                 till_id: till.id,
                 event_type: 'login_failed',
                 success: false,
@@ -159,11 +190,11 @@ export async function loginCashierHandler(req: Request, res: Response) {
             return res.status(403).json({ error: 'This till code is assigned to another cashier' })
         }
 
-        if (admin.role === 'cashier' && !till.assigned_cashier_id) {
+        if (account.role === 'cashier' && !till.assigned_cashier_id) {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
-                cashier_id: admin.id,
-                role: admin.role,
+                cashier_id: account.id,
+                role: account.role,
                 till_id: till.id,
                 event_type: 'login_failed',
                 success: false,
@@ -172,14 +203,14 @@ export async function loginCashierHandler(req: Request, res: Response) {
             return res.status(403).json({ error: 'This till code is not assigned to this cashier' })
         }
 
-        const accountShop = admin.shop || DEFAULT_SHOP
+        const accountShop = account.shop || DEFAULT_SHOP
         const effectiveShop = till.shop || accountShop
 
-        if (admin.role === 'cashier' && accountShop !== effectiveShop) {
+        if (account.role === 'cashier' && accountShop !== effectiveShop) {
             await logPosAuthEvent(adminClient, req, {
                 cashier_email: normalizedEmail,
-                cashier_id: admin.id,
-                role: admin.role,
+                cashier_id: account.id,
+                role: account.role,
                 till_id: till.id,
                 event_type: 'login_failed',
                 success: false,
@@ -208,10 +239,10 @@ export async function loginCashierHandler(req: Request, res: Response) {
             .from('pos_till_sessions')
             .insert({
                 till_id: till.id,
-                cashier_id: admin.id,
-                cashier_email: admin.email || normalizedEmail,
-                cashier_name: admin.name || 'Cashier',
-                role: admin.role,
+                cashier_id: account.id,
+                cashier_email: account.email || normalizedEmail,
+                cashier_name: account.name || 'Cashier',
+                role: account.role,
                 shop: effectiveShop,
                 opening_float: Number(opening_float || 0),
                 session_token_hash: sessionTokenHash,
@@ -233,8 +264,8 @@ export async function loginCashierHandler(req: Request, res: Response) {
 
         await logPosAuthEvent(adminClient, req, {
             cashier_email: normalizedEmail,
-            cashier_id: admin.id,
-            role: admin.role,
+            cashier_id: account.id,
+            role: account.role,
             till_id: till.id,
             event_type: 'login_success',
             success: true,
@@ -243,10 +274,10 @@ export async function loginCashierHandler(req: Request, res: Response) {
         return res.json({
             success: true,
             cashier: {
-                id: admin.id,
-                email: admin.email || normalizedEmail,
-                name: admin.name || (admin.role === 'admin' ? 'Admin' : 'Cashier'),
-                role: admin.role,
+                id: account.id,
+                email: account.email || normalizedEmail,
+                name: account.name || (account.role === 'admin' ? 'Admin' : 'Cashier'),
+                role: account.role,
                 shop: effectiveShop,
             },
             tillSession: {

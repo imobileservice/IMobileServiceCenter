@@ -81,6 +81,16 @@
   Pragma: no-cache
   Expires: 0
 
+/supplier
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/supplier/*
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
 # Asset filenames are content-hashed, so correctness never depends on a long
 # max-age here - only edge/browser hit-rate does.
 #

@@ -32,15 +32,35 @@ const getAdminClient = (): SupabaseClient | null => {
     })
 }
 
-/** Fetch the admin row and check the password. Returns null when the credentials are wrong. */
+/**
+ * Fetch the admin row and check the password. Returns null when the credentials
+ * are wrong, when the account is not an administrator, or when it does not exist.
+ *
+ * Every entry point into the admin panel - init, resend and verify - goes
+ * through here, so this is the one place that decides who is an admin. It reads
+ * `admins`, which after 20260805_split_cashiers_from_admins.sql contains
+ * administrators only; cashiers live in `cashiers` and simply are not found.
+ * The role check is belt-and-braces for a database where that migration has not
+ * run yet, and is case-insensitive because the column held both 'Admin' and
+ * 'admin'.
+ *
+ * Returning a bare null matters. The caller answers "Invalid email or password"
+ * either way, so a cashier trying the admin panel cannot tell their password was
+ * accepted, and - because issueOtp only runs on a non-null result - no code is
+ * generated, stored or emailed to them.
+ */
 const authenticateAdmin = async (client: SupabaseClient, email: string, password: string) => {
     const { data: admin, error } = await client
         .from('admins')
-        .select('id, email, whatsapp, password')
+        .select('id, email, whatsapp, password, role')
         .eq('email', email)
-        .single()
+        .maybeSingle()
 
     if (error || !admin) return null
+    if (String(admin.role ?? 'admin').trim().toLowerCase() !== 'admin') {
+        console.warn(`[Admin] Rejected non-admin account at the admin panel: ${email}`)
+        return null
+    }
     if (!verifyPassword(password, admin.password)) return null
     return admin
 }

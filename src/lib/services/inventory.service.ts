@@ -208,6 +208,10 @@ export interface Supplier {
   is_active?: boolean
   created_at?: string
   updated_at?: string
+  // Supplier portal (/supplier/login). The password itself is never sent to the
+  // client - only whether access is on and when it was last used.
+  portal_enabled?: boolean
+  portal_last_login_at?: string | null
 }
 
 export interface SupplierStats {
@@ -330,6 +334,19 @@ export const inventorySuppliersService = {
     apiFetch(`/suppliers/${id}/products/${productId}`, { method: 'DELETE' }),
 
   getPurchases: (id: string) => apiFetch(`/suppliers/${id}/purchases`),
+
+  /**
+   * Controls the supplier's own sign-in at /supplier/login.
+   *
+   * Deliberately its own endpoint rather than a field on update(): the password
+   * has to be hashed server-side, and the generic supplier update writes the
+   * body straight through.
+   */
+  setPortalAccess: (id: string, payload: { enabled?: boolean; password?: string }) =>
+    apiFetch<{ data: { id: string; name: string; email: string | null; portal_enabled: boolean; portal_last_login_at: string | null } }>(
+      `/suppliers/${id}/portal`,
+      { method: 'PUT', body: JSON.stringify(payload) }
+    ),
 }
 
 // ─── CUSTOMERS ───────────────────────────────────────
