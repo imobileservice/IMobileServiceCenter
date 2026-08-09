@@ -1,11 +1,16 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { Check, FolderTree, Search, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { inventorySuppliersService, type ProductCategory, type Supplier } from "@/lib/services/inventory.service"
+import {
+  inventorySuppliersService,
+  type CategoryAccessMode,
+  type ProductCategory,
+  type Supplier,
+} from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 
 /**
@@ -111,11 +116,32 @@ export function CategoryPicker({
 
       {selected.length === 0 && (
         <p className="text-[11px] text-amber-600 font-medium">
-          With nothing selected this shop sees an empty catalogue and cannot order.
+          With nothing selected, shops on this list see an empty catalogue and cannot order.
         </p>
       )}
     </div>
   )
+}
+
+/** Loads the shared default list once, as plain category ids. */
+export function useDefaultCategoryIds(enabled = true) {
+  const [ids, setIds] = useState<string[]>([])
+  const [isLoading, setIsLoading] = useState(enabled)
+
+  const reload = useCallback(() => {
+    setIsLoading(true)
+    return inventorySuppliersService
+      .getDefaultCategories()
+      .then((res) => setIds((res.data || []).map((row) => row.category_id)))
+      .catch((error: any) => toast.error(error.message || "Could not load the default categories"))
+      .finally(() => setIsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (enabled) reload()
+  }, [enabled, reload])
+
+  return { ids, isLoading, reload, setIds }
 }
 
 /** Loads every category once. Shared by the picker's two callers. */
@@ -152,9 +178,18 @@ interface Props {
   onSaved: () => void
 }
 
-/** Edits one existing shop's category access. */
+/**
+ * Edits one shop's category access: follow the shared default, or pick a list
+ * just for them.
+ *
+ * The hand-picked list stays loaded and editable even while the shop is on the
+ * default, so switching the override on is one click rather than a rebuild.
+ */
 export default function SupplierCategoriesModal({ supplier, onClose, onSaved }: Props) {
   const { categories, isLoading } = useAllCategories()
+  const { ids: defaultIds, isLoading: defaultsLoading } = useDefaultCategoryIds()
+
+  const [mode, setMode] = useState<CategoryAccessMode>("default")
   const [selected, setSelected] = useState<string[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [isLoadingCurrent, setIsLoadingCurrent] = useState(true)
@@ -166,6 +201,7 @@ export default function SupplierCategoriesModal({ supplier, onClose, onSaved }: 
       .then((res) => {
         if (cancelled) return
         setSelected((res.data || []).map((row) => row.category_id))
+        setMode(res.mode === "custom" ? "custom" : "default")
       })
       .catch((error: any) => {
         if (!cancelled) toast.error(error.message || "Could not load this shop's categories")
@@ -184,12 +220,23 @@ export default function SupplierCategoriesModal({ supplier, onClose, onSaved }: 
   const save = async () => {
     setIsSaving(true)
     try {
-      await inventorySuppliersService.setCategories(supplier.id, selected)
-      toast.success(
-        selected.length === 0
-          ? `${supplier.name} can no longer see any products`
-          : `${supplier.name} can now see ${selected.length} categor${selected.length === 1 ? "y" : "ies"}`
-      )
+      // The hand-picked list is only written when it is the one in use;
+      // otherwise a shop on the default would have its saved list overwritten
+      // by whatever happened to be on screen.
+      await inventorySuppliersService.setCategories(supplier.id, {
+        mode,
+        ...(mode === "custom" ? { categoryIds: selected } : {}),
+      })
+
+      if (mode === "default") {
+        toast.success(`${supplier.name} now follows the default list (${defaultIds.length} categories)`)
+      } else {
+        toast.success(
+          selected.length === 0
+            ? `${supplier.name} can no longer see any products`
+            : `${supplier.name} can now see ${selected.length} categor${selected.length === 1 ? "y" : "ies"}`
+        )
+      }
       onSaved()
       onClose()
     } catch (error: any) {
@@ -222,14 +269,47 @@ export default function SupplierCategoriesModal({ supplier, onClose, onSaved }: 
           </Button>
         </div>
 
-        <CategoryPicker
-          categories={categories}
-          selected={selected}
-          onToggle={toggle}
-          onSelectAll={(ids) => setSelected((prev) => Array.from(new Set([...prev, ...ids])))}
-          onClear={() => setSelected([])}
-          isLoading={isLoading || isLoadingCurrent}
+        <AccessModeToggle
+          mode={mode}
+          onChange={setMode}
+          defaultCount={defaultIds.length}
+          customCount={selected.length}
+          isLoading={defaultsLoading}
         />
+
+        {mode === "custom" ? (
+          <div className="mt-5">
+            <CategoryPicker
+              categories={categories}
+              selected={selected}
+              onToggle={toggle}
+              onSelectAll={(ids) => setSelected((prev) => Array.from(new Set([...prev, ...ids])))}
+              onClear={() => setSelected([])}
+              isLoading={isLoading || isLoadingCurrent}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              disabled={defaultsLoading}
+              onClick={() => setSelected(defaultIds)}
+            >
+              Start from the default list
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-sm font-semibold">Following the default list</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {defaultsLoading
+                ? "Loading..."
+                : defaultIds.length === 0
+                  ? "The default list is empty, so this shop sees nothing. Set it on the Product Access tab."
+                  : `${defaultIds.length} categor${defaultIds.length === 1 ? "y" : "ies"}. Change it on the Product Access tab and every shop on the default follows.`}
+            </p>
+          </div>
+        )}
 
         <div className="flex gap-2 pt-5">
           <Button className="flex-1 font-bold" disabled={isSaving || isLoadingCurrent} onClick={save}>
@@ -240,6 +320,59 @@ export default function SupplierCategoriesModal({ supplier, onClose, onSaved }: 
           </Button>
         </div>
       </motion.div>
+    </div>
+  )
+}
+
+/** The default / custom switch, shared by this modal and the Add Shop form. */
+export function AccessModeToggle({
+  mode,
+  onChange,
+  defaultCount,
+  customCount,
+  isLoading,
+}: {
+  mode: CategoryAccessMode
+  onChange: (mode: CategoryAccessMode) => void
+  defaultCount: number
+  customCount: number
+  isLoading?: boolean
+}) {
+  const options: Array<{ id: CategoryAccessMode; label: string; hint: string }> = [
+    {
+      id: "default",
+      label: "Use the default list",
+      hint: isLoading ? "Loading..." : `${defaultCount} categor${defaultCount === 1 ? "y" : "ies"}, shared by all shops`,
+    },
+    {
+      id: "custom",
+      label: "Choose for this shop",
+      hint: `${customCount} categor${customCount === 1 ? "y" : "ies"} picked just for them`,
+    },
+  ]
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {options.map((option) => (
+        <button
+          type="button"
+          key={option.id}
+          onClick={() => onChange(option.id)}
+          className={`text-left p-3 rounded-xl border transition-colors ${
+            mode === option.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <span
+              className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${
+                mode === option.id ? "border-primary bg-primary" : "border-input"
+              }`}
+            />
+            <span className="text-sm font-bold">{option.label}</span>
+          </span>
+          <span className="block text-[11px] text-muted-foreground mt-1 pl-[22px]">{option.hint}</span>
+        </button>
+      ))}
     </div>
   )
 }

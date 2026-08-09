@@ -2,7 +2,12 @@ import { Request, Response, NextFunction } from 'express'
 import crypto from 'crypto'
 import { getSupabaseAdmin } from '../inventory/supabase-admin'
 import { verifyPassword } from '../utils/password'
-import { DEFAULT_SUPPORT_PHONE, DEFAULT_SUPPORT_WHATSAPP, isMissingSchema } from './shop.shared'
+import {
+  DEFAULT_SUPPORT_PHONE,
+  DEFAULT_SUPPORT_WHATSAPP,
+  isMissingSchema,
+  type CategoryAccessMode,
+} from './shop.shared'
 
 const SESSION_HOURS = 12
 
@@ -40,32 +45,29 @@ export interface SupplierRequest extends Request {
     /** Who this shop reaches with the portal's Call / WhatsApp buttons. */
     support_phone: string
     support_whatsapp: string
+    /** Whether this shop follows the shared default category list or its own. */
+    category_access_mode: CategoryAccessMode
   }
 }
 
-const SUPPLIER_SELECT = 'id, name, email, portal_enabled, is_active, support_phone, support_whatsapp'
-const SUPPLIER_SELECT_LEGACY = 'id, name, email, portal_enabled, is_active'
-
-/**
- * Reads one supplier, tolerating a database where 20260809_supplier_shop_orders.sql
- * has not been run - the contact columns simply fall back to the shop-wide numbers.
+/*
+ * Tried newest first and narrowed on failure, so one server binary serves a
+ * database at any of the three migration stages instead of refusing to start.
  */
+const SUPPLIER_SELECTS = [
+  'id, name, email, portal_enabled, is_active, support_phone, support_whatsapp, category_access_mode',
+  'id, name, email, portal_enabled, is_active, support_phone, support_whatsapp',
+  'id, name, email, portal_enabled, is_active',
+]
+
+/** Reads one supplier, tolerating a database missing the newer columns. */
 const loadSupplier = async (supabase: any, id: string) => {
-  let { data, error } = await supabase
-    .from('inv_suppliers')
-    .select(SUPPLIER_SELECT)
-    .eq('id', id)
-    .maybeSingle()
-
-  if (error && isMissingSchema(error)) {
-    ;({ data, error } = await supabase
-      .from('inv_suppliers')
-      .select(SUPPLIER_SELECT_LEGACY)
-      .eq('id', id)
-      .maybeSingle())
+  for (const select of SUPPLIER_SELECTS) {
+    const { data, error } = await supabase.from('inv_suppliers').select(select).eq('id', id).maybeSingle()
+    if (!error) return data || null
+    if (!isMissingSchema(error)) throw error
   }
-
-  return data || null
+  return null
 }
 
 /**
@@ -117,6 +119,7 @@ export async function requireSupplier(req: SupplierRequest, res: Response, next:
       email: supplier.email,
       support_phone: supplier.support_phone || DEFAULT_SUPPORT_PHONE,
       support_whatsapp: supplier.support_whatsapp || supplier.support_phone || DEFAULT_SUPPORT_WHATSAPP,
+      category_access_mode: supplier.category_access_mode === 'custom' ? 'custom' : 'default',
     }
     next()
   } catch (error: any) {

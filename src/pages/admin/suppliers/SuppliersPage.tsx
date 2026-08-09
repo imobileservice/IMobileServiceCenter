@@ -26,7 +26,11 @@ import { Badge } from "@/components/ui/badge"
 import AdminLayout from "@/components/admin-layout"
 import SupplierModal from "@/components/admin/supplier-modal"
 import SupplierPortalModal from "@/components/admin/supplier-portal-modal"
-import SupplierCategoriesModal from "@/components/admin/supplier-categories-modal"
+import SupplierCategoriesModal, {
+  CategoryPicker,
+  useAllCategories,
+  useDefaultCategoryIds,
+} from "@/components/admin/supplier-categories-modal"
 import ShopOrderModal, { STATUS_META, formatOrderDate } from "@/components/admin/shop-order-modal"
 import {
   inventorySuppliersService,
@@ -61,14 +65,189 @@ const EMPTY_TOTALS: ShopOrderTotals = {
 }
 
 /**
+ * Sets the one list that every shop sees unless it has been given its own, and
+ * shows at a glance which shops are on it.
+ *
+ * Editing here is the fast path: adding a category to the catalogue is one save,
+ * not one save per shop. Shops with their own list are listed separately so it
+ * is obvious they will not follow this change.
+ */
+function ProductAccessTab({
+  suppliers,
+  onEditShop,
+  onChanged,
+}: {
+  suppliers: SupplierWithStats[]
+  onEditShop: (supplier: SupplierWithStats) => void
+  onChanged: () => void
+}) {
+  const { categories, isLoading: categoriesLoading } = useAllCategories()
+  const { ids: savedIds, isLoading: defaultsLoading, reload } = useDefaultCategoryIds()
+
+  const [selected, setSelected] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Re-seeded whenever the saved list arrives or changes, so Cancel is simply
+  // "load it again" and there is no third copy of the truth to drift.
+  useEffect(() => {
+    setSelected(savedIds)
+  }, [savedIds])
+
+  const isDirty = useMemo(() => {
+    if (selected.length !== savedIds.length) return true
+    const saved = new Set(savedIds)
+    return selected.some((id) => !saved.has(id))
+  }, [selected, savedIds])
+
+  const onDefault = suppliers.filter((supplier) => supplier.category_access_mode !== "custom")
+  const onCustom = suppliers.filter((supplier) => supplier.category_access_mode === "custom")
+
+  const save = async () => {
+    setIsSaving(true)
+    try {
+      await inventorySuppliersService.setDefaultCategories(selected)
+      toast.success(
+        selected.length === 0
+          ? `Default list cleared — ${onDefault.length} shop${onDefault.length === 1 ? "" : "s"} now see nothing`
+          : `Default list saved · ${onDefault.length} shop${onDefault.length === 1 ? "" : "s"} updated`
+      )
+      await reload()
+      onChanged()
+    } catch (error: any) {
+      toast.error(error.message || "Could not save the default list")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 items-start">
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2.5 bg-primary/10 rounded-xl shrink-0">
+            <FolderTree className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg leading-tight">Default product list</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Every shop sees these categories unless you have picked a list just for them.
+            </p>
+          </div>
+        </div>
+
+        <CategoryPicker
+          categories={categories}
+          selected={selected}
+          onToggle={(id) =>
+            setSelected((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+          }
+          onSelectAll={(ids) => setSelected((prev) => Array.from(new Set([...prev, ...ids])))}
+          onClear={() => setSelected([])}
+          isLoading={categoriesLoading || defaultsLoading}
+        />
+
+        <div className="flex items-center gap-2 pt-4 mt-4 border-t border-border">
+          <Button className="font-bold" disabled={!isDirty || isSaving} onClick={save}>
+            {isSaving ? "Saving..." : "Save default list"}
+          </Button>
+          <Button variant="outline" disabled={!isDirty || isSaving} onClick={() => setSelected(savedIds)}>
+            Cancel
+          </Button>
+          {isDirty && (
+            <span className="text-xs text-amber-600 font-semibold">
+              Affects {onDefault.length} shop{onDefault.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <AccessGroup
+          title="Following the default"
+          hint={`${savedIds.length} categor${savedIds.length === 1 ? "y" : "ies"} each`}
+          suppliers={onDefault}
+          emptyText="No shop is on the default list."
+          onEditShop={onEditShop}
+        />
+        <AccessGroup
+          title="Own list"
+          hint="Not affected by the default"
+          suppliers={onCustom}
+          emptyText="Every shop follows the default."
+          onEditShop={onEditShop}
+          showOwnCount
+        />
+      </div>
+    </div>
+  )
+}
+
+function AccessGroup({
+  title,
+  hint,
+  suppliers,
+  emptyText,
+  onEditShop,
+  showOwnCount,
+}: {
+  title: string
+  hint: string
+  suppliers: SupplierWithStats[]
+  emptyText: string
+  onEditShop: (supplier: SupplierWithStats) => void
+  showOwnCount?: boolean
+}) {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+      <div className="flex items-baseline justify-between gap-2 mb-3">
+        <h3 className="font-bold">
+          {title} ({suppliers.length})
+        </h3>
+        <span className="text-[11px] text-muted-foreground">{hint}</span>
+      </div>
+
+      {suppliers.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-4 text-center">{emptyText}</p>
+      ) : (
+        <div className="space-y-1">
+          {suppliers.map((supplier) => (
+            <div
+              key={supplier.id}
+              className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/60 transition-colors"
+            >
+              <Store className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate">{supplier.name}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {supplier.stats.categories === 0
+                    ? "sees nothing"
+                    : `sees ${supplier.stats.categories} categor${supplier.stats.categories === 1 ? "y" : "ies"}`}
+                  {showOwnCount && supplier.stats.own_categories !== supplier.stats.categories
+                    ? ` · ${supplier.stats.own_categories} picked`
+                    : ""}
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" className="shrink-0" onClick={() => onEditShop(supplier)}>
+                Edit
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
  * Shops we supply, and what they have ordered from us.
  *
- * The two tabs are the whole job: Orders is what needs doing today, Shops is who
- * is allowed to see what. Stock never moves from this page — a shop order is
- * fulfilled through the POS like any other sale.
+ * The three tabs are the whole job: Orders is what needs doing today, Shops is
+ * who you supply, Product Access is what they are allowed to see. Stock never
+ * moves from this page — a shop order is fulfilled through the POS like any
+ * other sale.
  */
 export default function SuppliersPage() {
-  const [tab, setTab] = useState<"orders" | "shops">("orders")
+  const [tab, setTab] = useState<"orders" | "shops" | "access">("orders")
 
   const [suppliers, setSuppliers] = useState<SupplierWithStats[]>([])
   const [suppliersLoading, setSuppliersLoading] = useState(true)
@@ -310,6 +489,14 @@ export default function SuppliersPage() {
           >
             Shops ({suppliers.length})
           </button>
+          <button
+            onClick={() => setTab("access")}
+            className={`flex-1 sm:flex-none px-5 py-2 rounded-md text-sm font-bold transition-all ${
+              tab === "access" ? "bg-card shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Product Access
+          </button>
         </div>
 
         {tab === "orders" ? (
@@ -452,7 +639,7 @@ export default function SuppliersPage() {
               </div>
             </div>
           </>
-        ) : (
+        ) : tab === "shops" ? (
           <>
             {/* Shop search */}
             <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
@@ -549,7 +736,7 @@ export default function SuppliersPage() {
                           {supplier.stats.categories}
                         </p>
                         <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold">
-                          Categories
+                          {supplier.category_access_mode === "custom" ? "Own Cats" : "Default Cats"}
                         </p>
                       </div>
                       <div className="text-center">
@@ -566,7 +753,9 @@ export default function SuppliersPage() {
 
                     {supplier.stats.categories === 0 && (
                       <p className="text-[11px] text-red-600 font-medium mt-3">
-                        No categories opened — this shop sees an empty catalogue.
+                        {supplier.category_access_mode === "custom"
+                          ? "No categories picked — this shop sees an empty catalogue."
+                          : "The default list is empty — this shop sees an empty catalogue."}
                       </p>
                     )}
                     {supplier.stats.last_order_at && (
@@ -643,6 +832,12 @@ export default function SuppliersPage() {
               </div>
             )}
           </>
+        ) : (
+          <ProductAccessTab
+            suppliers={suppliers}
+            onEditShop={setCategorySupplier}
+            onChanged={fetchSuppliers}
+          />
         )}
       </div>
 

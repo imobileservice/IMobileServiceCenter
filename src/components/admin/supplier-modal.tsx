@@ -6,8 +6,17 @@ import { motion } from "framer-motion"
 import { ChevronDown, KeyRound, Store, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { inventorySuppliersService, type Supplier } from "@/lib/services/inventory.service"
-import { CategoryPicker, useAllCategories } from "@/components/admin/supplier-categories-modal"
+import {
+  inventorySuppliersService,
+  type CategoryAccessMode,
+  type Supplier,
+} from "@/lib/services/inventory.service"
+import {
+  AccessModeToggle,
+  CategoryPicker,
+  useAllCategories,
+  useDefaultCategoryIds,
+} from "@/components/admin/supplier-categories-modal"
 import { toast } from "sonner"
 
 interface SupplierModalProps {
@@ -42,15 +51,18 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState(EMPTY_FORM)
   const [showOptional, setShowOptional] = useState(false)
+  const [accessMode, setAccessMode] = useState<CategoryAccessMode>("default")
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
 
   const isEditing = Boolean(supplier)
   const { categories, isLoading: categoriesLoading } = useAllCategories(isOpen)
+  const { ids: defaultCategoryIds, isLoading: defaultsLoading } = useDefaultCategoryIds(isOpen && !isEditing)
 
   useEffect(() => {
     if (!isOpen) return
     setLoading(false)
     setShowOptional(false)
+    setAccessMode("default")
     setSelectedCategories([])
 
     if (supplier) {
@@ -147,9 +159,14 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
         }
       }
 
-      if (!isEditing && selectedCategories.length > 0) {
+      // A new shop defaults to the shared list, which the server already does —
+      // only a deliberate override is worth a second call.
+      if (!isEditing && accessMode === "custom") {
         try {
-          await inventorySuppliersService.setCategories(saved.id, selectedCategories)
+          await inventorySuppliersService.setCategories(saved.id, {
+            mode: "custom",
+            categoryIds: selectedCategories,
+          })
         } catch (error: any) {
           console.error("Failed to set category access:", error)
           toast.error(`${savedLabel}, but product access was not saved: ${error.message || "unknown error"}`)
@@ -161,8 +178,10 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
 
       const extras = [
         password ? "portal access" : "",
-        !isEditing && selectedCategories.length
-          ? `${selectedCategories.length} categor${selectedCategories.length === 1 ? "y" : "ies"}`
+        !isEditing
+          ? accessMode === "custom"
+            ? `${selectedCategories.length} categor${selectedCategories.length === 1 ? "y" : "ies"}`
+            : "the default product list"
           : "",
       ].filter(Boolean)
 
@@ -265,15 +284,44 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
           {/* Category access, on the first screen for a new shop: without it they
               sign in to an empty catalogue. */}
           {!isEditing && (
-            <div className="rounded-xl border border-border p-4">
-              <CategoryPicker
-                categories={categories}
-                selected={selectedCategories}
-                onToggle={toggleCategory}
-                onSelectAll={(ids) => setSelectedCategories((prev) => Array.from(new Set([...prev, ...ids])))}
-                onClear={() => setSelectedCategories([])}
-                isLoading={categoriesLoading}
+            <div className="rounded-xl border border-border p-4 space-y-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                What this shop can see
+              </p>
+
+              <AccessModeToggle
+                mode={accessMode}
+                onChange={setAccessMode}
+                defaultCount={defaultCategoryIds.length}
+                customCount={selectedCategories.length}
+                isLoading={defaultsLoading}
               />
+
+              {accessMode === "custom" ? (
+                <>
+                  <CategoryPicker
+                    categories={categories}
+                    selected={selectedCategories}
+                    onToggle={toggleCategory}
+                    onSelectAll={(ids) => setSelectedCategories((prev) => Array.from(new Set([...prev, ...ids])))}
+                    onClear={() => setSelectedCategories([])}
+                    isLoading={categoriesLoading}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={defaultsLoading}
+                    onClick={() => setSelectedCategories(defaultCategoryIds)}
+                  >
+                    Start from the default list
+                  </Button>
+                </>
+              ) : defaultCategoryIds.length === 0 && !defaultsLoading ? (
+                <p className="text-[11px] text-amber-600 font-medium">
+                  The default list is empty, so this shop will see nothing until you set it on the Product Access tab.
+                </p>
+              ) : null}
             </div>
           )}
 

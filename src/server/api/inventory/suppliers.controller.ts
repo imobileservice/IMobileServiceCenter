@@ -28,7 +28,10 @@ const router = Router()
 // ─── SUPPLIER LIST ───────────────────────────────────
 
 const emptyShopStats = () => ({
+  /** What the shop sees: its own list, or the shared default. */
   categories: 0,
+  /** How many it has hand-picked, whether or not that list is in use. */
+  own_categories: 0,
   orders: 0,
   pending_orders: 0,
   pending_units: 0,
@@ -61,9 +64,10 @@ router.get('/', async (req: Request, res: Response) => {
      * 20260809_supplier_shop_orders.sql has not been run the page still lists
      * the shops, with zeroes and a banner telling the admin what to run.
      */
-    const [categoriesResult, ordersResult] = await Promise.all([
+    const [categoriesResult, ordersResult, defaultsResult] = await Promise.all([
       supabase.from('inv_supplier_categories').select('supplier_id'),
       supabase.from('inv_supplier_orders').select('supplier_id, status, total_qty, created_at'),
+      supabase.from('inv_supplier_default_categories').select('category_id'),
     ])
 
     const migrationRequired =
@@ -72,6 +76,9 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (categoriesResult.error && !isMissingSchema(categoriesResult.error)) throw categoriesResult.error
     if (ordersResult.error && !isMissingSchema(ordersResult.error)) throw ordersResult.error
+    if (defaultsResult.error && !isMissingSchema(defaultsResult.error)) throw defaultsResult.error
+
+    const defaultCount = (defaultsResult.data || []).length
 
     const statsBySupplier = new Map<string, ReturnType<typeof emptyShopStats>>()
     const statsFor = (id: string) => {
@@ -83,7 +90,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     for (const row of categoriesResult.data || []) {
-      statsFor(row.supplier_id).categories += 1
+      statsFor(row.supplier_id).own_categories += 1
     }
 
     for (const order of ordersResult.data || []) {
@@ -98,12 +105,19 @@ router.get('/', async (req: Request, res: Response) => {
       }
     }
 
-    const data = (suppliers || []).map((supplier: any) => ({
-      ...supplier,
-      stats: statsBySupplier.get(supplier.id) || emptyShopStats(),
-    }))
+    const data = (suppliers || []).map((supplier: any) => {
+      const stats = statsBySupplier.get(supplier.id) || emptyShopStats()
+      const mode = supplier.category_access_mode === 'custom' ? 'custom' : 'default'
+      return {
+        ...supplier,
+        category_access_mode: mode,
+        // `categories` is what the shop actually sees, so a card following the
+        // default reads the same number the shop's own portal would show.
+        stats: { ...stats, categories: mode === 'custom' ? stats.own_categories : defaultCount },
+      }
+    })
 
-    res.json({ data, migration_required: Boolean(migrationRequired) })
+    res.json({ data, default_categories: defaultCount, migration_required: Boolean(migrationRequired) })
   } catch (error: any) {
     console.error('[Inventory Suppliers] GET error:', error)
     res.status(500).json({ error: error.message })
@@ -131,14 +145,17 @@ router.get('/categories', async (_req: Request, res: Response) => {
   }
 })
 
-// GET /api/inventory/suppliers/:id/categories
-router.get('/:id/categories', async (req: Request, res: Response) => {
+/** Cleans a posted id list: strings only, no duplicates. */
+const normalizeCategoryIds = (value: any) =>
+  Array.from(new Set((value as any[]).filter((id: any) => typeof id === 'string' && id)))
+
+// GET /api/inventory/suppliers/default-categories - the shared list
+router.get('/default-categories', async (_req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
     const { data, error } = await supabase
-      .from('inv_supplier_categories')
+      .from('inv_supplier_default_categories')
       .select('category_id, categories (id, name, slug)')
-      .eq('supplier_id', req.params.id)
 
     if (error) {
       if (isMissingSchema(error)) return res.json({ data: [], migration_required: true })
@@ -147,6 +164,91 @@ router.get('/:id/categories', async (req: Request, res: Response) => {
 
     res.json({ data: data || [], migration_required: false })
   } catch (error: any) {
+    console.error('[Inventory Suppliers] GET/default-categories error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+/**
+ * PUT /api/inventory/suppliers/default-categories
+ * Body: { category_ids: string[] }
+ *
+ * Sets the list every shop follows unless it has been given its own. Replaces
+ * the list outright, so the tick grid in the admin panel is the truth:
+ * unticking takes a category away, which an add-only endpoint could not express.
+ *
+ * This is the one write that changes what several shops see at once. Nothing
+ * cascades from it - a shop in 'custom' mode is untouched by design.
+ */
+router.put('/default-categories', async (req: Request, res: Response) => {
+  try {
+    const { category_ids } = req.body || {}
+    if (!Array.isArray(category_ids)) {
+      return res.status(400).json({ error: 'category_ids must be an array' })
+    }
+
+    const wanted = normalizeCategoryIds(category_ids)
+    const supabase = getSupabaseAdmin()
+
+    // No WHERE clause is meant here: the table holds exactly one list.
+    const { error: deleteError } = await supabase
+      .from('inv_supplier_default_categories')
+      .delete()
+      .not('category_id', 'is', null)
+
+    if (deleteError) {
+      if (isMissingSchema(deleteError)) {
+        return res
+          .status(503)
+          .json({ error: 'Run supabase/migrations/20260810_supplier_default_categories.sql first' })
+      }
+      throw deleteError
+    }
+
+    if (wanted.length === 0) return res.json({ data: [], count: 0 })
+
+    const { data, error } = await supabase
+      .from('inv_supplier_default_categories')
+      .insert(wanted.map((categoryId) => ({ category_id: categoryId })))
+      .select('category_id')
+
+    if (error) throw error
+
+    res.json({ data: data || [], count: data?.length || 0 })
+  } catch (error: any) {
+    console.error('[Inventory Suppliers] PUT/default-categories error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/inventory/suppliers/:id/categories
+router.get('/:id/categories', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseAdmin()
+
+    const [ownResult, supplierResult] = await Promise.all([
+      supabase
+        .from('inv_supplier_categories')
+        .select('category_id, categories (id, name, slug)')
+        .eq('supplier_id', req.params.id),
+      supabase.from('inv_suppliers').select('category_access_mode').eq('id', req.params.id).maybeSingle(),
+    ])
+
+    if (ownResult.error) {
+      if (isMissingSchema(ownResult.error)) return res.json({ data: [], mode: 'default', migration_required: true })
+      throw ownResult.error
+    }
+
+    // A database without the mode column is one where every shop has its own
+    // list, which is exactly what 'custom' means.
+    const mode = supplierResult.error
+      ? 'custom'
+      : supplierResult.data?.category_access_mode === 'custom'
+        ? 'custom'
+        : 'default'
+
+    res.json({ data: ownResult.data || [], mode, migration_required: false })
+  } catch (error: any) {
     console.error('[Inventory Suppliers] GET/:id/categories error:', error)
     res.status(500).json({ error: error.message })
   }
@@ -154,23 +256,45 @@ router.get('/:id/categories', async (req: Request, res: Response) => {
 
 /**
  * PUT /api/inventory/suppliers/:id/categories
- * Body: { category_ids: string[] }
+ * Body: { mode?: 'default' | 'custom', category_ids?: string[] }
  *
- * Replaces the shop's whole list rather than adding to it, so the checkbox grid
- * in the admin panel is the truth: unticking a category takes it away, which an
- * add-only endpoint could never express.
+ * Points one shop at the shared default, or gives it a list of its own.
+ *
+ * Switching to 'default' keeps whatever the shop had hand-picked rather than
+ * deleting it, so turning the override back on restores the old list instead of
+ * making someone rebuild it from memory.
  */
 router.put('/:id/categories', async (req: Request, res: Response) => {
   try {
-    const { category_ids } = req.body || {}
-    if (!Array.isArray(category_ids)) {
-      return res.status(400).json({ error: 'category_ids must be an array' })
+    const { mode, category_ids } = req.body || {}
+    const supplierId = req.params.id
+    const supabase = getSupabaseAdmin()
+
+    if (mode !== undefined && mode !== 'default' && mode !== 'custom') {
+      return res.status(400).json({ error: "mode must be 'default' or 'custom'" })
     }
 
-    const supplierId = req.params.id
-    const wanted = Array.from(new Set(category_ids.filter((id: any) => typeof id === 'string' && id)))
+    if (mode) {
+      const { error: modeError } = await supabase
+        .from('inv_suppliers')
+        .update({ category_access_mode: mode })
+        .eq('id', supplierId)
 
-    const supabase = getSupabaseAdmin()
+      if (modeError) {
+        if (isMissingSchema(modeError)) {
+          return res
+            .status(503)
+            .json({ error: 'Run supabase/migrations/20260810_supplier_default_categories.sql first' })
+        }
+        throw modeError
+      }
+    }
+
+    if (!Array.isArray(category_ids)) {
+      return res.json({ mode: mode || null, count: null })
+    }
+
+    const wanted = normalizeCategoryIds(category_ids)
 
     const { error: deleteError } = await supabase
       .from('inv_supplier_categories')
@@ -185,7 +309,7 @@ router.put('/:id/categories', async (req: Request, res: Response) => {
     }
 
     if (wanted.length === 0) {
-      return res.json({ data: [], count: 0 })
+      return res.json({ data: [], count: 0, mode: mode || null })
     }
 
     const { data, error } = await supabase
@@ -195,7 +319,7 @@ router.put('/:id/categories', async (req: Request, res: Response) => {
 
     if (error) throw error
 
-    res.json({ data: data || [], count: data?.length || 0 })
+    res.json({ data: data || [], count: data?.length || 0, mode: mode || null })
   } catch (error: any) {
     console.error('[Inventory Suppliers] PUT/:id/categories error:', error)
     res.status(500).json({ error: error.message })

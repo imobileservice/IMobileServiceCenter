@@ -17,17 +17,22 @@ export const DEFAULT_SUPPORT_PHONE = process.env.SUPPLIER_PORTAL_PHONE || '+9477
 export const DEFAULT_SUPPORT_WHATSAPP =
   process.env.SUPPLIER_PORTAL_WHATSAPP || process.env.SUPPLIER_PORTAL_PHONE || '+94770344273'
 
-/**
- * The categories this shop is allowed to see.
- *
- * Returns null when the migration has not been run yet, which the callers
- * report as "not set up" rather than as an empty catalogue - the two look the
- * same to a shop but mean very different things to whoever has to fix it.
- */
-export const fetchAllowedCategoryIds = async (
-  supabase: any,
-  supplierId: string
-): Promise<string[] | null> => {
+export type CategoryAccessMode = 'default' | 'custom'
+
+/** The shared list every shop follows unless it has been given its own. */
+export const fetchDefaultCategoryIds = async (supabase: any): Promise<string[] | null> => {
+  const { data, error } = await supabase.from('inv_supplier_default_categories').select('category_id')
+
+  if (error) {
+    if (isMissingSchema(error)) return null
+    throw error
+  }
+
+  return (data || []).map((row: any) => row.category_id).filter(Boolean)
+}
+
+/** One shop's own hand-picked list. Only consulted in 'custom' mode. */
+export const fetchOwnCategoryIds = async (supabase: any, supplierId: string): Promise<string[] | null> => {
   const { data, error } = await supabase
     .from('inv_supplier_categories')
     .select('category_id')
@@ -39,6 +44,36 @@ export const fetchAllowedCategoryIds = async (
   }
 
   return (data || []).map((row: any) => row.category_id).filter(Boolean)
+}
+
+/**
+ * The categories this shop is allowed to see, resolved through its mode.
+ *
+ * The single place that answers the question, so the catalogue a shop browses
+ * and the order it is allowed to place can never disagree about what is on
+ * offer. An empty array is a real answer - a shop that has been given nothing -
+ * while null means the migration has not been run, which the callers report as
+ * "not set up". The two look the same to a shop but mean very different things
+ * to whoever has to fix it.
+ */
+export const fetchAllowedCategoryIds = async (
+  supabase: any,
+  supplier: { id: string; category_access_mode?: CategoryAccessMode }
+): Promise<string[] | null> => {
+  if (supplier.category_access_mode === 'custom') {
+    return fetchOwnCategoryIds(supabase, supplier.id)
+  }
+
+  const defaults = await fetchDefaultCategoryIds(supabase)
+
+  /*
+   * A database on 20260809 but not yet on 20260810 has per-shop lists and no
+   * default table. Falling back to the shop's own list keeps those shops
+   * working through the gap rather than emptying every catalogue at once.
+   */
+  if (defaults === null) return fetchOwnCategoryIds(supabase, supplier.id)
+
+  return defaults
 }
 
 /** Product name including the model held in the JSONB specs column. */

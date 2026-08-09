@@ -219,10 +219,18 @@ export interface Supplier {
   /** Who the portal's Call / WhatsApp buttons reach. Blank falls back to the shop-wide number. */
   support_phone?: string | null
   support_whatsapp?: string | null
+  /** Whether this shop follows the shared default category list or its own. */
+  category_access_mode?: CategoryAccessMode
 }
 
+/** Which list decides what a shop can see. */
+export type CategoryAccessMode = 'default' | 'custom'
+
 export interface SupplierStats {
+  /** Categories the shop actually sees — its own list, or the shared default. */
   categories: number
+  /** Categories hand-picked for this shop, whether or not that list is in use. */
+  own_categories: number
   orders: number
   pending_orders: number
   pending_units: number
@@ -298,7 +306,12 @@ export const inventorySuppliersService = {
     if (params?.withStats) qs.set('with_stats', 'true')
     if (params?.search) qs.set('search', params.search)
     const query = qs.toString() ? `?${qs.toString()}` : ''
-    return apiFetch<{ data: SupplierWithStats[]; migration_required?: boolean }>(`/suppliers${query}`)
+    return apiFetch<{
+      data: SupplierWithStats[]
+      /** How many categories the shared default holds right now. */
+      default_categories?: number
+      migration_required?: boolean
+    }>(`/suppliers${query}`)
   },
 
   getById: (id: string) => apiFetch<{ data: Supplier }>(`/suppliers/${id}`),
@@ -314,20 +327,43 @@ export const inventorySuppliersService = {
 
   delete: (id: string) => apiFetch(`/suppliers/${id}`, { method: 'DELETE' }),
 
-  /** Every category in the catalogue, for the access picker. */
+  /** Every category in the catalogue, for the access pickers. */
   getAllCategories: () => apiFetch<{ data: ProductCategory[] }>('/suppliers/categories'),
 
-  /** The categories this shop can currently see in their portal. */
-  getCategories: (id: string) =>
-    apiFetch<{ data: Array<{ category_id: string; categories: ProductCategory | null }>; migration_required?: boolean }>(
-      `/suppliers/${id}/categories`
-    ),
+  /** The shared list every shop follows unless it has been given its own. */
+  getDefaultCategories: () =>
+    apiFetch<{
+      data: Array<{ category_id: string; categories: ProductCategory | null }>
+      migration_required?: boolean
+    }>('/suppliers/default-categories'),
 
-  /** Replaces the shop's category list outright — what is sent is what they see. */
-  setCategories: (id: string, categoryIds: string[]) =>
-    apiFetch<{ count: number }>(`/suppliers/${id}/categories`, {
+  /** Replaces the shared list outright — this changes what every shop on the default sees. */
+  setDefaultCategories: (categoryIds: string[]) =>
+    apiFetch<{ count: number }>('/suppliers/default-categories', {
       method: 'PUT',
       body: JSON.stringify({ category_ids: categoryIds }),
+    }),
+
+  /** One shop's hand-picked list, plus whether that list is the one in use. */
+  getCategories: (id: string) =>
+    apiFetch<{
+      data: Array<{ category_id: string; categories: ProductCategory | null }>
+      mode: CategoryAccessMode
+      migration_required?: boolean
+    }>(`/suppliers/${id}/categories`),
+
+  /**
+   * Points a shop at the shared default, or gives it a list of its own.
+   * Sending only a mode leaves the shop's hand-picked list untouched, so
+   * switching back and forth does not lose it.
+   */
+  setCategories: (id: string, payload: { mode?: CategoryAccessMode; categoryIds?: string[] }) =>
+    apiFetch<{ count: number | null }>(`/suppliers/${id}/categories`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...(payload.mode ? { mode: payload.mode } : {}),
+        ...(payload.categoryIds ? { category_ids: payload.categoryIds } : {}),
+      }),
     }),
 
   /**

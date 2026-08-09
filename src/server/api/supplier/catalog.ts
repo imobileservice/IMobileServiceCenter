@@ -16,10 +16,9 @@ import { fetchAllowedCategoryIds, PRODUCT_SELECT, toCatalogItem } from './shop.s
  */
 export async function supplierCatalogHandler(req: SupplierRequest, res: Response) {
   try {
-    const supplierId = req.supplier!.id
     const supabase = getSupabaseAdmin()
 
-    const allowed = await fetchAllowedCategoryIds(supabase, supplierId)
+    const allowed = await fetchAllowedCategoryIds(supabase, req.supplier!)
 
     if (allowed === null) {
       return res.json({ data: [], categories: [], totals: emptyTotals(), migration_required: true })

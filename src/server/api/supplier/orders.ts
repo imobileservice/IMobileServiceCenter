@@ -52,7 +52,7 @@ export async function createSupplierOrderHandler(req: SupplierRequest, res: Resp
 
     const supabase = getSupabaseAdmin()
 
-    const allowed = await fetchAllowedCategoryIds(supabase, supplier.id)
+    const allowed = await fetchAllowedCategoryIds(supabase, supplier)
     if (allowed === null) return res.status(503).json({ error: migrationMessage })
     if (allowed.length === 0) {
       return res.status(403).json({ error: 'No products have been made available to your shop yet' })
