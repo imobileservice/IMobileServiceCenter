@@ -4,6 +4,7 @@ import stockController from './stock.controller'
 import salesController from './sales.controller'
 import purchasesController from './purchases.controller'
 import suppliersController from './suppliers.controller'
+import supplierOrdersController from './supplier-orders.controller'
 import customersController from './customers.controller'
 import reportsController from './reports.controller'
 
@@ -15,6 +16,7 @@ router.use('/stock', stockController)
 router.use('/sales', salesController)
 router.use('/purchases', purchasesController)
 router.use('/suppliers', suppliersController)
+router.use('/supplier-orders', supplierOrdersController)
 router.use('/customers', customersController)
 router.use('/reports', reportsController)
 

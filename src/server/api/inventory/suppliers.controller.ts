@@ -27,6 +27,14 @@ const router = Router()
 
 // ─── SUPPLIER LIST ───────────────────────────────────
 
+const emptyShopStats = () => ({
+  categories: 0,
+  orders: 0,
+  pending_orders: 0,
+  pending_units: 0,
+  last_order_at: null as string | null,
+})
+
 // GET /api/inventory/suppliers?with_stats=true&search=
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -47,64 +55,149 @@ router.get('/', async (req: Request, res: Response) => {
       return res.json({ data: suppliers || [] })
     }
 
-    const links = await fetchSupplierLinks(supabase)
+    /*
+     * What the shop cards show: how much catalogue each shop can see and what
+     * they have ordered. Both tables are optional - on a database where
+     * 20260809_supplier_shop_orders.sql has not been run the page still lists
+     * the shops, with zeroes and a banner telling the admin what to run.
+     */
+    const [categoriesResult, ordersResult] = await Promise.all([
+      supabase.from('inv_supplier_categories').select('supplier_id'),
+      supabase.from('inv_supplier_orders').select('supplier_id, status, total_qty, created_at'),
+    ])
 
-    // Last purchase per supplier, for the "last ordered" column
-    const { data: purchases } = await supabase
-      .from('inv_purchases')
-      .select('supplier_id, total_cost, created_at')
-      .not('supplier_id', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(500)
+    const migrationRequired =
+      (categoriesResult.error && isMissingSchema(categoriesResult.error)) ||
+      (ordersResult.error && isMissingSchema(ordersResult.error))
 
-    const purchaseStats = new Map<string, { last_purchase_at: string; purchase_count: number; total_spent: number }>()
-    for (const purchase of purchases || []) {
-      const existing = purchaseStats.get(purchase.supplier_id)
-      if (existing) {
-        existing.purchase_count += 1
-        existing.total_spent += Number(purchase.total_cost || 0)
-      } else {
-        purchaseStats.set(purchase.supplier_id, {
-          last_purchase_at: purchase.created_at,
-          purchase_count: 1,
-          total_spent: Number(purchase.total_cost || 0),
-        })
+    if (categoriesResult.error && !isMissingSchema(categoriesResult.error)) throw categoriesResult.error
+    if (ordersResult.error && !isMissingSchema(ordersResult.error)) throw ordersResult.error
+
+    const statsBySupplier = new Map<string, ReturnType<typeof emptyShopStats>>()
+    const statsFor = (id: string) => {
+      const existing = statsBySupplier.get(id)
+      if (existing) return existing
+      const created = emptyShopStats()
+      statsBySupplier.set(id, created)
+      return created
+    }
+
+    for (const row of categoriesResult.data || []) {
+      statsFor(row.supplier_id).categories += 1
+    }
+
+    for (const order of ordersResult.data || []) {
+      const stats = statsFor(order.supplier_id)
+      stats.orders += 1
+      if (order.status === 'pending') {
+        stats.pending_orders += 1
+        stats.pending_units += Number(order.total_qty || 0)
+      }
+      if (!stats.last_order_at || order.created_at > stats.last_order_at) {
+        stats.last_order_at = order.created_at
       }
     }
 
-    if (links === null) {
-      // Migration pending: still return suppliers so the page works.
-      return res.json({
-        data: (suppliers || []).map((supplier: any) => ({
-          ...supplier,
-          stats: emptyTotals(),
-          ...(purchaseStats.get(supplier.id) || { last_purchase_at: null, purchase_count: 0, total_spent: 0 }),
-        })),
-        migration_required: true,
-      })
-    }
+    const data = (suppliers || []).map((supplier: any) => ({
+      ...supplier,
+      stats: statsBySupplier.get(supplier.id) || emptyShopStats(),
+    }))
 
-    const linkedProductIds = Array.from(new Set<string>(links.map((link: any) => link.product_id as string)))
-    const stockRows = await fetchStockRows(supabase, linkedProductIds)
-    const stockByProduct = new Map(stockRows.map((row: any) => [row.product_id, row]))
-
-    const data = (suppliers || []).map((supplier: any) => {
-      const totals = emptyTotals()
-      for (const link of links.filter((l: any) => l.supplier_id === supplier.id)) {
-        const stock = stockByProduct.get(link.product_id)
-        if (!stock) continue
-        accumulate(totals, buildStockItem(stock, link))
-      }
-      return {
-        ...supplier,
-        stats: totals,
-        ...(purchaseStats.get(supplier.id) || { last_purchase_at: null, purchase_count: 0, total_spent: 0 }),
-      }
-    })
-
-    res.json({ data })
+    res.json({ data, migration_required: Boolean(migrationRequired) })
   } catch (error: any) {
     console.error('[Inventory Suppliers] GET error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// ─── CATEGORY ACCESS ─────────────────────────────────
+// Which slice of the catalogue a shop sees in their own portal.
+// Declared before /:id so "categories" is never read as a supplier id.
+
+// GET /api/inventory/suppliers/categories - every category, for the picker
+router.get('/categories', async (_req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('categories')
+      .select('id, name, slug, is_active')
+      .order('name', { ascending: true })
+
+    if (error) throw error
+    res.json({ data: data || [] })
+  } catch (error: any) {
+    console.error('[Inventory Suppliers] categories error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// GET /api/inventory/suppliers/:id/categories
+router.get('/:id/categories', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data, error } = await supabase
+      .from('inv_supplier_categories')
+      .select('category_id, categories (id, name, slug)')
+      .eq('supplier_id', req.params.id)
+
+    if (error) {
+      if (isMissingSchema(error)) return res.json({ data: [], migration_required: true })
+      throw error
+    }
+
+    res.json({ data: data || [], migration_required: false })
+  } catch (error: any) {
+    console.error('[Inventory Suppliers] GET/:id/categories error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+/**
+ * PUT /api/inventory/suppliers/:id/categories
+ * Body: { category_ids: string[] }
+ *
+ * Replaces the shop's whole list rather than adding to it, so the checkbox grid
+ * in the admin panel is the truth: unticking a category takes it away, which an
+ * add-only endpoint could never express.
+ */
+router.put('/:id/categories', async (req: Request, res: Response) => {
+  try {
+    const { category_ids } = req.body || {}
+    if (!Array.isArray(category_ids)) {
+      return res.status(400).json({ error: 'category_ids must be an array' })
+    }
+
+    const supplierId = req.params.id
+    const wanted = Array.from(new Set(category_ids.filter((id: any) => typeof id === 'string' && id)))
+
+    const supabase = getSupabaseAdmin()
+
+    const { error: deleteError } = await supabase
+      .from('inv_supplier_categories')
+      .delete()
+      .eq('supplier_id', supplierId)
+
+    if (deleteError) {
+      if (isMissingSchema(deleteError)) {
+        return res.status(503).json({ error: 'Run supabase/migrations/20260809_supplier_shop_orders.sql first' })
+      }
+      throw deleteError
+    }
+
+    if (wanted.length === 0) {
+      return res.json({ data: [], count: 0 })
+    }
+
+    const { data, error } = await supabase
+      .from('inv_supplier_categories')
+      .insert(wanted.map((categoryId) => ({ supplier_id: supplierId, category_id: categoryId })))
+      .select('category_id')
+
+    if (error) throw error
+
+    res.json({ data: data || [], count: data?.length || 0 })
+  } catch (error: any) {
+    console.error('[Inventory Suppliers] PUT/:id/categories error:', error)
     res.status(500).json({ error: error.message })
   }
 })
@@ -482,7 +575,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
-    const { name, contact_person, phone, email, address, notes, is_active } = req.body
+    const { name, contact_person, phone, email, address, notes, is_active, support_phone, support_whatsapp } = req.body
 
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Supplier name is required' })
@@ -497,13 +590,17 @@ router.post('/', async (req: Request, res: Response) => {
     }
     if (notes !== undefined) payload.notes = notes || null
     if (is_active !== undefined) payload.is_active = Boolean(is_active)
+    if (support_phone !== undefined) payload.support_phone = support_phone || null
+    if (support_whatsapp !== undefined) payload.support_whatsapp = support_whatsapp || null
 
     let { data, error } = await supabase.from('inv_suppliers').insert(payload).select().single()
 
-    // Older database without the notes/is_active columns: retry with the base fields.
+    // Older database without the notes/is_active/support columns: retry with the base fields.
     if (error && isMissingSchema(error)) {
       delete payload.notes
       delete payload.is_active
+      delete payload.support_phone
+      delete payload.support_whatsapp
       ;({ data, error } = await supabase.from('inv_suppliers').insert(payload).select().single())
     }
 
@@ -547,6 +644,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (error && isMissingSchema(error)) {
       delete (payload as any).notes
       delete (payload as any).is_active
+      delete (payload as any).support_phone
+      delete (payload as any).support_whatsapp
       ;({ data, error } = await supabase
         .from('inv_suppliers')
         .update(payload)

@@ -4,7 +4,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
-import { Lock, Mail, Truck } from "lucide-react"
+import { Lock, Mail, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSupplierStore } from "@/lib/supplier-store"
@@ -50,9 +50,9 @@ export default function SupplierLoginPage() {
         <div className="bg-card border border-border rounded-lg p-8 shadow-2xl">
           <div className="text-center mb-8 flex flex-col items-center">
             <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-4">
-              <Truck className="w-8 h-8 text-blue-500" />
+              <Store className="w-8 h-8 text-blue-500" />
             </div>
-            <h1 className="text-2xl font-black tracking-tight mb-1">SUPPLIER PORTAL</h1>
+            <h1 className="text-2xl font-black tracking-tight mb-1">SHOP PORTAL</h1>
             <p className="text-muted-foreground text-sm font-medium">IMobile Service Center</p>
           </div>
 
@@ -67,7 +67,7 @@ export default function SupplierLoginPage() {
               <label className="block text-sm font-semibold mb-2">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 w-5 h-5 text-muted-foreground" />
-                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="supplier@company.com" className="pl-10 h-12" required disabled={isLoading} />
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="shop@example.com" className="pl-10 h-12" required disabled={isLoading} />
               </div>
             </div>
 

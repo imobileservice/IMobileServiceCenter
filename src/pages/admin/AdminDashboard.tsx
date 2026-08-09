@@ -1,10 +1,12 @@
 "use client"
 
 import React, { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import {
   BarChart3,
   CalendarDays,
+  ClipboardList,
   Database as DatabaseIcon,
   DollarSign,
   Download,
@@ -12,6 +14,7 @@ import {
   Package,
   PieChart as PieChartIcon,
   ShoppingCart,
+  Store,
   TrendingUp,
   Users,
   Wallet,
@@ -20,7 +23,12 @@ import { ordersService } from "@/lib/supabase/services/orders"
 import { productsServiceEnhanced } from "@/lib/supabase/services/products-enhanced"
 import { customersService } from "@/lib/supabase/services/customers"
 import { categoriesService } from "@/lib/supabase/services/categories"
-import { inventoryCustomersService } from "@/lib/services/inventory.service"
+import {
+  inventoryCustomersService,
+  shopOrdersService,
+  type ShopOrder,
+  type ShopOrderTotals,
+} from "@/lib/services/inventory.service"
 import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
@@ -773,6 +781,15 @@ function PieDonutChartView({
   )
 }
 
+function ShopOrderTile({ label, value, tone = "text-foreground" }: { label: string; value: number; tone?: string }) {
+  return (
+    <div className="border border-border rounded-lg p-3 bg-background">
+      <p className="text-[11px] font-medium text-muted-foreground truncate">{label}</p>
+      <p className={`text-2xl font-black mt-0.5 ${tone}`}>{value.toLocaleString()}</p>
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const [activePeriod, setActivePeriod] = useState<ReportPeriod>("daily")
   const [orders, setOrders] = useState<any[]>([])
@@ -781,6 +798,9 @@ export default function AdminDashboard() {
   const [categories, setCategories] = useState<any[]>([])
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string>("")
   const [recentTransactions, setRecentTransactions] = useState<any[]>([])
+  // Orders the shops we supply placed for themselves in /supplier.
+  const [shopOrders, setShopOrders] = useState<ShopOrder[]>([])
+  const [shopOrderTotals, setShopOrderTotals] = useState<ShopOrderTotals | null>(null)
   const [stats, setStats] = useState({
     totalRevenue: 0,
     webRevenue: 0,
@@ -868,6 +888,18 @@ export default function AdminDashboard() {
           }),
         ])
 
+        // Kept out of the Promise.all above so a database still waiting on
+        // 20260809_supplier_shop_orders.sql only hides this one panel.
+        const shopOrdersResult = await shopOrdersService
+          .getAll({ limit: 100 })
+          .catch(err => {
+            console.warn("Failed to fetch shop orders:", err)
+            return { data: [], totals: null as ShopOrderTotals | null }
+          })
+
+        setShopOrders(shopOrdersResult.data || [])
+        setShopOrderTotals(shopOrdersResult.totals || null)
+
         const posSalesData = posSalesResult.data || []
         const productsData = productsResult.data || []
         const shopCustomers = shopCustomersResult.data || []
@@ -954,6 +986,12 @@ export default function AdminDashboard() {
   const analytics = useMemo(
     () => buildReportAnalytics(activePeriod, orders, posSales, products),
     [activePeriod, orders, posSales, products]
+  )
+
+  // Only what still needs a decision. Handled orders live on the Shop Orders page.
+  const pendingShopOrders = useMemo(
+    () => shopOrders.filter(order => order.status === "pending").slice(0, 6),
+    [shopOrders]
   )
 
   // Only categories that actually have products, so the dropdown never offers
@@ -1452,6 +1490,74 @@ export default function AdminDashboard() {
               </div>
             </motion.div>
           </div>
+        </motion.div>
+
+        {/* Orders the shops we supply placed for themselves */}
+        <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-500 p-2 rounded-lg text-white">
+                <Store className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">Shop Orders</h3>
+                <p className="text-xs text-muted-foreground">
+                  Placed from the shop portal &middot; {shopOrderTotals?.pending || 0} waiting on you
+                </p>
+              </div>
+            </div>
+            <Link to="/admin/suppliers">
+              <Button type="button" variant="outline" className="h-10">
+                Open Shop Orders
+              </Button>
+            </Link>
+          </div>
+
+          {shopOrderTotals && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <ShopOrderTile label="New" value={shopOrderTotals.pending} tone="text-amber-500" />
+              <ShopOrderTile label="Units Requested" value={shopOrderTotals.pending_units} tone="text-blue-500" />
+              <ShopOrderTile label="In Progress" value={shopOrderTotals.confirmed + shopOrderTotals.ready} />
+              <ShopOrderTile label="Completed" value={shopOrderTotals.completed} tone="text-emerald-500" />
+            </div>
+          )}
+
+          {pendingShopOrders.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <ClipboardList className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              <p>{shopOrders.length === 0 ? "No shop orders yet" : "Nothing waiting — every order has been handled"}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-semibold">Order</th>
+                    <th className="text-left py-3 px-4 font-semibold">Shop</th>
+                    <th className="text-left py-3 px-4 font-semibold">Items</th>
+                    <th className="text-left py-3 px-4 font-semibold">Units</th>
+                    <th className="text-left py-3 px-4 font-semibold">Placed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingShopOrders.map(order => (
+                    <tr key={order.id} className="border-b border-border hover:bg-muted/50 transition-colors">
+                      <td className="py-3 px-4 font-semibold">{order.order_number}</td>
+                      <td className="py-3 px-4 truncate max-w-[200px]">{order.supplier_name}</td>
+                      <td className="py-3 px-4">{order.item_count}</td>
+                      <td className="py-3 px-4 font-bold">{order.total_qty}</td>
+                      <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
+                        {new Date(order.created_at).toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </motion.div>
 
         <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">

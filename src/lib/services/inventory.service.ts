@@ -197,6 +197,10 @@ export const inventoryPurchasesService = {
 
 export type RestockStatus = 'out' | 'low' | 'ok'
 
+/**
+ * A shop we supply. They sign in at /supplier/login, see the categories opened
+ * to them and order for themselves.
+ */
 export interface Supplier {
   id: string
   name: string
@@ -212,95 +216,80 @@ export interface Supplier {
   // client - only whether access is on and when it was last used.
   portal_enabled?: boolean
   portal_last_login_at?: string | null
+  /** Who the portal's Call / WhatsApp buttons reach. Blank falls back to the shop-wide number. */
+  support_phone?: string | null
+  support_whatsapp?: string | null
 }
 
 export interface SupplierStats {
-  products: number
-  out_of_stock: number
-  low_stock: number
-  healthy: number
-  needed_units: number
-  estimated_cost: number
+  categories: number
+  orders: number
+  pending_orders: number
+  pending_units: number
+  last_order_at: string | null
 }
 
 export interface SupplierWithStats extends Supplier {
   stats: SupplierStats
-  last_purchase_at: string | null
-  purchase_count: number
-  total_spent: number
 }
 
-export type SupplierResponseStatus = 'pending' | 'can_supply' | 'unavailable'
+export type ShopOrderStatus = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled'
 
-/** What a supplier answered for one product in their own portal (/supplier). */
-export interface SupplierResponse {
-  status: SupplierResponseStatus
-  available_qty: number | null
-  expected_date: string | null
-  note: string | null
-  responded_at: string
-}
-
-export interface RestockItem {
-  product_id: string
-  name: string
-  raw_name: string
+export interface ShopOrderItem {
+  id: string
+  product_id: string | null
+  product_name: string
   barcode: string | null
-  brand: string | null
-  category: string | null
-  image: string | null
   quantity: number
-  damaged_quantity: number
-  low_stock_threshold: number
-  target_stock_level: number
-  is_target_auto: boolean
-  qty_meegoda: number
-  qty_padukka: number
-  qty_padukka_new: number
-  status: RestockStatus
-  /** Units missing to reach the restock target. */
-  needed_qty: number
-  /** Units to actually order (needed qty, rounded up to the supplier pack size). */
-  suggested_qty: number
-  unit_cost: number
-  estimated_cost: number
-  link_id: string | null
-  supplier_sku: string | null
-  supplier_cost_price: number | null
-  reorder_qty: number
-  lead_time_days: number | null
-  is_preferred: boolean
-  link_notes: string | null
-  suppliers?: Array<{
-    id: string
-    name: string
-    phone?: string | null
-    email?: string | null
-    is_preferred?: boolean
-    /** Their portal reply for this product. Null until they answer. */
-    response?: SupplierResponse | null
-  }>
+  was_in_stock: boolean
 }
 
-/** A product that can still be assigned to a supplier. */
-export interface AvailableProduct {
+/** An order a shop placed for itself in the portal. */
+export interface ShopOrder {
+  id: string
+  order_number: string
+  supplier_id: string
+  supplier_name: string
+  status: ShopOrderStatus
+  item_count: number
+  total_qty: number
+  note: string | null
+  admin_note: string | null
+  contact_phone: string | null
+  handled_by: string | null
+  handled_at: string | null
+  created_at: string
+  updated_at: string
+  items: ShopOrderItem[]
+}
+
+export interface ShopOrderTotals {
+  total: number
+  pending: number
+  confirmed: number
+  ready: number
+  completed: number
+  cancelled: number
+  pending_units: number
+}
+
+export interface ProductCategory {
   id: string
   name: string
-  barcode: string | null
-  brand: string | null
-  image: string | null
-  unit_cost: number
-  stock: number
+  slug: string
+  is_active?: boolean
 }
 
-export interface SupplierProductInput {
-  product_id: string
-  supplier_sku?: string
-  cost_price?: number | null
-  reorder_qty?: number
-  lead_time_days?: number | null
-  is_preferred?: boolean
+export interface SupplierPayload {
+  name: string
+  contact_person?: string
+  phone?: string
+  email?: string
+  address?: string
   notes?: string
+  is_active?: boolean
+  support_phone?: string
+  support_whatsapp?: string
 }
 
 export const inventorySuppliersService = {
@@ -314,56 +303,32 @@ export const inventorySuppliersService = {
 
   getById: (id: string) => apiFetch<{ data: Supplier }>(`/suppliers/${id}`),
 
-  create: (supplier: { name: string; contact_person?: string; phone?: string; email?: string; address?: string; notes?: string; is_active?: boolean }) =>
-    apiFetch('/suppliers', { method: 'POST', body: JSON.stringify(supplier) }),
+  create: (supplier: SupplierPayload) =>
+    apiFetch<{ data: Supplier }>('/suppliers', { method: 'POST', body: JSON.stringify(supplier) }),
 
-  update: (id: string, updates: any) => apiFetch(`/suppliers/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates),
-  }),
+  update: (id: string, updates: Partial<SupplierPayload>) =>
+    apiFetch<{ data: Supplier }>(`/suppliers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
 
   delete: (id: string) => apiFetch(`/suppliers/${id}`, { method: 'DELETE' }),
 
-  /** Everything that is low or out of stock, with the supplier(s) that can deliver it. */
-  getRestockSummary: (params?: { status?: 'all' | 'low' | 'out' | 'needed'; supplier_id?: string; search?: string }) => {
-    const qs = new URLSearchParams()
-    if (params?.status) qs.set('status', params.status)
-    if (params?.supplier_id) qs.set('supplier_id', params.supplier_id)
-    if (params?.search) qs.set('search', params.search)
-    const query = qs.toString() ? `?${qs.toString()}` : ''
-    return apiFetch<{
-      data: RestockItem[]
-      totals: SupplierStats & { unassigned: number; suppliers: number }
-      migration_required?: boolean
-    }>(`/suppliers/restock-summary${query}`)
-  },
+  /** Every category in the catalogue, for the access picker. */
+  getAllCategories: () => apiFetch<{ data: ProductCategory[] }>('/suppliers/categories'),
 
-  getProducts: (id: string) =>
-    apiFetch<{ data: RestockItem[]; totals: SupplierStats; migration_required?: boolean }>(`/suppliers/${id}/products`),
+  /** The categories this shop can currently see in their portal. */
+  getCategories: (id: string) =>
+    apiFetch<{ data: Array<{ category_id: string; categories: ProductCategory | null }>; migration_required?: boolean }>(
+      `/suppliers/${id}/categories`
+    ),
 
-  /** Pass no id from the Add Supplier form — nothing is linked yet, so everything is available. */
-  getAvailableProducts: (id: string | null, search?: string) => {
-    const query = search ? `?search=${encodeURIComponent(search)}` : ''
-    const path = id ? `/suppliers/${id}/available-products` : '/suppliers/available-products'
-    return apiFetch<{ data: AvailableProduct[] }>(`${path}${query}`)
-  },
-
-  addProducts: (id: string, payload: { product_ids?: string[]; items?: SupplierProductInput[] }) =>
-    apiFetch(`/suppliers/${id}/products`, { method: 'POST', body: JSON.stringify(payload) }),
-
-  updateProduct: (
-    id: string,
-    productId: string,
-    updates: Partial<SupplierProductInput> & { target_stock_level?: number; low_stock_threshold?: number }
-  ) => apiFetch(`/suppliers/${id}/products/${productId}`, {
-    method: 'PUT',
-    body: JSON.stringify(updates),
-  }),
-
-  removeProduct: (id: string, productId: string) =>
-    apiFetch(`/suppliers/${id}/products/${productId}`, { method: 'DELETE' }),
-
-  getPurchases: (id: string) => apiFetch(`/suppliers/${id}/purchases`),
+  /** Replaces the shop's category list outright — what is sent is what they see. */
+  setCategories: (id: string, categoryIds: string[]) =>
+    apiFetch<{ count: number }>(`/suppliers/${id}/categories`, {
+      method: 'PUT',
+      body: JSON.stringify({ category_ids: categoryIds }),
+    }),
 
   /**
    * Controls the supplier's own sign-in at /supplier/login.
@@ -377,6 +342,33 @@ export const inventorySuppliersService = {
       `/suppliers/${id}/portal`,
       { method: 'PUT', body: JSON.stringify(payload) }
     ),
+}
+
+// ─── SHOP ORDERS ─────────────────────────────────────
+// Orders the shops we supply placed for themselves in /supplier.
+
+export const shopOrdersService = {
+  getAll: (params?: { status?: ShopOrderStatus; supplier_id?: string; search?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.status) qs.set('status', params.status)
+    if (params?.supplier_id) qs.set('supplier_id', params.supplier_id)
+    if (params?.search) qs.set('search', params.search)
+    if (params?.limit) qs.set('limit', String(params.limit))
+    const query = qs.toString() ? `?${qs.toString()}` : ''
+    return apiFetch<{ data: ShopOrder[]; totals: ShopOrderTotals; migration_required?: boolean }>(
+      `/supplier-orders${query}`
+    )
+  },
+
+  getById: (id: string) => apiFetch<{ data: ShopOrder }>(`/supplier-orders/${id}`),
+
+  update: (id: string, updates: { status?: ShopOrderStatus; admin_note?: string | null; handled_by?: string }) =>
+    apiFetch<{ data: ShopOrder }>(`/supplier-orders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
+
+  delete: (id: string) => apiFetch(`/supplier-orders/${id}`, { method: 'DELETE' }),
 }
 
 // ─── CUSTOMERS ───────────────────────────────────────

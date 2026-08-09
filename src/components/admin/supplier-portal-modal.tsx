@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * Controls one supplier's sign-in at /supplier/login.
+ * Controls one shop's sign-in at /supplier/login.
  *
  * The password is only ever sent upwards - it is hashed on the server and never
  * comes back, so there is nothing to pre-fill and no way to display an existing
@@ -30,11 +30,11 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
 
   const save = async (enabled: boolean) => {
     if (enabled && !supplier.email) {
-      toast.error("Add an email to this supplier first - it is their username")
+      toast.error("Add an email to this shop first - it is their username")
       return
     }
     if (enabled && !supplier.portal_enabled && !password.trim()) {
-      toast.error("Set a password to give this supplier access")
+      toast.error("Set a password to give this shop access")
       return
     }
     if (password.trim() && password.trim().length < 6) {
@@ -73,7 +73,7 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
               <KeyRound className="w-5 h-5 text-blue-500" />
             </div>
             <div>
-              <h2 className="font-black tracking-tight">Supplier Portal Access</h2>
+              <h2 className="font-black tracking-tight">Shop Portal Access</h2>
               <p className="text-xs text-muted-foreground">{supplier.name}</p>
             </div>
           </div>
@@ -110,7 +110,7 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
               disabled={isSaving}
             />
             <p className="text-[11px] text-muted-foreground mt-2">
-              Send this password to the supplier yourself. It is stored hashed and cannot be read back.
+              Send this password to the shop yourself. It is stored hashed and cannot be read back.
             </p>
           </div>
 

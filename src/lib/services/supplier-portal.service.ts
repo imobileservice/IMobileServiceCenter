@@ -1,36 +1,57 @@
 import { getApiUrl } from "@/lib/utils/api"
 import { useSupplierStore } from "@/lib/supplier-store"
 
-export interface SupplierRestockItem {
+/**
+ * What a shop is shown about one product. Deliberately no quantity: the portal
+ * answers "can we get this?", not "how many are left?".
+ */
+export interface CatalogItem {
   product_id: string
   name: string
-  barcode: string | null
   brand: string | null
+  barcode: string | null
+  category_id: string | null
   image: string | null
-  quantity: number
-  low_stock_threshold: number
-  target_stock_level: number
-  status: "out" | "low" | "ok"
-  needed_qty: number
-  suggested_qty: number
-  my_price: number | null
-  supplier_sku: string | null
-  reorder_qty: number
-  response: {
-    status: "pending" | "can_supply" | "unavailable"
-    available_qty: number | null
-    expected_date: string | null
-    note: string | null
-    responded_at: string
-  } | null
+  in_stock: boolean
 }
 
-export interface SupplierRestockTotals {
+export interface CatalogCategory {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface CatalogTotals {
   products: number
+  in_stock: number
   out_of_stock: number
-  low_stock: number
-  healthy: number
-  needed_units: number
+}
+
+export type ShopOrderStatus = "pending" | "confirmed" | "ready" | "completed" | "cancelled"
+
+export interface MyOrderItem {
+  id: string
+  product_name: string
+  barcode: string | null
+  quantity: number
+}
+
+export interface MyOrder {
+  id: string
+  order_number: string
+  status: ShopOrderStatus
+  item_count: number
+  total_qty: number
+  note: string | null
+  admin_note: string | null
+  created_at: string
+  updated_at: string
+  items: MyOrderItem[]
+}
+
+export interface SupplierContact {
+  phone: string
+  whatsapp: string
 }
 
 /**
@@ -61,7 +82,9 @@ const request = async (path: string, init: RequestInit = {}) => {
     if (response.status === 401 || response.status === 403) {
       useSupplierStore.getState().logout()
     }
-    throw new Error(payload.error || `Request failed (${response.status})`)
+    const error: any = new Error(payload.error || `Request failed (${response.status})`)
+    error.status = response.status
+    throw error
   }
 
   return payload
@@ -83,30 +106,46 @@ export const supplierPortalService = {
     try {
       await request("/logout", { method: "POST" })
     } catch {
-      // A failed call must not trap the supplier in the portal; the local
-      // store is cleared by the caller either way.
+      // A failed call must not trap the shop in the portal; the local store is
+      // cleared by the caller either way.
     }
   },
 
-  async getSession() {
+  /** Restores a refreshed session, and carries the numbers the Call / WhatsApp buttons dial. */
+  async getSession(): Promise<{
+    supplier: { id: string; name: string; email: string }
+    contact: SupplierContact
+  }> {
     return request("/session")
   },
 
-  async getRestock(): Promise<{
-    data: SupplierRestockItem[]
-    totals: SupplierRestockTotals
+  async getCatalog(params?: { search?: string; category_id?: string; in_stock_only?: boolean }): Promise<{
+    data: CatalogItem[]
+    categories: CatalogCategory[]
+    totals: CatalogTotals
     migration_required: boolean
   }> {
-    return request("/restock")
+    const qs = new URLSearchParams()
+    if (params?.search) qs.set("search", params.search)
+    if (params?.category_id) qs.set("category_id", params.category_id)
+    if (params?.in_stock_only) qs.set("in_stock_only", "true")
+    const query = qs.toString() ? `?${qs.toString()}` : ""
+    return request(`/catalog${query}`)
   },
 
-  async respond(input: {
-    product_id: string
-    status: "pending" | "can_supply" | "unavailable"
-    available_qty?: number | null
-    expected_date?: string | null
+  async getOrders(): Promise<{ data: MyOrder[]; migration_required: boolean }> {
+    return request("/orders")
+  },
+
+  async placeOrder(input: {
+    items: Array<{ product_id: string; quantity: number }>
     note?: string | null
-  }) {
-    return request("/respond", { method: "POST", body: JSON.stringify(input) })
+    contact_phone?: string | null
+  }): Promise<{ data: MyOrder }> {
+    return request("/orders", { method: "POST", body: JSON.stringify(input) })
+  },
+
+  async cancelOrder(orderId: string) {
+    return request(`/orders/${orderId}/cancel`, { method: "POST" })
   },
 }

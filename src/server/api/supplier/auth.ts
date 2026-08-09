@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import crypto from 'crypto'
 import { getSupabaseAdmin } from '../inventory/supabase-admin'
 import { verifyPassword } from '../utils/password'
+import { DEFAULT_SUPPORT_PHONE, DEFAULT_SUPPORT_WHATSAPP, isMissingSchema } from './shop.shared'
 
 const SESSION_HOURS = 12
 
@@ -32,7 +33,39 @@ const readToken = (req: Request) => {
 }
 
 export interface SupplierRequest extends Request {
-  supplier?: { id: string; name: string; email: string }
+  supplier?: {
+    id: string
+    name: string
+    email: string
+    /** Who this shop reaches with the portal's Call / WhatsApp buttons. */
+    support_phone: string
+    support_whatsapp: string
+  }
+}
+
+const SUPPLIER_SELECT = 'id, name, email, portal_enabled, is_active, support_phone, support_whatsapp'
+const SUPPLIER_SELECT_LEGACY = 'id, name, email, portal_enabled, is_active'
+
+/**
+ * Reads one supplier, tolerating a database where 20260809_supplier_shop_orders.sql
+ * has not been run - the contact columns simply fall back to the shop-wide numbers.
+ */
+const loadSupplier = async (supabase: any, id: string) => {
+  let { data, error } = await supabase
+    .from('inv_suppliers')
+    .select(SUPPLIER_SELECT)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error && isMissingSchema(error)) {
+    ;({ data, error } = await supabase
+      .from('inv_suppliers')
+      .select(SUPPLIER_SELECT_LEGACY)
+      .eq('id', id)
+      .maybeSingle())
+  }
+
+  return data || null
 }
 
 /**
@@ -63,11 +96,7 @@ export async function requireSupplier(req: SupplierRequest, res: Response, next:
       return res.status(401).json({ error: 'Your session has expired. Please sign in again.' })
     }
 
-    const { data: supplier } = await supabase
-      .from('inv_suppliers')
-      .select('id, name, email, portal_enabled, is_active')
-      .eq('id', session.supplier_id)
-      .maybeSingle()
+    const supplier = await loadSupplier(supabase, session.supplier_id)
 
     // Access is re-checked on every request, not just at login, so switching
     // portal_enabled off in the admin panel takes effect immediately instead of
@@ -82,7 +111,13 @@ export async function requireSupplier(req: SupplierRequest, res: Response, next:
       .update({ last_seen_at: new Date().toISOString() })
       .eq('id', session.id)
 
-    req.supplier = { id: supplier.id, name: supplier.name, email: supplier.email }
+    req.supplier = {
+      id: supplier.id,
+      name: supplier.name,
+      email: supplier.email,
+      support_phone: supplier.support_phone || DEFAULT_SUPPORT_PHONE,
+      support_whatsapp: supplier.support_whatsapp || supplier.support_phone || DEFAULT_SUPPORT_WHATSAPP,
+    }
     next()
   } catch (error: any) {
     console.error('[Supplier] Session check failed:', error)
@@ -168,7 +203,17 @@ export async function logoutSupplierHandler(req: Request, res: Response) {
   }
 }
 
-/** GET /api/supplier/session - lets the portal restore a refresh. */
+/**
+ * GET /api/supplier/session - lets the portal restore a refresh.
+ *
+ * Also carries the numbers behind the Call and WhatsApp buttons, so the portal
+ * never has to hold a hardcoded phone number of its own.
+ */
 export async function supplierSessionHandler(req: SupplierRequest, res: Response) {
-  return res.json({ success: true, supplier: req.supplier })
+  const supplier = req.supplier!
+  return res.json({
+    success: true,
+    supplier: { id: supplier.id, name: supplier.name, email: supplier.email },
+    contact: { phone: supplier.support_phone, whatsapp: supplier.support_whatsapp },
+  })
 }
