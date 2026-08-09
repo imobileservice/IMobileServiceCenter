@@ -24,21 +24,41 @@
   <div id="root"></div>
 
   <!--
-    Last-resort recovery for a poisoned entry bundle.
+    Last-resort recovery when the entry bundle does not load.
 
-    If a browser ever cached the SPA fallback HTML *as* /assets/index-<hash>.js, the
-    module script below fails before a single line of app code runs - so the router,
-    the ErrorBoundary and any in-app chunk recovery never execute and the user just
-    sees a white page. This has to live here, as a classic (non-module) script, to be
-    running before that happens.
+    The module script at the bottom of this file fails before a single line of app
+    code runs, so the router, the ErrorBoundary and the in-app chunk recovery in
+    src/lib/chunk-recovery.ts never execute and the user just sees a white page.
+    This has to live here, as a classic (non-module) script, to be running before
+    that happens.
 
-    Re-fetching with cache:'reload' bypasses and *overwrites* the poisoned HTTP cache
-    entry, after which a reload boots normally. Guarded by sessionStorage so a genuine
-    outage cannot turn into a reload loop.
+    There are TWO distinct faults, and they need opposite fixes:
+
+      POISONED - the file exists, but a cache is holding the SPA fallback HTML
+                 under its URL. Re-fetching past the caches repairs the entry and
+                 the page boots without a reload. Reloading alone fixes nothing:
+                 the fresh HTML names the same URL and gets the same bad bytes.
+
+      GONE     - the file has been deleted, because a deploy renamed every asset
+                 (see BUILD_ID in vite.config.ts) and this document is from the
+                 previous build. No amount of re-fetching that URL will help; the
+                 only fix is to load the CURRENT document, which names the current
+                 assets. This is what an open tab hits after every deploy.
+
+    Telling them apart is one fetch: a 404 (or HTML) means GONE, so we reload the
+    document with a cache-busting query - `location.reload()` is not enough,
+    because it is allowed to re-serve the very document that named the dead asset.
+
+    Bounded by a sessionStorage attempt counter, not a boolean: a boolean latches
+    after the first try and leaves a genuinely stale tab white forever, which is
+    exactly how this was reported.
   -->
   <script>
     (function () {
       var KEY = '__entry_recovery__';
+      var MAX_ATTEMPTS = 2;
+      var WINDOW_MS = 60000;
+      var PARAM = 'imobile_build';
 
       // A poisoned copy usually sits in the CDN edge cache, not just this browser,
       // so cache:'reload' alone still gets served the same bad bytes. A unique query
@@ -47,17 +67,57 @@
         return url + (url.indexOf('?') < 0 ? '?' : '&') + 'cb=' + Date.now();
       };
 
-      // Poisoned entry bundle. Re-request it past both caches and run the real one.
+      var readState = function () {
+        try {
+          var s = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+          if (s && typeof s.n === 'number' && typeof s.t === 'number' && Date.now() - s.t < WINDOW_MS) return s;
+        } catch (err) { /* malformed: start a fresh window */ }
+        return { n: 0, t: Date.now() };
+      };
+
+      // Returns false once the budget is spent, so a real outage shows the plain
+      // browser error instead of reloading forever.
+      var claimAttempt = function () {
+        var s = readState();
+        if (s.n >= MAX_ATTEMPTS) return false;
+        try { sessionStorage.setItem(KEY, JSON.stringify({ n: s.n + 1, t: s.t })); } catch (err) { }
+        return true;
+      };
+
+      var reloadDocument = function () {
+        var url = location.pathname + (location.search
+          ? location.search + '&' : '?') + PARAM + '=' + Date.now();
+        location.replace(url + location.hash);
+      };
+
       window.addEventListener('error', function (e) {
         var el = e.target;
         if (!el || el.tagName !== 'SCRIPT' || el.type !== 'module' || !el.src) return;
-        if (sessionStorage.getItem(KEY)) return;
-        sessionStorage.setItem(KEY, '1');
-        var s = document.createElement('script');
-        s.type = 'module';
-        s.src = bust(el.src);
-        s.onerror = function () { location.reload(); };
-        document.head.appendChild(s);
+        if (!claimAttempt()) return;
+
+        var src = el.src;
+
+        // Is the file missing, or just poisoned? Ask, then pick the right fix.
+        fetch(bust(src), { cache: 'reload' })
+          .then(function (res) {
+            var type = res.headers.get('content-type') || '';
+            if (!res.ok || type.indexOf('html') > -1) return null; // GONE
+            return res.text();
+          })
+          .then(function (code) {
+            if (code === null) { reloadDocument(); return; }
+
+            // POISONED: the bare URL is the one the browser will use, so overwrite
+            // that cache entry too before re-running the module.
+            fetch(src, { cache: 'reload' }).catch(function () { }).then(function () {
+              var s = document.createElement('script');
+              s.type = 'module';
+              s.src = bust(src);
+              s.onerror = reloadDocument;
+              document.head.appendChild(s);
+            });
+          })
+          .catch(reloadDocument);
       }, true); // capture: resource load errors do not bubble
 
       window.addEventListener('load', function () {
@@ -77,7 +137,7 @@
             fetch(bust(href), { cache: 'reload' })
               .then(function (res) { return res.ok ? res.text() : ''; })
               .then(function (css) {
-                if (!css || css.charAt(0) === '<') return; // still the fallback page
+                if (!css || css.charAt(0) === '<') return; // missing, or still the fallback page
                 var style = document.createElement('style');
                 style.setAttribute('data-recovered-from', href);
                 style.textContent = css;
@@ -87,8 +147,19 @@
           })(link.href);
         }
 
+        // The app mounted, so whatever went wrong is over: clear the budget and
+        // take the cache-busting parameter back out of the address bar.
         var r = document.getElementById('root');
-        if (r && r.childNodes.length) sessionStorage.removeItem(KEY);
+        if (r && r.childNodes.length) {
+          try { sessionStorage.removeItem(KEY); } catch (err) { }
+          if (location.search.indexOf(PARAM + '=') > -1 && window.history && history.replaceState) {
+            try {
+              var url = new URL(location.href);
+              url.searchParams.delete(PARAM);
+              history.replaceState(history.state, document.title, url.pathname + url.search + url.hash);
+            } catch (err) { }
+          }
+        }
       });
     })();
   </script>

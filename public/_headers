@@ -71,7 +71,24 @@
   Pragma: no-cache
   Expires: 0
 
+# A bare path and its splat are separate rules and fail independently - the same
+# reason public/_redirects lists "/admin" and "/admin/*" as two entries. Without
+# the bare rule, /admin fell through to the host default of
+# "public, max-age=0, must-revalidate", which lets the browser store the shell
+# and re-serve it on a 304. Every deploy renames every asset, so a shell that
+# outlives its deploy points at files that 404 - a white page with "Refused to
+# apply style ... MIME type text/html". Caught by `npm run check:deploy`.
+/admin
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
 /admin/*
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/cashier
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0

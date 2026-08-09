@@ -49,15 +49,46 @@ const ROUTES = [
 ];
 
 (async () => {
-  // 0. every client route must serve the app shell directly - no 404, no redirect
+  /*
+   * 0. Every client route must serve the app shell directly - no 404, no
+   *    redirect - AND must say so uncacheably.
+   *
+   * The cache-control half is checked per route, not just on /. Every deploy
+   * renames every asset (BUILD_ID in vite.config.ts), so a route allowed to sit
+   * in a browser cache keeps naming files that no longer exist: the page white-
+   * screens with "Refused to apply style ... MIME type text/html" and a 404 for
+   * the entry bundle, long after the deploy succeeded. A rule that covers / but
+   * misses /admin/* breaks only the admin panel, and only for people who had it
+   * open - which is exactly the kind of fault that gets reported as "it worked
+   * yesterday".
+   *
+   * The shell references are collected too: every route must name the SAME
+   * build. Two different build ids across routes means a half-finished deploy.
+   */
+  const shellRefs = new Map();
+
   for (const route of ROUTES) {
     const r = await get(`${BASE}${route}`);
-    const isShell = /<script[^>]+src="\/assets\/[^"]+\.js"/.test(r.body);
+    const ref = (r.body.match(/<script[^>]+src="(\/assets\/[^"]+\.js)"/) || [])[1];
     const loc = r.headers.location ? ` -> ${r.headers.location}` : '';
     ok(`route ${route} serves the app`,
-      r.status === 200 && isShell,
-      `${r.status}${loc}` + (r.status === 200 && !isShell ? ' (200 but not the app shell)' : ''));
+      r.status === 200 && Boolean(ref),
+      `${r.status}${loc}` + (r.status === 200 && !ref ? ' (200 but not the app shell)' : ''));
+
+    if (ref) shellRefs.set(route, ref);
+
+    const routeCc = r.headers['cache-control'] || '';
+    ok(`route ${route} is not cached`,
+      /no-store|no-cache/.test(routeCc),
+      `cache-control: ${routeCc || '(none)'}`);
   }
+
+  const distinctBuilds = new Set(shellRefs.values());
+  ok('every route serves the same build',
+    distinctBuilds.size <= 1,
+    distinctBuilds.size <= 1
+      ? [...distinctBuilds][0] || '(none)'
+      : [...shellRefs].map(([route, ref]) => `${route} -> ${ref}`).join('\n        '));
 
   // 1. entry HTML must never be cached, or clients pin an old bundle reference
   const index = await get(`${BASE}/`);
