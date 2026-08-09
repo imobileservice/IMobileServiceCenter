@@ -32,17 +32,41 @@ const getAdminClient = (): SupabaseClient | null => {
     })
 }
 
-/** Fetch the admin row and check the password. Returns null when the credentials are wrong. */
+/**
+ * Fetch the admin row and check the password.
+ *
+ * Returns null when the credentials are wrong OR when the account is not an
+ * administrator. The admin panel is for role='admin' and nothing else.
+ *
+ * 20260811_consolidate_cashier_accounts.sql also enforces this in the database -
+ * `admins` carries a CHECK that pins role to 'admin', so a cashier cannot even
+ * be stored here. This check is the belt to that migration's braces: it holds on
+ * a database where the migration has not been run yet, and it keeps holding if
+ * someone relaxes the constraint later.
+ *
+ * The rejection is deliberately indistinguishable from a wrong password. A
+ * cashier probing the admin login should not learn that their credentials were
+ * correct and only their role fell short.
+ */
 const authenticateAdmin = async (client: SupabaseClient, email: string, password: string) => {
     const { data: admin, error } = await client
         .from('admins')
-        .select('id, email, whatsapp, password, role')
+        .select('id, email, name, whatsapp, password, role')
         .eq('email', email)
         .maybeSingle()
 
     if (error || !admin) return null
     if (!verifyPassword(password, admin.password)) return null
-    return admin
+
+    const role = String(admin.role ?? '').trim().toLowerCase()
+    if (role !== 'admin') {
+        // Logged, because this is the one failure an operator will be asked
+        // about: "my password is right and it still says it is wrong".
+        console.warn(`[Admin] Refused admin-panel login for ${email}: role is '${role || 'unset'}', not 'admin'`)
+        return null
+    }
+
+    return { ...admin, role }
 }
 
 /**
@@ -322,7 +346,9 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
             admin: {
                 id: admin.id,
                 email: admin.email,
+                name: admin.name,
                 whatsapp: admin.whatsapp,
+                role: admin.role,
             },
             message: 'Login successful',
         })

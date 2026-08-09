@@ -12,14 +12,20 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate()
   const isAuthenticated = useAdminStore((state) => state.isAuthenticated)
+  const role = useAdminStore((state) => state.user?.role)
+  const logout = useAdminStore((state) => state.logout)
+
+  // The server will not sign anyone but an administrator in, so a non-admin
+  // role here means the store was populated some other way. Drop the session
+  // rather than render the panel around it.
+  const isAdmin = isAuthenticated && (!role || role === "admin")
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/admin/login")
-    }
-  }, [isAuthenticated, navigate])
+    if (isAuthenticated && !isAdmin) logout()
+    if (!isAdmin) navigate("/admin/login")
+  }, [isAuthenticated, isAdmin, logout, navigate])
 
-  if (!isAuthenticated) {
+  if (!isAdmin) {
     return null // or a loading spinner while redirecting
   }
 

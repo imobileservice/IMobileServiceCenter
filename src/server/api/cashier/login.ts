@@ -33,11 +33,18 @@ function hashSecret(value: string) {
 /**
  * Find the account behind a POS login, in either table.
  *
- * Cashiers moved to their own table in
- * 20260805_split_cashiers_from_admins.sql, but the POS has always accepted an
- * administrator too (see POS_ROLES), so both are looked up here. `cashiers`
- * comes first because that is who signs in at a till all day; an email can only
- * exist in one of the two.
+ * Cashiers live in `cashiers` (20260805_split_cashiers_from_admins.sql) and
+ * administrators in `admins`, but the POS accepts either (see POS_ROLES), so
+ * both are read.
+ *
+ * `cashiers` wins a tie, and the tie is the important part. A stray period left
+ * some people in BOTH tables with two different ids, and pos_tills stores a
+ * `cashiers`.id - Cashier Management is what writes it. Resolving to the admins
+ * row instead would hand the till check an id that could never match its own
+ * assignment, which is exactly how "this till code is assigned to another
+ * cashier" reached someone who had changed nothing.
+ * 20260811_consolidate_cashier_accounts.sql removes the duplicates; this
+ * ordering makes the login correct even before it is run.
  *
  * The role is lower-cased on the way out. It is compared against POS_ROLES and
  * against 'cashier' below, and the admins table used to hold both 'Admin' and
@@ -46,20 +53,19 @@ function hashSecret(value: string) {
 async function findPosAccount(adminClient: any, normalizedEmail: string) {
     const columns = 'id, email, name, password, role, shop'
 
-    const { data: cashier } = await adminClient
-        .from('cashiers')
-        .select(columns)
-        .eq('email', normalizedEmail)
-        .maybeSingle()
+    const [{ data: cashier }, { data: admin }] = await Promise.all([
+        adminClient.from('cashiers').select(columns).eq('email', normalizedEmail).maybeSingle(),
+        adminClient.from('admins').select(columns).eq('email', normalizedEmail).maybeSingle(),
+    ])
 
-    const { data: account } = cashier
-        ? { data: cashier }
-        : await adminClient
-            .from('admins')
-            .select(columns)
-            .eq('email', normalizedEmail)
-            .maybeSingle()
+    if (cashier && admin) {
+        console.warn(
+            `[Cashier] ${normalizedEmail} exists in BOTH cashiers (${cashier.id}) and admins (${admin.id}). ` +
+            'Using the cashiers row. Run 20260811_consolidate_cashier_accounts.sql to remove the duplicate.'
+        )
+    }
 
+    const account = cashier || admin
     if (!account) return null
 
     return { ...account, role: String(account.role ?? '').trim().toLowerCase() }
@@ -177,30 +183,74 @@ export async function loginCashierHandler(req: Request, res: Response) {
             return res.status(403).json({ error: 'This till is not active' })
         }
 
-        if (till.assigned_cashier_id && till.assigned_cashier_id !== account.id) {
-            await logPosAuthEvent(adminClient, req, {
-                cashier_email: normalizedEmail,
-                cashier_id: account.id,
-                role: account.role,
-                till_id: till.id,
-                event_type: 'login_failed',
-                success: false,
-                reason: 'till_assigned_to_another_cashier',
-            })
-            return res.status(403).json({ error: 'This till code is assigned to another cashier' })
-        }
+        /*
+         * Who owns this till code.
+         *
+         * The assignment is enforced for cashiers only. An administrator may
+         * open any active till: they already have the run of the admin panel,
+         * so refusing them a till adds no protection and did the opposite of
+         * protecting anyone - every till created through Cashier Management is
+         * assigned to a cashier, which left the owner unable to open any of
+         * them.
+         */
+        if (account.role === 'cashier') {
+            if (!till.assigned_cashier_id) {
+                await logPosAuthEvent(adminClient, req, {
+                    cashier_email: normalizedEmail,
+                    cashier_id: account.id,
+                    role: account.role,
+                    till_id: till.id,
+                    event_type: 'login_failed',
+                    success: false,
+                    reason: 'unassigned_till_code',
+                })
+                return res.status(403).json({ error: 'This till code is not assigned to this cashier' })
+            }
 
-        if (account.role === 'cashier' && !till.assigned_cashier_id) {
-            await logPosAuthEvent(adminClient, req, {
-                cashier_email: normalizedEmail,
-                cashier_id: account.id,
-                role: account.role,
-                till_id: till.id,
-                event_type: 'login_failed',
-                success: false,
-                reason: 'unassigned_till_code',
-            })
-            return res.status(403).json({ error: 'This till code is not assigned to this cashier' })
+            if (till.assigned_cashier_id !== account.id) {
+                // Is it really someone else's, or is it pointing at an id that
+                // no longer exists? The two need different answers: one is "use
+                // your own till", the other is "this data is broken, and no
+                // amount of retyping the code will help".
+                const { data: owner } = await adminClient
+                    .from('cashiers')
+                    .select('id, email')
+                    .eq('id', till.assigned_cashier_id)
+                    .maybeSingle()
+
+                const reason = owner ? 'till_assigned_to_another_cashier' : 'till_assignment_stale'
+
+                await logPosAuthEvent(adminClient, req, {
+                    cashier_email: normalizedEmail,
+                    cashier_id: account.id,
+                    role: account.role,
+                    till_id: till.id,
+                    event_type: 'login_failed',
+                    success: false,
+                    reason,
+                })
+
+                if (!owner) {
+                    console.error(
+                        `[Cashier] Till ${till.code_hint} is assigned to ${till.assigned_cashier_id}, which is not a ` +
+                        `cashier. ${normalizedEmail} is ${account.id}. This is the cross-table id drift fixed by ` +
+                        'supabase/migrations/20260811_consolidate_cashier_accounts.sql - run it, or reassign the till ' +
+                        'in Cashier Management.'
+                    )
+                    return res.status(409).json({
+                        error: 'This till code is not set up correctly. Please ask an administrator to reassign it in Cashier Management.',
+                    })
+                }
+
+                console.warn(
+                    `[Cashier] ${normalizedEmail} tried till ${till.code_hint}, which belongs to ${owner.email}`
+                )
+                return res.status(403).json({ error: 'This till code is assigned to another cashier' })
+            }
+        } else if (till.assigned_cashier_id && till.assigned_cashier_id !== account.id) {
+            console.log(
+                `[Cashier] Administrator ${normalizedEmail} opening till ${till.code_hint}, which is assigned to a cashier`
+            )
         }
 
         const accountShop = account.shop || DEFAULT_SHOP
