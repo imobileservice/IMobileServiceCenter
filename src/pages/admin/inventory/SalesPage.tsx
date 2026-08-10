@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
+import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
 import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import Barcode from "react-barcode"
@@ -142,6 +143,7 @@ export default function SalesHistoryPage() {
   }
 
   const buildPrintableReceipt = (sale: any, barcodeHtml: string) => {
+    const branch = resolveReceiptBranch(sale.shop, sale.till_code)
     const items = getSaleItems(sale)
     const itemsHtml = items.map((item: any, idx: number) => {
       const price = getSaleItemPrice(item).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -164,8 +166,8 @@ export default function SalesHistoryPage() {
       <div class="receipt">
         <div class="center header">
           <h1>IMobile Service & Repair Center</h1>
-          <p>Colombo Road, Negombo</p>
-          <p>Tel: 077 123 4567 / 077 765 4321</p>
+          <p>${escapeHtml(branch.address)}</p>
+          <p>Tel: ${escapeHtml(branch.phone)}</p>
           <p class="mt">Date: ${escapeHtml(formatReceiptDate(sale.created_at))}</p>
           <p># ${escapeHtml(sale.invoice_number)}</p>
           <p>Cashier : ${escapeHtml(sale.created_by || sale.cashier_name || 'Admin')}</p>

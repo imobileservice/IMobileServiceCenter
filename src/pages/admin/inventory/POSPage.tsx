@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
+import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 
@@ -163,6 +164,8 @@ export default function POSPage() {
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   const discount = 0 // Basic version
   const total = subtotal - discount
+
+  const receiptBranch = resolveReceiptBranch(lastSale?.shop, lastSale?.till_code)
 
   const handleCheckout = async () => {
     if (cart.length === 0) return
@@ -467,8 +470,8 @@ export default function POSPage() {
                   <div id="pos-receipt" className="bg-white text-black p-4 font-mono text-[12px] leading-relaxed">
                     <div className="text-center mb-4 pb-4 border-b border-dashed border-gray-300">
                       <h2 className="text-lg font-black tracking-tighter uppercase">I Mobile Service</h2>
-                      <p className="text-[10px]">Colombo Road, Negombo</p>
-                      <p className="text-[10px]">Tel: 077 123 4567</p>
+                      <p className="text-[10px]">{receiptBranch.address}</p>
+                      <p className="text-[10px]">Tel: {receiptBranch.phone}</p>
                     </div>
 
                     <div className="flex justify-between mb-1">

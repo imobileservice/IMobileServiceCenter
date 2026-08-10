@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import CashierLayout from "@/components/cashier-layout"
 import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
+import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import Barcode from "react-barcode"
@@ -294,6 +295,11 @@ export default function CashierPOS() {
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   const discount = 0 // Basic version
   const total = subtotal - discount
+
+  const receiptBranch = resolveReceiptBranch(
+    lastSale?.shop || cashier?.shop,
+    tillSession?.till?.code || lastSale?.till_code,
+  )
 
   const handleCheckout = async () => {
     if (cart.length === 0) return
@@ -819,8 +825,8 @@ export default function CashierPOS() {
                     {/* Header */}
                     <div className="text-center mb-3">
                       <h2 className="text-sm font-black tracking-tight mb-1">IMobile Service & Repair Center</h2>
-                      <p>Colombo Road, Negombo</p>
-                      <p>Tel: 077 123 4567 / 077 765 4321</p>
+                      <p>{receiptBranch.address}</p>
+                      <p>Tel: {receiptBranch.phone}</p>
                       <p className="mt-1">Date: {new Date().toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '')}</p>
                       <p># {lastSale?.invoice_number}</p>
                       <p>Cashier : {cashier?.name || cashier?.email?.split('@')[0] || 'Admin'}</p>
