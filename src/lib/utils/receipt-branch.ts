@@ -4,7 +4,7 @@ export interface ReceiptBranch {
   phone: string
 }
 
-const SHOP_PHONE = '+94 77 034 4273'
+const SHOP_PHONE = '+94 70 734 4273'
 
 const MEEGODA: ReceiptBranch = { name: 'Meegoda', address: 'Meegoda, Sri Lanka', phone: SHOP_PHONE }
 const PADUKKA: ReceiptBranch = { name: 'Padukka', address: 'Padukka, Sri Lanka', phone: SHOP_PHONE }
