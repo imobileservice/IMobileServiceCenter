@@ -360,7 +360,7 @@ export default function SuppliersPage() {
     if (!term) return suppliers
     return suppliers.filter(
       (supplier) =>
-        supplier.name.toLowerCase().includes(term) ||
+        String(supplier.name || "").toLowerCase().includes(term) ||
         (supplier.contact_person || "").toLowerCase().includes(term) ||
         (supplier.phone || "").toLowerCase().includes(term) ||
         (supplier.email || "").toLowerCase().includes(term)

@@ -47,8 +47,8 @@ export default function CustomersPage() {
 
   const filteredCustomers = customers.filter(
     (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchTerm.toLowerCase()),
+      String(c.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(c.email || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   const handleDelete = async (id: string) => {

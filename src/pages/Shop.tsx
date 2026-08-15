@@ -370,8 +370,8 @@ export default function ShopPage() {
                       : {}
                     const modelName: string = specsObj?.model || specsObj?.Model || ""
                     // Construct: prepend brand if missing, inject model if not already in name
-                    let displayName = product.name
-                    if (product.brand && !displayName.toLowerCase().startsWith(product.brand.toLowerCase())) {
+                    let displayName = String(product.name || "")
+                    if (product.brand && !displayName.toLowerCase().startsWith(String(product.brand).toLowerCase())) {
                       displayName = `${product.brand} ${displayName}`
                     }
                     if (modelName && !displayName.toLowerCase().includes(modelName.toLowerCase())) {

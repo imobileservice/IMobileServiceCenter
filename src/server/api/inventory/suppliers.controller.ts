@@ -411,7 +411,7 @@ router.get('/restock-summary', async (req: Request, res: Response) => {
       const term = search.trim().toLowerCase()
       items = items.filter(
         (item: any) =>
-          item.name.toLowerCase().includes(term) ||
+          String(item.name || '').toLowerCase().includes(term) ||
           (item.barcode || '').toLowerCase().includes(term) ||
           (item.brand || '').toLowerCase().includes(term)
       )

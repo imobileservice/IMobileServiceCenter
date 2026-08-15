@@ -70,8 +70,8 @@ export default function ProductsPage() {
   const categories = ["All", ...Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort()]
 
   const filteredProducts = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          p.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = String(p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          String(p.category || "").toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
     

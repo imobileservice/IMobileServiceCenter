@@ -76,8 +76,8 @@ export default function AdminFilters() {
     }
 
     const filteredFilters = filters.filter(filter =>
-        filter.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        filter.key.toLowerCase().includes(searchQuery.toLowerCase())
+        String(filter.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(filter.key || "").toLowerCase().includes(searchQuery.toLowerCase())
     )
 
     return (

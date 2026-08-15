@@ -86,11 +86,11 @@ export default function OrdersPage() {
   }, [])
 
   const filteredOrders = orders.filter((order) => {
-    const displayId = order.order_number || order.id.substring(0, 8).toUpperCase()
+    const displayId = order.order_number || String(order.id || "").substring(0, 8).toUpperCase()
     const searchLower = searchTerm.toLowerCase()
-    
+
     const matchesSearch = (
-      displayId.toLowerCase().includes(searchLower) ||
+      String(displayId || "").toLowerCase().includes(searchLower) ||
       order.shipping_address?.toLowerCase().includes(searchLower) ||
       order.customer_email?.toLowerCase().includes(searchLower)
     )

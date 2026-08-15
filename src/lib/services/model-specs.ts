@@ -97,7 +97,7 @@ export const modelSpecsService = {
    */
   async getSpecs(modelName: string, brand?: string): Promise<ModelSpecs | null> {
     // Normalize model name
-    const normalized = modelName.toLowerCase().trim()
+    const normalized = String(modelName || '').toLowerCase().trim()
     
     // Try exact match first
     if (DEVICE_SPECS[normalized]) {
@@ -113,7 +113,7 @@ export const modelSpecsService = {
     
     // Try with brand prefix
     if (brand) {
-      const brandModel = `${brand.toLowerCase()} ${normalized}`.trim()
+      const brandModel = `${String(brand).toLowerCase()} ${normalized}`.trim()
       if (DEVICE_SPECS[brandModel]) {
         return DEVICE_SPECS[brandModel]
       }

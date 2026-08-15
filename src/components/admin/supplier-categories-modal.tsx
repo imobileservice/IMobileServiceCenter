@@ -41,7 +41,9 @@ export function CategoryPicker({
     const term = search.trim().toLowerCase()
     if (!term) return categories
     return categories.filter(
-      (category) => category.name.toLowerCase().includes(term) || category.slug.toLowerCase().includes(term)
+      (category) =>
+        String(category.name || "").toLowerCase().includes(term) ||
+        String(category.slug || "").toLowerCase().includes(term)
     )
   }, [categories, search])
 

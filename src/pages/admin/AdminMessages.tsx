@@ -47,9 +47,9 @@ export default function MessagesPage() {
 
   const filteredMessages = messages.filter(
     (m) =>
-      m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.email.toLowerCase().includes(searchTerm.toLowerCase()),
+      String(m.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(m.subject || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(m.email || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   const handleDelete = async (id: string) => {

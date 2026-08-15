@@ -159,7 +159,7 @@ export default function FilterModal({ isOpen, onClose, editingFilterId }: Filter
     // Auto-fill key from name
     useEffect(() => {
         if (!editingFilterId && formData.name && !formData.key) {
-            const key = formData.name
+            const key = String(formData.name || '')
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '_')
                 .replace(/^_+|_+$/g, '')

@@ -343,8 +343,8 @@ export default function ProductDetailPage() {
   // Build display name: "Brand Model Name" — same logic as the admin panel auto-generate
   // The model is stored in specs.model; older products may only have "Brand Category" as name.
   const specsModelName: string = productSpecs?.model || productSpecs?.Model || ""
-  let displayName = product.name
-  if (product.brand && !displayName.toLowerCase().startsWith(product.brand.toLowerCase())) {
+  let displayName = String(product.name || "")
+  if (product.brand && !displayName.toLowerCase().startsWith(String(product.brand).toLowerCase())) {
     displayName = `${product.brand} ${displayName}`
   }
   if (specsModelName && !displayName.toLowerCase().includes(specsModelName.toLowerCase())) {

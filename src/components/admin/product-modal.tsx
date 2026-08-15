@@ -606,7 +606,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
 
     try {
       // Validate category-specific required fields
-      const isApple = formData.brand.trim().toLowerCase() === 'apple'
+      const isApple = String(formData.brand || '').trim().toLowerCase() === 'apple'
       if (categoryFields) {
         const missingFields: string[] = []
         categoryFields.fields.forEach((field) => {
@@ -1351,7 +1351,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                 <h3 className="text-lg font-semibold border-b border-border pb-2">{categoryFields.label}</h3>
                 <div className="grid grid-cols-2 gap-4">
                   {categoryFields.fields.map((field) => {
-                    const isApple = formData.brand.trim().toLowerCase() === 'apple'
+                    const isApple = String(formData.brand || '').trim().toLowerCase() === 'apple'
                     const isRamField = field.key === 'ram'
                     const isRequired = field.required && !(isApple && isRamField)
 

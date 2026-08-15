@@ -51,8 +51,8 @@ export default function CategoriesPage() {
 
   const filteredCategories = categories.filter(
     (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.slug.toLowerCase().includes(searchTerm.toLowerCase()),
+      String(c.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(c.slug || "").toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
   const handleDelete = async (id: string) => {

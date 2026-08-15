@@ -74,7 +74,7 @@ export default function CategoryForm({ editingCategory, onSubmit, loading, maxSo
     // Auto-generate slug from name
     useEffect(() => {
         if (!editingCategory && formData.name && !formData.slug) {
-            const slug = formData.name
+            const slug = String(formData.name || '')
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '-')
                 .replace(/^-+|-+$/g, '')

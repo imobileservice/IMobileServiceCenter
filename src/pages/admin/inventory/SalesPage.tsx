@@ -64,8 +64,8 @@ export default function SalesHistoryPage() {
   }, [dateRange])
 
   const filteredSales = sales.filter(sale => 
-    sale.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sale.customer_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    String(sale.invoice_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    String(sale.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const handleDelete = async (sale: any) => {
