@@ -41,6 +41,8 @@ const CashierPOS = lazyWithRetry(() => import('./pages/cashier/CashierPOS'))
 const CashierWebsiteTerminal = lazyWithRetry(() => import('./pages/cashier/CashierWebsiteTerminal'))
 const CashierDashboard = lazyWithRetry(() => import('./pages/cashier/CashierDashboard'))
 const CashierInventory = lazyWithRetry(() => import('./pages/cashier/CashierInventory'))
+const CashierOrderHistory = lazyWithRetry(() => import('./pages/cashier/CashierOrderHistory'))
+const CashierSupplierOrders = lazyWithRetry(() => import('./pages/cashier/CashierSupplierOrders'))
 const SupplierLogin = lazyWithRetry(() => import('./pages/supplier/SupplierLogin'))
 const SupplierPortal = lazyWithRetry(() => import('./pages/supplier/SupplierPortal'))
 
@@ -93,6 +95,8 @@ export default function App() {
         <Route path="/cashier/website" element={<CashierWebsiteTerminal />} />
         <Route path="/cashier/dashboard" element={<CashierDashboard />} />
         <Route path="/cashier/inventory" element={<CashierInventory />} />
+        <Route path="/cashier/orders" element={<CashierOrderHistory />} />
+        <Route path="/cashier/supplier-orders" element={<CashierSupplierOrders />} />
         <Route path="/supplier/login" element={<SupplierLogin />} />
         <Route
           path="/supplier"

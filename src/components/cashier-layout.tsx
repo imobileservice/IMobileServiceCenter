@@ -1,8 +1,8 @@
 "use client"
 
 import { ReactNode, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
-import { LogOut, Calculator, ClipboardList, LayoutDashboard, Package, ShoppingCart } from "lucide-react"
+import { useLocation, useNavigate } from "react-router-dom"
+import { LogOut, Calculator, ClipboardList, LayoutDashboard, Package, Receipt, ShoppingCart, Truck } from "lucide-react"
 import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
 import { getApiUrl } from "@/lib/utils/api"
@@ -13,8 +13,19 @@ interface CashierLayoutProps {
   children: ReactNode
 }
 
+/** The tabs across the top of the till, in the order a cashier reaches for them. */
+const NAV_ITEMS = [
+  { path: "/cashier/pos", label: "POS Terminal", shortLabel: "POS", Icon: ShoppingCart },
+  { path: "/cashier/orders", label: "Order History", shortLabel: "Orders", Icon: Receipt },
+  { path: "/cashier/supplier-orders", label: "Supplier Orders", shortLabel: "Suppliers", Icon: Truck },
+  { path: "/cashier/website", label: "Website Terminal", shortLabel: "Website", Icon: ClipboardList },
+  { path: "/cashier/dashboard", label: "Daily Summary", shortLabel: "Summary", Icon: LayoutDashboard },
+  { path: "/cashier/inventory", label: "Inventory Look-up", shortLabel: "Inventory", Icon: Package },
+]
+
 export default function CashierLayout({ children }: CashierLayoutProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { cashier, tillSession, isAuthenticated, logout, isTillSessionExpired } = useCashierStore()
 
   useEffect(() => {
@@ -81,38 +92,17 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
           </div>
 
           <nav className="hidden md:flex items-center gap-1 bg-muted/50 p-1 rounded-lg">
-            <Button
-              variant={window.location.pathname === '/cashier/pos' ? 'default' : 'ghost'}
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate('/cashier/pos')}
-            >
-              <ShoppingCart className="w-4 h-4" /> POS Terminal
-            </Button>
-            <Button
-              variant={window.location.pathname === '/cashier/website' ? 'default' : 'ghost'}
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate('/cashier/website')}
-            >
-              <ClipboardList className="w-4 h-4" /> Website Terminal
-            </Button>
-            <Button
-              variant={window.location.pathname === '/cashier/dashboard' ? 'default' : 'ghost'}
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate('/cashier/dashboard')}
-            >
-              <LayoutDashboard className="w-4 h-4" /> Daily Summary
-            </Button>
-            <Button
-              variant={window.location.pathname === '/cashier/inventory' ? 'default' : 'ghost'}
-              size="sm"
-              className="gap-2"
-              onClick={() => navigate('/cashier/inventory')}
-            >
-              <Package className="w-4 h-4" /> Inventory Look-up
-            </Button>
+            {NAV_ITEMS.map(({ path, label, Icon }) => (
+              <Button
+                key={path}
+                variant={location.pathname === path ? 'default' : 'ghost'}
+                size="sm"
+                className="gap-2 whitespace-nowrap"
+                onClick={() => navigate(path)}
+              >
+                <Icon className="w-4 h-4" /> {label}
+              </Button>
+            ))}
           </nav>
         </div>
 
@@ -132,38 +122,17 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
       
       {/* Mobile Navigation */}
       <div className="md:hidden flex items-center gap-2 overflow-x-auto p-4 border-b border-border bg-background">
-         <Button
-            variant={window.location.pathname === '/cashier/pos' ? 'default' : 'outline'}
-            size="sm"
-            className="gap-2 whitespace-nowrap"
-            onClick={() => navigate('/cashier/pos')}
-          >
-            <ShoppingCart className="w-4 h-4" /> POS
-          </Button>
+        {NAV_ITEMS.map(({ path, shortLabel, Icon }) => (
           <Button
-            variant={window.location.pathname === '/cashier/website' ? 'default' : 'outline'}
+            key={path}
+            variant={location.pathname === path ? 'default' : 'outline'}
             size="sm"
             className="gap-2 whitespace-nowrap"
-            onClick={() => navigate('/cashier/website')}
+            onClick={() => navigate(path)}
           >
-            <ClipboardList className="w-4 h-4" /> Website
+            <Icon className="w-4 h-4" /> {shortLabel}
           </Button>
-          <Button
-            variant={window.location.pathname === '/cashier/dashboard' ? 'default' : 'outline'}
-            size="sm"
-            className="gap-2 whitespace-nowrap"
-            onClick={() => navigate('/cashier/dashboard')}
-          >
-            <LayoutDashboard className="w-4 h-4" /> Summary
-          </Button>
-          <Button
-            variant={window.location.pathname === '/cashier/inventory' ? 'default' : 'outline'}
-            size="sm"
-            className="gap-2 whitespace-nowrap"
-            onClick={() => navigate('/cashier/inventory')}
-          >
-            <Package className="w-4 h-4" /> Inventory
-          </Button>
+        ))}
       </div>
 
       {/* Main Content Area */}

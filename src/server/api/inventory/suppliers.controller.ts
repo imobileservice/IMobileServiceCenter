@@ -699,7 +699,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
-    const { name, contact_person, phone, email, address, notes, is_active, support_phone, support_whatsapp } = req.body
+    const { name, contact_person, phone, email, address, town, notes, is_active, support_phone, support_whatsapp } = req.body
 
     if (!name || !String(name).trim()) {
       return res.status(400).json({ error: 'Supplier name is required' })
@@ -712,6 +712,7 @@ router.post('/', async (req: Request, res: Response) => {
       email: email || null,
       address: address || null,
     }
+    if (town !== undefined) payload.town = town || null
     if (notes !== undefined) payload.notes = notes || null
     if (is_active !== undefined) payload.is_active = Boolean(is_active)
     if (support_phone !== undefined) payload.support_phone = support_phone || null
@@ -719,8 +720,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     let { data, error } = await supabase.from('inv_suppliers').insert(payload).select().single()
 
-    // Older database without the notes/is_active/support columns: retry with the base fields.
+    // Older database without the town/notes/is_active/support columns: retry with the base fields.
     if (error && isMissingSchema(error)) {
+      delete payload.town
       delete payload.notes
       delete payload.is_active
       delete payload.support_phone
@@ -766,6 +768,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       .single()
 
     if (error && isMissingSchema(error)) {
+      delete (payload as any).town
       delete (payload as any).notes
       delete (payload as any).is_active
       delete (payload as any).support_phone

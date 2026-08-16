@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   Search, 
@@ -26,10 +27,9 @@ import { Badge } from "@/components/ui/badge"
 import CashierLayout from "@/components/cashier-layout"
 import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
-import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
+import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receipt"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
-import Barcode from "react-barcode"
 
 interface CartItem {
   id: string
@@ -42,19 +42,9 @@ interface CartItem {
 
 type PaymentMethod = 'cash' | 'card' | 'bank_transfer'
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: 'Cash',
-  card: 'Card',
-  bank_transfer: 'Bank',
-  online: 'Online',
-}
-
-const formatPaymentMethod = (method?: string | null) => {
-  const value = method || 'cash'
-  return PAYMENT_METHOD_LABELS[value] || value.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
-}
-
 export default function CashierPOS() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { cashier, tillSession } = useCashierStore()
   const [searchTerm, setSearchTerm] = useState("")
   const [searchResults, setSearchResults] = useState<any[]>([])
@@ -173,6 +163,17 @@ export default function CashierPOS() {
       setTimeout(() => setScanFlash(null), 700)
     }
   }
+
+  // Opened from Order History's "Process return": /cashier/pos?invoice=INV-xxxx
+  // lands with that receipt already pulled up. The parameter is cleared once
+  // used so a refresh does not reopen it.
+  useEffect(() => {
+    const invoice = searchParams.get('invoice')
+    if (!invoice) return
+    handleBarcodeScan(invoice.toUpperCase())
+    searchParams.delete('invoice')
+    setSearchParams(searchParams, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const searchProducts = async (term: string) => {
     if (!term || term.length < 2) {
@@ -295,11 +296,6 @@ export default function CashierPOS() {
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   const discount = 0 // Basic version
   const total = subtotal - discount
-
-  const receiptBranch = resolveReceiptBranch(
-    lastSale?.shop || cashier?.shop,
-    tillSession?.till?.code || lastSale?.till_code,
-  )
 
   const handleCheckout = async () => {
     if (cart.length === 0) return
@@ -820,115 +816,12 @@ export default function CashierPOS() {
              >
                 <div className="p-6 overflow-y-auto max-h-[80vh] print:max-h-none print:p-0">
                   {/* Actual Printable Area */}
-                  <div id="pos-receipt" className="bg-white text-black p-4 font-mono text-[11px] leading-tight w-full max-w-[80mm] mx-auto">
-                    
-                    {/* Header */}
-                    <div className="text-center mb-3">
-                      <h2 className="text-sm font-black tracking-tight mb-1">IMobile Service & Repair Center</h2>
-                      <p>{receiptBranch.address}</p>
-                      <p>Tel: {receiptBranch.phone}</p>
-                      <p className="mt-1">Date: {new Date().toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '')}</p>
-                      <p># {lastSale?.invoice_number}</p>
-                      <p>Cashier : {cashier?.name || cashier?.email?.split('@')[0] || 'Admin'}</p>
-                      <p>Till : {tillSession?.till?.code || lastSale?.till_code || 'N/A'}</p>
-                      <p>Customer : {lastSale?.customer_name || 'Walk-in Customer'}</p>
-                      <p>Payment : {formatPaymentMethod(lastSale?.payment_method || paymentMethod)}</p>
-                    </div>
-
-                    <div className="text-center font-bold border-y border-dashed border-black py-1 mb-2">
-                       Receipt - Original
-                    </div>
-
-                    {/* Table Headers */}
-                    <div className="flex justify-between border-b border-dashed border-black pb-1 mb-2 font-bold text-[11px]">
-                      <div className="flex-1">#Item</div>
-                      <div className="w-[60px] text-right">Net</div>
-                      <div className="w-[30px] text-center">Qty</div>
-                      <div className="w-[65px] text-right">Total</div>
-                    </div>
-
-                    {/* Items List */}
-                    <div className="space-y-2 mb-2 border-b border-dashed border-black pb-3">
-                       {lastSale?.items?.map((item: any, idx: number) => (
-                          <div key={idx}>
-                             <div className="font-bold text-[11px] mb-0.5">
-                               {idx + 1}) {item.product_name?.toUpperCase() || 'PRODUCT'}
-                             </div>
-                             <div className="flex justify-between text-[10px]">
-                                <div className="flex-1"></div>
-                                <div className="w-[60px] text-right text-gray-700">
-                                   {Number(item.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </div>
-                                <div className="w-[30px] text-center font-bold">
-                                   {item.quantity}
-                                </div>
-                                <div className="w-[65px] text-right font-bold">
-                                   {Number(item.total_price || (item.price * item.quantity)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </div>
-                             </div>
-                          </div>
-                       ))}
-                    </div>
-
-                    {/* Totals Section */}
-                    <div className="space-y-1 mb-2 border-b border-dashed border-black pb-2 text-right">
-                      <div className="flex justify-between">
-                        <span>Sub Total</span>
-                        <span className="font-bold">{formatCurrency(lastSale?.total_amount || 0).replace('Rs. ', '')}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total Discount</span>
-                        <span className="font-bold">{formatCurrency(lastSale?.discount_amount || 0).replace('Rs. ', '')}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 mb-3 border-b border-dashed border-black pb-3 text-right">
-                      <div className="flex justify-between text-sm font-black">
-                        <span>Total</span>
-                        <span>{formatCurrency(lastSale?.net_amount || lastSale?.total_amount || 0).replace('Rs. ', '')}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Paid {formatPaymentMethod(lastSale?.payment_method || paymentMethod).toUpperCase()}</span>
-                        <span className="font-bold">{formatCurrency(lastSale?.net_amount || lastSale?.total_amount || 0).replace('Rs. ', '')}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Balance</span>
-                        <span className="font-bold">0.00</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Outstanding</span>
-                        <span className="font-bold">0.00</span>
-                      </div>
-                    </div>
-
-                    {/* Invoice Barcode */}
-                    <div className="flex justify-center my-3 relative -left-2 overflow-hidden w-full">
-                       {lastSale?.invoice_number && (
-                         <div className="origin-top scale-75 transform text-center">
-                            <Barcode 
-                              value={lastSale.invoice_number} 
-                              displayValue={false} 
-                              height={40} 
-                              width={1.5} 
-                              margin={10} 
-                              background="#ffffff" 
-                              lineColor="#000000"
-                            />
-                         </div>
-                       )}
-                    </div>
-
-                    {/* Terms & Conditions */}
-                    <div className="text-[9px] mt-4 leading-normal">
-                       <p className="font-bold text-[10px] mb-1">*** හුවමාරු කිරීම සඳහා මෙම බිල්පත ඉදිරිපත් කල යුතුයි.</p>
-                       <ul className="list-disc pl-3 space-y-0.5 opacity-90">
-                         <li>මිලදී ගැනීමෙන් පසු දින 3ක් ඇතුලත ආපසු භාර දිය හැක.</li>
-                         <li>භාණ්ඩය නැවත විකිණිය හැකි තත්වයේ තිබිය යුතුයි.</li>
-                         <li>වගකීම් රහිතව යලි භාරගනු නොලැබේ.</li>
-                         <li>අවශ්‍ය ද්‍රව්‍ය නැවත ලබාගැනීමට හෝ වෙනස් කරගැනීමට බැරිය.</li>
-                       </ul>
-                    </div>
-                  </div>
+                  <PosReceipt
+                    sale={{ ...lastSale, payment_method: lastSale?.payment_method || paymentMethod, shop: lastSale?.shop || cashier?.shop }}
+                    cashierName={cashier?.name || cashier?.email?.split('@')[0] || 'Admin'}
+                    tillCode={tillSession?.till?.code || lastSale?.till_code || 'N/A'}
+                    date={new Date()}
+                  />
                 </div>
 
                 <div className="p-4 bg-muted border-t border-border grid grid-cols-2 gap-4 print:hidden">
@@ -1034,7 +927,14 @@ export default function CashierPOS() {
                    </table>
                 </div>
 
-                <div className="p-6 border-t border-border bg-muted/10 flex gap-4">
+                <div className="p-6 border-t border-border bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Button
+                      variant="outline"
+                      className="w-full font-bold h-12 text-sm tracking-wide gap-2"
+                      onClick={() => navigate(`/cashier/orders?invoice=${encodeURIComponent(scannedSale.invoice_number)}`)}
+                    >
+                      <History className="w-4 h-4" /> VIEW IN ORDER HISTORY
+                    </Button>
                     <Button onClick={() => setScannedSale(null)} className="w-full font-bold h-12 text-sm tracking-widest bg-foreground text-background hover:bg-foreground/90 hover:scale-[1.02] transition-all">CLOSE VIEW</Button>
                 </div>
              </motion.div>

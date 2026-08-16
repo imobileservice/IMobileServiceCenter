@@ -125,6 +125,10 @@ export const inventorySalesService = {
     source?: string
     payment_method?: string
     shop?: string
+    /** Cashier email - the sales one person rang up. */
+    created_by?: string
+    /** Invoice number, customer name or phone. */
+    search?: string
     limit?: number
   }) => {
     const qs = new URLSearchParams()
@@ -133,6 +137,8 @@ export const inventorySalesService = {
     if (params?.source) qs.set('source', params.source)
     if (params?.payment_method) qs.set('payment_method', params.payment_method)
     if (params?.shop) qs.set('shop', params.shop)
+    if (params?.created_by) qs.set('created_by', params.created_by)
+    if (params?.search) qs.set('search', params.search)
     if (params?.limit) qs.set('limit', String(params.limit))
     const query = qs.toString() ? `?${qs.toString()}` : ''
     return apiFetch(`/sales${query}`)
@@ -208,6 +214,8 @@ export interface Supplier {
   phone?: string | null
   email?: string | null
   address?: string | null
+  /** Town / city, printed on the supplier order slip and used to sort the delivery run. */
+  town?: string | null
   notes?: string | null
   is_active?: boolean
   created_at?: string
@@ -252,12 +260,16 @@ export interface ShopOrderItem {
   was_in_stock: boolean
 }
 
-/** An order a shop placed for itself in the portal. */
+/** An order a shop placed for itself in the portal, or one a cashier placed for them at the counter. */
 export interface ShopOrder {
   id: string
   order_number: string
   supplier_id: string
   supplier_name: string
+  /** Copied from the shop when the order was placed, so a reprint shows where it went then. */
+  supplier_town?: string | null
+  /** The cashier who rang it in at the counter. Blank for orders the shop placed itself. */
+  placed_by?: string | null
   status: ShopOrderStatus
   item_count: number
   total_qty: number
@@ -294,6 +306,7 @@ export interface SupplierPayload {
   phone?: string
   email?: string
   address?: string
+  town?: string
   notes?: string
   is_active?: boolean
   support_phone?: string
@@ -397,6 +410,23 @@ export const shopOrdersService = {
   },
 
   getById: (id: string) => apiFetch<{ data: ShopOrder }>(`/supplier-orders/${id}`),
+
+  /**
+   * Places an order at the counter for a shop that phoned or walked in.
+   * `supplier_id` must already be on file — there is no way to create a shop
+   * from here, and the server rejects an id it does not know.
+   */
+  create: (payload: {
+    supplier_id: string
+    items: Array<{ product_id: string; quantity: number }>
+    note?: string | null
+    placed_by?: string
+    contact_phone?: string | null
+  }) =>
+    apiFetch<{ data: ShopOrder }>('/supplier-orders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   update: (id: string, updates: { status?: ShopOrderStatus; admin_note?: string | null; handled_by?: string }) =>
     apiFetch<{ data: ShopOrder }>(`/supplier-orders/${id}`, {

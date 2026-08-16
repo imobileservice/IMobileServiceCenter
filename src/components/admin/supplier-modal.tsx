@@ -32,6 +32,7 @@ const EMPTY_FORM = {
   password: "",
   contact_person: "",
   phone: "",
+  town: "",
   address: "",
   notes: "",
   support_phone: "",
@@ -72,6 +73,7 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
         password: "",
         contact_person: supplier.contact_person || "",
         phone: supplier.phone || "",
+        town: supplier.town || "",
         address: supplier.address || "",
         notes: supplier.notes || "",
         support_phone: supplier.support_phone || "",
@@ -128,6 +130,7 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
         email: email || undefined,
         contact_person: formData.contact_person.trim() || undefined,
         phone: formData.phone.trim() || undefined,
+        town: formData.town.trim() || undefined,
         address: formData.address.trim() || undefined,
         notes: formData.notes.trim() || undefined,
         support_phone: formData.support_phone.trim() || undefined,
@@ -231,16 +234,26 @@ export default function SupplierModal({ isOpen, onClose, supplier, onSaved }: Su
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold mb-2">Shop name *</label>
-            <Input
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="e.g. Kandy Mobile Centre"
-              required
-              autoFocus
-            />
+          {/* Town sits beside the name rather than down in the optional block:
+              it is printed on every supplier order slip and is how the delivery
+              run is sorted, so it needs to be somewhere it actually gets filled. */}
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4">
+            <div>
+              <label className="block text-sm font-semibold mb-2">Shop name *</label>
+              <Input
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g. Kandy Mobile Centre"
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-2">Town / City</label>
+              <Input name="town" value={formData.town} onChange={handleChange} placeholder="e.g. Homagama" />
+              <p className="text-[11px] text-muted-foreground mt-1.5">Printed on order slips.</p>
+            </div>
           </div>
 
           {/* Portal credentials */}

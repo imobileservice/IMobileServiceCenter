@@ -129,7 +129,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
-    const { from_date, to_date, source, payment_method, shop, limit: queryLimit } = req.query
+    const { from_date, to_date, source, payment_method, shop, created_by, search, limit: queryLimit } = req.query
 
     let query = supabase
       .from('inv_sales')
@@ -156,6 +156,24 @@ router.get('/', async (req: Request, res: Response) => {
     }
     if (shop && typeof shop === 'string') {
       query = query.eq('shop', shop)
+    }
+    // Who rang the sale up. Stored as the cashier's email by process_sale, and
+    // matched case-insensitively because a till login may be typed either way.
+    if (created_by && typeof created_by === 'string') {
+      query = query.ilike('created_by', created_by)
+    }
+    // What a cashier actually has in hand when looking for an old sale: the
+    // invoice number off a receipt, or the customer's name or phone.
+    if (search && typeof search === 'string' && search.trim()) {
+      // PostgREST parses `or=(...)` itself, so characters that are syntax there
+      // - commas, brackets, quotes - and the LIKE wildcards are dropped rather
+      // than escaped.
+      const term = search.trim().replace(/[%_,()"'*\\]/g, '')
+      if (term) {
+        query = query.or(
+          `invoice_number.ilike.%${term}%,customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%`
+        )
+      }
     }
 
     const { data, error } = await query
