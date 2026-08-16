@@ -2,6 +2,7 @@ import React from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { Suspense } from 'react'
 import { lazyWithRetry } from './lib/chunk-recovery'
+import SupplierGuard from '@/components/supplier-guard'
 
 // Lazy load pages for code splitting
 const Home = lazyWithRetry(() => import('./pages/Home'))
@@ -93,7 +94,14 @@ export default function App() {
         <Route path="/cashier/dashboard" element={<CashierDashboard />} />
         <Route path="/cashier/inventory" element={<CashierInventory />} />
         <Route path="/supplier/login" element={<SupplierLogin />} />
-        <Route path="/supplier" element={<SupplierPortal />} />
+        <Route
+          path="/supplier"
+          element={
+            <SupplierGuard>
+              <SupplierPortal />
+            </SupplierGuard>
+          }
+        />
       </Routes>
     </Suspense>
   )

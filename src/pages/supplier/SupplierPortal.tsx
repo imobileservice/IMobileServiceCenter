@@ -1,11 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   LogOut,
   Minus,
@@ -17,6 +20,7 @@ import {
   Search,
   ShoppingCart,
   Store,
+  Tags,
   Trash2,
   X,
 } from "lucide-react"
@@ -34,6 +38,14 @@ import {
 import { toast } from "sonner"
 
 type Tab = "catalog" | "orders"
+
+/** Products per page. Two rows of four on a laptop, twelve rows on a phone. */
+const PAGE_SIZE = 24
+
+/** Products with no brand recorded still need a bucket to sit in. */
+const UNBRANDED = "Other"
+
+const brandOf = (item: CatalogItem) => (item.brand || "").trim() || UNBRANDED
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-amber-500/10 text-amber-500 border-amber-500/20",
@@ -82,6 +94,13 @@ export default function SupplierPortalPage() {
   const [inStockOnly, setInStockOnly] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [migrationRequired, setMigrationRequired] = useState(false)
+
+  // Brand is filtered here rather than on the server: the catalogue a shop can
+  // see arrives in one call, so narrowing it is instant and costs no round trip.
+  const [brand, setBrand] = useState("")
+  const [brandListOpen, setBrandListOpen] = useState(false)
+  const [page, setPage] = useState(1)
+  const gridTopRef = useRef<HTMLDivElement | null>(null)
 
   const [contact, setContact] = useState<SupplierContact | null>(null)
 
@@ -169,6 +188,52 @@ export default function SupplierPortalPage() {
       return next
     })
 
+  // Built from what the server returned, so the sidebar only ever offers brands
+  // that actually have something behind them under the current filters.
+  const brands = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      const name = brandOf(item)
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    return Array.from(counts, ([name, count]) => ({ name, count })).sort((a, b) => {
+      // "Other" is a leftovers bucket, not a brand - it belongs at the bottom.
+      if ((a.name === UNBRANDED) !== (b.name === UNBRANDED)) return a.name === UNBRANDED ? 1 : -1
+      return a.name.localeCompare(b.name)
+    })
+  }, [items])
+
+  const visibleItems = useMemo(
+    () => (brand ? items.filter((item) => brandOf(item) === brand) : items),
+    [items, brand]
+  )
+
+  const pageCount = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
+  const pageItems = useMemo(
+    () => visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [visibleItems, page]
+  )
+
+  // A search that no longer contains the chosen brand would otherwise show an
+  // empty grid with a filter the shop cannot see to clear.
+  useEffect(() => {
+    if (brand && !brands.some((entry) => entry.name === brand)) setBrand("")
+  }, [brand, brands])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search, categoryId, inStockOnly, brand])
+
+  // Deleting the last product on the last page must not strand us past the end.
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount))
+  }, [pageCount])
+
+  const goToPage = (next: number) => {
+    setPage(Math.min(Math.max(next, 1), pageCount))
+    gridTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
   const basketLines = useMemo(
     () =>
       Object.entries(basket).map(([productId, quantity]) => ({
@@ -227,7 +292,7 @@ export default function SupplierPortalPage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       <header className="border-b border-border bg-card sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
               <Store className="w-5 h-5 text-blue-500" />
@@ -262,7 +327,7 @@ export default function SupplierPortalPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+      <main className="max-w-7xl mx-auto px-4 py-6 space-y-5">
         {migrationRequired && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 p-4 text-sm">
             <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
@@ -333,32 +398,68 @@ export default function SupplierPortalPage() {
               </div>
             </div>
 
-            {isLoading ? (
-              <p className="text-muted-foreground text-sm py-12 text-center">Loading products...</p>
-            ) : items.length === 0 ? (
-              <div className="text-center py-16">
-                <PackageX className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                <p className="font-semibold">Nothing to show</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {categories.length === 0
-                    ? "No product categories have been opened for your shop yet. Please call us."
-                    : search || categoryId || inStockOnly
-                      ? "No product matches those filters."
-                      : "There are no products in your categories yet."}
-                </p>
+            <div ref={gridTopRef} className="scroll-mt-24 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
+              <BrandFilter
+                brands={brands}
+                selected={brand}
+                total={items.length}
+                onSelect={(value) => {
+                  setBrand(value)
+                  setBrandListOpen(false)
+                }}
+                isOpen={brandListOpen}
+                onToggle={() => setBrandListOpen((prev) => !prev)}
+              />
+
+              <div className="mt-4 lg:mt-0 min-w-0">
+                {isLoading ? (
+                  <p className="text-muted-foreground text-sm py-12 text-center">Loading products...</p>
+                ) : visibleItems.length === 0 ? (
+                  <div className="text-center py-16">
+                    <PackageX className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="font-semibold">Nothing to show</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {categories.length === 0
+                        ? "No product categories have been opened for your shop yet. Please call us."
+                        : search || categoryId || inStockOnly || brand
+                          ? "No product matches those filters."
+                          : "There are no products in your categories yet."}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <p className="text-xs text-muted-foreground font-semibold">
+                        Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleItems.length)} of{" "}
+                        {visibleItems.length}
+                        {brand ? ` in ${brand}` : ""}
+                      </p>
+                      {brand && (
+                        <button
+                          onClick={() => setBrand("")}
+                          className="text-xs font-bold text-primary hover:underline shrink-0"
+                        >
+                          Clear brand
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {pageItems.map((item) => (
+                        <CatalogCard
+                          key={item.product_id}
+                          item={item}
+                          quantity={basket[item.product_id] || 0}
+                          onChange={(quantity) => setQty(item.product_id, quantity)}
+                        />
+                      ))}
+                    </div>
+
+                    <Pagination page={page} pageCount={pageCount} onGo={goToPage} />
+                  </>
+                )}
               </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {items.map((item) => (
-                  <CatalogCard
-                    key={item.product_id}
-                    item={item}
-                    quantity={basket[item.product_id] || 0}
-                    onChange={(quantity) => setQty(item.product_id, quantity)}
-                  />
-                ))}
-              </div>
-            )}
+            </div>
           </>
         ) : (
           <OrdersList orders={orders} isLoading={ordersLoading} onCancel={cancelOrder} onRefresh={loadOrders} />
@@ -374,7 +475,7 @@ export default function SupplierPortalPage() {
             exit={{ y: 80 }}
             className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-card"
           >
-            <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <ShoppingCart className="w-5 h-5 text-primary" />
@@ -465,6 +566,164 @@ export default function SupplierPortalPage() {
   )
 }
 
+/**
+ * Brand list. A column down the left on a laptop; on a phone the same list
+ * folded into a button, so it never pushes the products off the first screen.
+ */
+function BrandFilter({
+  brands,
+  selected,
+  total,
+  onSelect,
+  isOpen,
+  onToggle,
+}: {
+  brands: Array<{ name: string; count: number }>
+  selected: string
+  total: number
+  onSelect: (brand: string) => void
+  isOpen: boolean
+  onToggle: () => void
+}) {
+  if (brands.length === 0) return null
+
+  const list = (
+    <div className="flex flex-col gap-1 max-h-[60vh] lg:max-h-[calc(100vh-14rem)] overflow-y-auto pr-1">
+      <BrandRow label="All brands" count={total} active={!selected} onClick={() => onSelect("")} />
+      {brands.map((entry) => (
+        <BrandRow
+          key={entry.name}
+          label={entry.name}
+          count={entry.count}
+          active={selected === entry.name}
+          onClick={() => onSelect(entry.name)}
+        />
+      ))}
+    </div>
+  )
+
+  return (
+    <aside className="lg:sticky lg:top-24 lg:self-start">
+      {/* Phone / tablet: a single row that opens the list. */}
+      <button
+        onClick={onToggle}
+        className="lg:hidden w-full flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-4 py-3"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <Tags className="w-4 h-4 text-muted-foreground shrink-0" />
+          <span className="font-bold text-sm truncate">{selected || "All brands"}</span>
+        </span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && <div className="lg:hidden mt-2 rounded-lg border border-border bg-card p-2">{list}</div>}
+
+      <div className="hidden lg:block rounded-lg border border-border bg-card p-3">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-2 pb-2">Brands</p>
+        {list}
+      </div>
+    </aside>
+  )
+}
+
+function BrandRow({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+        active ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      <span className={`text-[11px] font-bold shrink-0 ${active ? "opacity-80" : "opacity-60"}`}>{count}</span>
+    </button>
+  )
+}
+
+/** The page numbers worth drawing: the ends, the neighbours, gaps between. */
+const pageWindow = (page: number, pageCount: number): Array<number | "gap"> => {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1)
+
+  const numbers = new Set<number>([1, pageCount, page])
+  if (page - 1 > 1) numbers.add(page - 1)
+  if (page + 1 < pageCount) numbers.add(page + 1)
+  // Keep the row a steady width when standing at either end.
+  if (page <= 3) [2, 3, 4].forEach((value) => numbers.add(value))
+  if (page >= pageCount - 2) [pageCount - 3, pageCount - 2, pageCount - 1].forEach((value) => numbers.add(value))
+
+  const sorted = Array.from(numbers)
+    .filter((value) => value >= 1 && value <= pageCount)
+    .sort((a, b) => a - b)
+
+  const out: Array<number | "gap"> = []
+  sorted.forEach((value, index) => {
+    if (index > 0 && value - (sorted[index - 1] as number) > 1) out.push("gap")
+    out.push(value)
+  })
+  return out
+}
+
+function Pagination({ page, pageCount, onGo }: { page: number; pageCount: number; onGo: (page: number) => void }) {
+  if (pageCount <= 1) return null
+
+  return (
+    <nav className="flex items-center justify-center flex-wrap gap-1.5 mt-6" aria-label="Product pages">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1 font-bold"
+        disabled={page === 1}
+        onClick={() => onGo(page - 1)}
+      >
+        <ChevronLeft className="w-4 h-4" />
+        <span className="hidden sm:inline">Previous</span>
+      </Button>
+
+      {pageWindow(page, pageCount).map((entry, index) =>
+        entry === "gap" ? (
+          <span key={`gap-${index}`} className="px-1 text-muted-foreground text-sm">
+            …
+          </span>
+        ) : (
+          <button
+            key={entry}
+            onClick={() => onGo(entry)}
+            aria-current={entry === page ? "page" : undefined}
+            className={`h-9 min-w-9 px-2 rounded-md text-sm font-bold border transition-colors ${
+              entry === page
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            {entry}
+          </button>
+        )
+      )}
+
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1 font-bold"
+        disabled={page === pageCount}
+        onClick={() => onGo(page + 1)}
+      >
+        <span className="hidden sm:inline">Next</span>
+        <ChevronRight className="w-4 h-4" />
+      </Button>
+    </nav>
+  )
+}
+
 function CatalogCard({
   item,
   quantity,
@@ -478,56 +737,75 @@ function CatalogCard({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3"
+      className="bg-card border border-border rounded-lg p-2.5 sm:p-3 flex flex-col gap-2.5"
     >
-      <div className="flex items-start gap-3">
-        <div className="w-14 h-14 rounded bg-muted flex items-center justify-center overflow-hidden border border-border shrink-0">
-          {item.image ? (
-            <img src={item.image} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <Package className="w-6 h-6 text-muted-foreground" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h3 className="font-bold text-sm leading-tight line-clamp-2">{item.name}</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-            {item.brand ? `${item.brand} · ` : ""}
-            {item.barcode || "No barcode"}
-          </p>
-          <span
-            className={`inline-block mt-2 text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-              item.in_stock
-                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                : "bg-red-500/10 text-red-500 border-red-500/20"
-            }`}
-          >
-            {item.in_stock ? "In stock" : "Out of stock"}
-          </span>
-        </div>
+      {/* Picture on top rather than beside the text: at two cards to a phone
+          row there is no width to put them side by side. */}
+      <div className="w-full aspect-[5/4] rounded bg-muted flex items-center justify-center overflow-hidden border border-border">
+        {item.image ? (
+          <img src={item.image} alt="" loading="lazy" className="w-full h-full object-contain p-1.5" />
+        ) : (
+          <Package className="w-7 h-7 text-muted-foreground" />
+        )}
       </div>
 
-      {item.in_stock ? (
-        quantity > 0 ? (
-          <QuantityStepper quantity={quantity} onChange={onChange} />
+      <div className="min-w-0">
+        <h3 className="font-bold text-[13px] sm:text-sm leading-tight line-clamp-2">{item.name}</h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+          {item.brand ? `${item.brand} · ` : ""}
+          {item.barcode || "No barcode"}
+        </p>
+        <span
+          className={`inline-block mt-1.5 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+            item.in_stock
+              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+              : "bg-red-500/10 text-red-500 border-red-500/20"
+          }`}
+        >
+          {item.in_stock ? "In stock" : "Out of stock"}
+        </span>
+      </div>
+
+      {/* mt-auto keeps every button on a row lined up whatever the name length. */}
+      <div className="mt-auto pt-0.5">
+        {item.in_stock ? (
+          quantity > 0 ? (
+            <QuantityStepper quantity={quantity} onChange={onChange} fullWidth />
+          ) : (
+            <Button size="sm" className="w-full font-bold gap-1.5 text-xs sm:text-sm" onClick={() => onChange(1)}>
+              <Plus className="w-4 h-4 shrink-0" />
+              Add to order
+            </Button>
+          )
         ) : (
-          <Button size="sm" className="font-bold gap-2" onClick={() => onChange(1)}>
-            <Plus className="w-4 h-4" />
-            Add to order
+          <Button size="sm" variant="outline" disabled className="w-full font-bold text-xs sm:text-sm">
+            Not available
           </Button>
-        )
-      ) : (
-        <Button size="sm" variant="outline" disabled className="font-bold">
-          Not available
-        </Button>
-      )}
+        )}
+      </div>
     </motion.div>
   )
 }
 
-function QuantityStepper({ quantity, onChange }: { quantity: number; onChange: (quantity: number) => void }) {
+/** `fullWidth` is for the narrow product card; the basket rows stay compact. */
+function QuantityStepper({
+  quantity,
+  onChange,
+  fullWidth = false,
+}: {
+  quantity: number
+  onChange: (quantity: number) => void
+  fullWidth?: boolean
+}) {
   return (
-    <div className="flex items-center gap-2 shrink-0">
-      <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => onChange(quantity - 1)} aria-label="Less">
+    <div className={`flex items-center ${fullWidth ? "w-full gap-1.5" : "gap-2 shrink-0"}`}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 w-8 p-0 shrink-0"
+        onClick={() => onChange(quantity - 1)}
+        aria-label="Less"
+      >
         <Minus className="w-3.5 h-3.5" />
       </Button>
       <Input
@@ -535,9 +813,15 @@ function QuantityStepper({ quantity, onChange }: { quantity: number; onChange: (
         min="0"
         value={quantity}
         onChange={(e) => onChange(Math.trunc(Number(e.target.value) || 0))}
-        className="h-8 w-16 text-center font-bold"
+        className={`h-8 text-center font-bold px-1 ${fullWidth ? "flex-1 min-w-0" : "w-16"}`}
       />
-      <Button size="sm" variant="outline" className="h-8 w-8 p-0" onClick={() => onChange(quantity + 1)} aria-label="More">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 w-8 p-0 shrink-0"
+        onClick={() => onChange(quantity + 1)}
+        aria-label="More"
+      >
         <Plus className="w-3.5 h-3.5" />
       </Button>
     </div>

@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
 import { Lock, Mail, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { toast } from "sonner"
 
 export default function SupplierLoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const login = useSupplierStore((state) => state.login)
   const isAuthenticated = useSupplierStore((state) => state.isAuthenticated)
   const isSessionExpired = useSupplierStore((state) => state.isSessionExpired)
@@ -22,10 +23,17 @@ export default function SupplierLoginPage() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
+  // Where the guard turned them away from, so a bookmarked portal link still
+  // lands where it was pointing once they sign in.
+  const redirectTo =
+    typeof (location.state as any)?.from === "string" && (location.state as any).from.startsWith("/supplier")
+      ? (location.state as any).from
+      : "/supplier"
+
   // Someone arriving with a session still in date goes straight through.
   useEffect(() => {
-    if (isAuthenticated && !isSessionExpired()) navigate("/supplier", { replace: true })
-  }, [isAuthenticated, isSessionExpired, navigate])
+    if (isAuthenticated && !isSessionExpired()) navigate(redirectTo, { replace: true })
+  }, [isAuthenticated, isSessionExpired, navigate, redirectTo])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,7 +44,7 @@ export default function SupplierLoginPage() {
       const result = await supplierPortalService.login(email.trim(), password)
       login(result.supplier, result.token, result.expiresAt)
       toast.success(`Welcome, ${result.supplier.name}`)
-      navigate("/supplier", { replace: true })
+      navigate(redirectTo, { replace: true })
     } catch (err: any) {
       setError(err.message || "Could not sign in")
     } finally {
