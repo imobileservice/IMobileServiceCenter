@@ -13,6 +13,8 @@ export interface CatalogItem {
   category_id: string | null
   image: string | null
   in_stock: boolean
+  /** Trade price - what this shop pays us. Never the website price. */
+  inventory_price: number
 }
 
 export interface CatalogCategory {

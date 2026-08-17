@@ -19,6 +19,7 @@ import {
   Info,
   KeyRound,
   Package,
+  QrCode,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import AdminLayout from "@/components/admin-layout"
 import SupplierModal from "@/components/admin/supplier-modal"
 import SupplierPortalModal from "@/components/admin/supplier-portal-modal"
+import SupplierLoginShare from "@/components/admin/supplier-login-share"
 import SupplierCategoriesModal, {
   CategoryPicker,
   useAllCategories,
@@ -265,6 +267,8 @@ export default function SuppliersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const [portalSupplier, setPortalSupplier] = useState<SupplierWithStats | null>(null)
+  // The password rides along only when it has just been set - see the share card.
+  const [shareTarget, setShareTarget] = useState<{ supplier: Supplier; password: string | null } | null>(null)
   const [categorySupplier, setCategorySupplier] = useState<SupplierWithStats | null>(null)
   const [activeOrder, setActiveOrder] = useState<ShopOrder | null>(null)
 
@@ -778,15 +782,29 @@ export default function SuppliersPage() {
                               : "No access"}
                           </p>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-1 shrink-0"
-                          onClick={() => setPortalSupplier(supplier)}
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          {supplier.portal_enabled ? "Manage" : "Give access"}
-                        </Button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Nothing to hand over until the shop actually has a login. */}
+                          {supplier.portal_enabled && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1"
+                              onClick={() => setShareTarget({ supplier, password: null })}
+                            >
+                              <QrCode className="w-3.5 h-3.5" />
+                              Share
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => setPortalSupplier(supplier)}
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            {supplier.portal_enabled ? "Manage" : "Give access"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
 
@@ -860,7 +878,22 @@ export default function SuppliersPage() {
           <SupplierPortalModal
             supplier={portalSupplier}
             onClose={() => setPortalSupplier(null)}
-            onSaved={refreshAll}
+            onSaved={(password) => {
+              refreshAll()
+              // A password that was just typed is readable for this one moment,
+              // so the card that carries it opens straight away.
+              if (password) setShareTarget({ supplier: portalSupplier, password })
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {shareTarget && (
+          <SupplierLoginShare
+            supplier={shareTarget.supplier}
+            password={shareTarget.password}
+            onClose={() => setShareTarget(null)}
           />
         )}
       </AnimatePresence>

@@ -106,9 +106,25 @@ export const resolveQuantity = (product: any) => {
 }
 
 /**
- * What a shop is allowed to know about a product: what it is, and whether we
- * have it. Never the count - a shop being told we hold 3 of something is how
- * they learn to shop elsewhere for the other 7.
+ * The trade price - what a shop pays us, the figure the admin types into
+ * "Inventory Price" on the product form.
+ *
+ * Same rule as the inventory screens (see products.controller), so the portal
+ * and the office quote the same number: buy_price when it has been set, and the
+ * general price only as a fallback for a product nobody has priced for trade.
+ */
+export const getInventoryPrice = (product: any) => {
+  const buyPrice = Number(product?.buy_price ?? 0)
+  return buyPrice > 0 ? buyPrice : Number(product?.price || 0)
+}
+
+/**
+ * What a shop is allowed to know about a product: what it is, what it costs
+ * them, and whether we have it. Never the count - a shop being told we hold 3
+ * of something is how they learn to shop elsewhere for the other 7.
+ *
+ * The price shown is the inventory (trade) price, never the website price - a
+ * shop buying to resell must not be quoted what their own customers pay.
  */
 export const toCatalogItem = (product: any) => ({
   product_id: product.id,
@@ -118,10 +134,11 @@ export const toCatalogItem = (product: any) => ({
   category_id: product.category_id || null,
   image: getPrimaryImage(product),
   in_stock: resolveQuantity(product) > 0,
+  inventory_price: getInventoryPrice(product),
 })
 
 export const PRODUCT_SELECT = `
-  id, name, barcode, brand, category_id, specs, stock,
+  id, name, barcode, brand, category_id, specs, stock, price, buy_price,
   product_images (url, is_primary),
   inv_stock (quantity)
 `

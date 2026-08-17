@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { KeyRound, X } from "lucide-react"
+import { Eye, EyeOff, KeyRound, Shuffle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { inventorySuppliersService, type Supplier } from "@/lib/services/inventory.service"
@@ -11,7 +11,23 @@ import { toast } from "sonner"
 interface Props {
   supplier: Supplier
   onClose: () => void
-  onSaved: () => void
+  /**
+   * Carries the plaintext password back when one was just set, and null
+   * otherwise. This is the only moment it exists in readable form, so it is the
+   * only chance to put it on a card the shop can be sent.
+   */
+  onSaved: (password: string | null) => void
+}
+
+/** No 0/O or 1/l/I: this gets read off a screen and typed on a phone. */
+const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+
+const generatePassword = () => {
+  const bytes = new Uint32Array(10)
+  crypto.getRandomValues(bytes)
+  const chars = Array.from(bytes, (value) => PASSWORD_ALPHABET[value % PASSWORD_ALPHABET.length])
+  // Grouped, because a ten-character run is where people lose their place.
+  return `${chars.slice(0, 5).join("")}-${chars.slice(5).join("")}`
 }
 
 /**
@@ -23,6 +39,7 @@ interface Props {
  */
 export default function SupplierPortalModal({ supplier, onClose, onSaved }: Props) {
   const [password, setPassword] = useState("")
+  const [isVisible, setIsVisible] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const portalUrl =
@@ -49,8 +66,9 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
         ...(password.trim() ? { password: password.trim() } : {}),
       })
       toast.success(enabled ? "Portal access saved" : "Portal access turned off")
+      const shared = enabled && password.trim() ? password.trim() : null
       setPassword("")
-      onSaved()
+      onSaved(shared)
       onClose()
     } catch (err: any) {
       toast.error(err.message || "Could not save portal access")
@@ -101,16 +119,42 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
             <label className="block text-sm font-semibold mb-2">
               {supplier.portal_enabled ? "New password (leave blank to keep current)" : "Password"}
             </label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
-              className="h-11"
-              disabled={isSaving}
-            />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  type={isVisible ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="h-11 pr-10 font-mono"
+                  disabled={isSaving}
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsVisible((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={isVisible ? "Hide password" : "Show password"}
+                >
+                  {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 gap-2 shrink-0"
+                disabled={isSaving}
+                onClick={() => {
+                  setPassword(generatePassword())
+                  setIsVisible(true)
+                }}
+              >
+                <Shuffle className="w-4 h-4" />
+                Generate
+              </Button>
+            </div>
             <p className="text-[11px] text-muted-foreground mt-2">
-              Send this password to the shop yourself. It is stored hashed and cannot be read back.
+              Save with a password set and the share card opens next, with the QR code and these details ready to
+              send. It is stored hashed after that and cannot be read back.
             </p>
           </div>
 

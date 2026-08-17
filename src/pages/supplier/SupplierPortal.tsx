@@ -27,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useSupplierStore } from "@/lib/supplier-store"
+import { formatCurrency } from "@/lib/utils/currency"
 import {
   supplierPortalService,
   type CatalogCategory,
@@ -236,15 +237,23 @@ export default function SupplierPortalPage() {
 
   const basketLines = useMemo(
     () =>
-      Object.entries(basket).map(([productId, quantity]) => ({
-        product_id: productId,
-        quantity,
-        name: items.find((item) => item.product_id === productId)?.name || "Product",
-      })),
+      Object.entries(basket).map(([productId, quantity]) => {
+        const item = items.find((entry) => entry.product_id === productId)
+        return {
+          product_id: productId,
+          quantity,
+          name: item?.name || "Product",
+          price: Number(item?.inventory_price || 0),
+        }
+      }),
     [basket, items]
   )
 
   const basketUnits = basketLines.reduce((sum, line) => sum + line.quantity, 0)
+  const basketValue = basketLines.reduce((sum, line) => sum + line.price * line.quantity, 0)
+  // A product with no trade price set cannot be added up, so the figure is
+  // shown as a guide rather than a bill.
+  const basketFullyPriced = basketLines.every((line) => line.price > 0)
 
   const placeOrder = async () => {
     if (basketLines.length === 0) return
@@ -485,7 +494,11 @@ export default function SupplierPortalPage() {
                     {basketLines.length} product{basketLines.length === 1 ? "" : "s"} · {basketUnits} unit
                     {basketUnits === 1 ? "" : "s"}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate">Ready to send to IMobile</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {basketValue > 0
+                      ? `${formatCurrency(basketValue)} · ready to send to IMobile`
+                      : "Ready to send to IMobile"}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -529,7 +542,16 @@ export default function SupplierPortalPage() {
               <div className="space-y-2">
                 {basketLines.map((line) => (
                   <div key={line.product_id} className="flex items-center gap-3 border border-border rounded-lg p-3">
-                    <p className="flex-1 min-w-0 text-sm font-semibold truncate">{line.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{line.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {line.price > 0
+                          ? `${formatCurrency(line.price)} × ${line.quantity} = ${formatCurrency(
+                              line.price * line.quantity
+                            )}`
+                          : "Price to be confirmed"}
+                      </p>
+                    </div>
                     <QuantityStepper
                       quantity={line.quantity}
                       onChange={(quantity) => setQty(line.product_id, quantity)}
@@ -537,6 +559,16 @@ export default function SupplierPortalPage() {
                   </div>
                 ))}
               </div>
+
+              <div className="flex items-baseline justify-between gap-3 mt-3 pt-3 border-t border-border">
+                <span className="text-sm font-bold">Order value</span>
+                <span className="text-lg font-black">{formatCurrency(basketValue)}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {basketFullyPriced
+                  ? "A guide only — we confirm the final figure when the order is packed."
+                  : "Some products have no price set yet, so this figure is incomplete."}
+              </p>
 
               <div className="mt-4">
                 <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
@@ -755,6 +787,17 @@ function CatalogCard({
           {item.brand ? `${item.brand} · ` : ""}
           {item.barcode || "No barcode"}
         </p>
+
+        {/* The trade price. The only price a shop is shown - what our own
+            customers pay on the website is none of their business. */}
+        <p className="mt-1 font-black text-sm sm:text-base leading-tight">
+          {item.inventory_price > 0 ? (
+            formatCurrency(item.inventory_price)
+          ) : (
+            <span className="text-[11px] font-bold text-muted-foreground">Call us for a price</span>
+          )}
+        </p>
+
         <span
           className={`inline-block mt-1.5 text-[10px] sm:text-[11px] font-bold px-2 py-0.5 rounded-full border ${
             item.in_stock
