@@ -15,7 +15,11 @@ async function apiFetch<T = any>(endpoint: string, options?: RequestInit): Promi
 
   const json = await res.json()
   if (!res.ok) {
-    throw new Error(json.error || `API error: ${res.status}`)
+    const error: any = new Error(json.error || `API error: ${res.status}`)
+    // Callers that have to tell "your password is wrong" apart from "there is
+    // nothing to show" cannot do it from the message - see revealPortalPassword.
+    error.status = res.status
+    throw error
   }
   return json
 }
@@ -224,6 +228,11 @@ export interface Supplier {
   // client - only whether access is on and when it was last used.
   portal_enabled?: boolean
   portal_last_login_at?: string | null
+  /**
+   * Whether the office can read this shop's password back to them. False for a
+   * password stored one-way, which can only be replaced — see revealPortalPassword.
+   */
+  portal_password_recoverable?: boolean
   /** Who the portal's Call / WhatsApp buttons reach. Blank falls back to the shop-wide number. */
   support_phone?: string | null
   support_whatsapp?: string | null
@@ -390,6 +399,20 @@ export const inventorySuppliersService = {
     apiFetch<{ data: { id: string; name: string; email: string | null; portal_enabled: boolean; portal_last_login_at: string | null } }>(
       `/suppliers/${id}/portal`,
       { method: 'PUT', body: JSON.stringify(payload) }
+    ),
+
+  /**
+   * Reads a shop's portal password back, for a shopkeeper who has lost theirs.
+   *
+   * The admin's own password goes with the request and is checked server-side -
+   * this endpoint hands out a credential, and the inventory API has no session
+   * behind it. Only passwords set since recovery was switched on can be read;
+   * older ones exist as a one-way hash and come back 404.
+   */
+  revealPortalPassword: (id: string, payload: { admin_email: string; admin_password: string }) =>
+    apiFetch<{ data: { password: string; email: string | null; name: string } }>(
+      `/suppliers/${id}/portal-password`,
+      { method: 'POST', body: JSON.stringify(payload) }
     ),
 }
 

@@ -154,7 +154,8 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
             </div>
             <p className="text-[11px] text-muted-foreground mt-2">
               Save with a password set and the share card opens next, with the QR code and these details ready to
-              send. It is stored hashed after that and cannot be read back.
+              send. The login itself is stored one-way; the share card can read a password back only if recovery is
+              switched on, and only after you confirm your own admin password.
             </p>
           </div>
 

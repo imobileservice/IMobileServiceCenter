@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { useAdminUnlock } from "./admin-unlock"
 
 interface AdminUser {
   id: string
@@ -52,6 +53,9 @@ export const useAdminStore = create<AdminState>((set) => ({
     }
   },
   logout: () => {
+    // Signing out has to drop the confirmed password too, or the next person at
+    // this machine inherits the ability to read shop credentials back.
+    useAdminUnlock.getState().clear()
     set({
       user: null,
       isAuthenticated: false,

@@ -15,6 +15,28 @@ export interface LoginCardInput {
   password: string | null
 }
 
+/**
+ * What the QR actually carries.
+ *
+ * The address on its own line first, so a phone camera still recognises a URL
+ * and offers to open it, with the credentials underneath for the shopkeeper who
+ * scans it rather than types it. A code with no password in it stays a bare URL,
+ * which scans more reliably than a URL wrapped in text.
+ *
+ * Worth knowing: once the password is in here the printed code IS the login.
+ * Treat a card left on a counter the way you would treat the password written
+ * on a note.
+ */
+export const buildLoginQrPayload = ({
+  portalUrl,
+  email,
+  password,
+}: {
+  portalUrl: string
+  email?: string | null
+  password?: string | null
+}) => (password ? `${portalUrl}\nEmail: ${email || "-"}\nPassword: ${password}` : portalUrl)
+
 const WIDTH = 720
 const PADDING = 48
 const INK = "#0f172a"
@@ -80,7 +102,7 @@ export const buildLoginCardBlob = async (input: LoginCardInput): Promise<Blob> =
 
   const contentWidth = WIDTH - PADDING * 2
   const qrSize = 340
-  const qr = makeQr(input.portalUrl, "M")
+  const qr = makeQr(buildLoginQrPayload(input), "M")
 
   measure.font = `700 30px ${SANS}`
   const nameLines = wrapText(measure, input.shopName || "Shop", contentWidth).slice(0, 2)
@@ -130,7 +152,7 @@ export const buildLoginCardBlob = async (input: LoginCardInput): Promise<Blob> =
 
   ctx.fillStyle = MUTED
   ctx.font = `600 15px ${SANS}`
-  ctx.fillText("Scan to open the portal", WIDTH / 2, y)
+  ctx.fillText(input.password ? "Scan for the link, email and password" : "Scan to open the portal", WIDTH / 2, y)
   y += 20
 
   ctx.fillStyle = INK

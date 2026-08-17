@@ -1,22 +1,21 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Copy, Download, QrCode, ShieldAlert, X } from "lucide-react"
+import { Copy, Download, Eye, QrCode, ShieldAlert, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { makeQr, qrToPath, qrViewBox } from "@/lib/utils/qr-code"
-import { buildLoginCardBlob, downloadBlob } from "@/lib/utils/login-card"
+import { buildLoginCardBlob, buildLoginQrPayload, downloadBlob } from "@/lib/utils/login-card"
 import { formatPhoneForWhatsApp, getSiteUrl } from "@/lib/utils/whatsapp"
-import type { Supplier } from "@/lib/services/inventory.service"
+import { useAdminStore } from "@/lib/admin-store"
+import { useAdminUnlock } from "@/lib/admin-unlock"
+import { inventorySuppliersService, type Supplier } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 
 interface Props {
   supplier: Supplier
-  /**
-   * The plaintext password, if it was just typed. Stored passwords are hashed
-   * and cannot be read back, so this is null whenever the card is opened
-   * outside the moment one was set.
-   */
+  /** The password, when it was just typed. Otherwise the card fetches it. */
   password?: string | null
   onClose: () => void
 }
@@ -24,23 +23,71 @@ interface Props {
 /**
  * Gives one shop its portal login on a card they can scan, read or be sent.
  *
- * The QR is only the login address - the same for every shop - so a code that
- * ends up on the wrong phone is not a way in. The email and password are text
- * below it, which is what the shopkeeper types once and what an admin reads out
- * over the phone when they lose it.
+ * The password is shown, not hidden: the whole job of this card is handing
+ * credentials to a shopkeeper, and one they cannot read is no use. It is read
+ * back from the server, which asks the admin to confirm their own password once
+ * per tab - after that every card opens with everything already on it.
+ *
+ * The QR carries the address, the email and the password together, so a shop
+ * can scan instead of typing. That makes the code itself a credential: a printed
+ * card is as good as the password written on a note.
  */
 export default function SupplierLoginShare({ supplier, password, onClose }: Props) {
   const [isSaving, setIsSaving] = useState(false)
+  const [revealed, setRevealed] = useState<string | null>(null)
+
+  // Either the one just set, or the one read back from the database.
+  const shownPassword = password || revealed
 
   const portalUrl = `${getSiteUrl()}/supplier/login`
-  const qr = useMemo(() => makeQr(portalUrl, "M"), [portalUrl])
+  const qr = useMemo(
+    () => makeQr(buildLoginQrPayload({ portalUrl, email: supplier.email, password: shownPassword }), "M"),
+    [portalUrl, supplier.email, shownPassword]
+  )
+
+  const adminEmail = useAdminStore((state) => state.user?.email)
+  const unlockedPassword = useAdminUnlock((state) => state.password)
+  const [isReading, setIsReading] = useState(false)
+
+  /*
+   * Opening the card reads the password straight away, using the admin password
+   * already confirmed in this tab. That is what makes it "always shown": the
+   * confirmation happens once per sign-in, not once per shop.
+   */
+  useEffect(() => {
+    if (password || revealed) return
+    if (!adminEmail || !unlockedPassword) return
+    if (supplier.portal_password_recoverable === false) return
+
+    let cancelled = false
+    setIsReading(true)
+
+    inventorySuppliersService
+      .revealPortalPassword(supplier.id, { admin_email: adminEmail, admin_password: unlockedPassword })
+      .then((result) => {
+        if (!cancelled) setRevealed(result.data.password)
+      })
+      .catch((error: any) => {
+        if (cancelled) return
+        // The stored password stopped working - the admin changed theirs, or the
+        // account was locked out. Drop it so the prompt comes back.
+        if (error?.status === 401 || error?.status === 429) useAdminUnlock.getState().clear()
+      })
+      .finally(() => {
+        if (!cancelled) setIsReading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [password, revealed, adminEmail, unlockedPassword, supplier.id, supplier.portal_password_recoverable])
 
   const message = [
     `${supplier.name} — IMobile Service Center shop portal`,
     "",
     `Link: ${portalUrl}`,
     `Email: ${supplier.email || "—"}`,
-    `Password: ${password || "(ask us)"}`,
+    `Password: ${shownPassword || "(ask us)"}`,
     "",
     "Open the link, sign in with the email and password above, and you can order straight from us.",
   ].join("\n")
@@ -65,7 +112,7 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
         shopName: supplier.name,
         portalUrl,
         email: supplier.email || "",
-        password: password || null,
+        password: shownPassword || null,
       })
       const slug = supplier.name
         .replace(/[^\w]+/g, "-")
@@ -110,14 +157,16 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
               className="w-52 h-52"
               shapeRendering="crispEdges"
               role="img"
-              aria-label={`QR code for ${portalUrl}`}
+              aria-label={`QR code for ${supplier.name}'s shop portal login`}
             >
               <rect width="100%" height="100%" fill="#ffffff" />
               <path d={qrToPath(qr)} fill="#0f172a" />
             </svg>
           </div>
 
-          <p className="text-center text-[11px] font-semibold text-slate-500 mt-2">Scan to open the portal</p>
+          <p className="text-center text-[11px] font-semibold text-slate-500 mt-2">
+            {shownPassword ? "Scan for the link, email and password" : "Scan to open the portal"}
+          </p>
           <p className="text-center text-xs font-mono break-all mt-1">{portalUrl}</p>
 
           <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
@@ -129,24 +178,16 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Password</p>
-              {password ? (
-                <p className="font-mono font-bold text-sm break-all">{password}</p>
+              {shownPassword ? (
+                <p className="font-mono font-bold text-sm break-all">{shownPassword}</p>
               ) : (
-                <p className="text-sm text-slate-500">Not shown — set a new one to include it</p>
+                <p className="text-sm text-slate-500">{isReading ? "Reading..." : "Hidden"}</p>
               )}
             </div>
           </div>
         </div>
 
-        {!password && (
-          <div className="flex items-start gap-2 mt-3 text-[11px] text-muted-foreground">
-            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-            <p>
-              Passwords are stored hashed and cannot be read back. Open <b>Manage</b> on this shop and set a new
-              password to put one on the card.
-            </p>
-          </div>
-        )}
+        {!shownPassword && !isReading && <RevealPassword supplier={supplier} onRevealed={setRevealed} />}
 
         <div className="grid grid-cols-2 gap-2 mt-4">
           <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="col-span-2">
@@ -170,6 +211,113 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
           {supplier.phone ? ` It is addressed to ${supplier.phone}.` : " Pick the chat yourself; this shop has no phone number saved."}
         </p>
       </motion.div>
+    </div>
+  )
+}
+
+/**
+ * Reads a shop's password back, once the administrator has proved they are the
+ * administrator.
+ *
+ * The prompt is not decoration. Nothing on /api/inventory carries a session, so
+ * the password behind this button is guarded by exactly one thing: the admin
+ * password typed here, checked on the server against the admins table.
+ */
+function RevealPassword({
+  supplier,
+  onRevealed,
+}: {
+  supplier: Supplier
+  onRevealed: (password: string) => void
+}) {
+  const adminEmail = useAdminStore((state) => state.user?.email)
+  const unlock = useAdminUnlock((state) => state.unlock)
+  const [isOpen, setIsOpen] = useState(false)
+  const [adminPassword, setAdminPassword] = useState("")
+  const [isChecking, setIsChecking] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const reveal = async () => {
+    if (!adminEmail) {
+      setProblem("Sign in to the admin panel again first.")
+      return
+    }
+    if (!adminPassword.trim()) return
+
+    setIsChecking(true)
+    setProblem(null)
+    try {
+      const result = await inventorySuppliersService.revealPortalPassword(supplier.id, {
+        admin_email: adminEmail,
+        admin_password: adminPassword,
+      })
+      // Held for this tab only, so every other card opens with the password
+      // already on it. Cleared on sign-out and on refresh - see admin-unlock.
+      unlock(adminPassword)
+      setAdminPassword("")
+      setIsOpen(false)
+      onRevealed(result.data.password)
+    } catch (error: any) {
+      setProblem(error.message || "Could not read that password back")
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
+  // The server already knows whether there is anything to read, so a shop whose
+  // password was stored one-way is told that instead of being offered a button
+  // that could only ever fail.
+  if (supplier.portal_password_recoverable === false) {
+    return (
+      <p className="text-[11px] text-muted-foreground mt-3 flex items-start gap-2">
+        <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+        <span>
+          This shop's password was stored one-way, so it cannot be read back. Set a new one under <b>Manage</b> and
+          this card will carry it.
+        </span>
+      </p>
+    )
+  }
+
+  if (!isOpen) {
+    return (
+      <div className="mt-3">
+        <Button variant="outline" size="sm" className="w-full gap-2 font-bold" onClick={() => setIsOpen(true)}>
+          <Eye className="w-4 h-4" />
+          Show password
+        </Button>
+        <p className="text-[11px] text-muted-foreground mt-2 flex items-start gap-2">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>You will be asked to confirm your own admin password.</span>
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border p-3">
+      <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+        Your admin password
+      </label>
+      <div className="flex gap-2">
+        <Input
+          type="password"
+          autoFocus
+          value={adminPassword}
+          onChange={(e) => setAdminPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && reveal()}
+          placeholder={adminEmail || "Signed out"}
+          className="flex-1"
+          disabled={isChecking}
+        />
+        <Button className="font-bold shrink-0" disabled={isChecking || !adminPassword.trim()} onClick={reveal}>
+          {isChecking ? "Checking..." : "Show"}
+        </Button>
+      </div>
+      {problem && <p className="text-[11px] text-red-500 mt-2">{problem}</p>}
+      <p className="text-[11px] text-muted-foreground mt-2">
+        Asked once per sign-in — after this, every shop's card opens with the password already on it.
+      </p>
     </div>
   )
 }

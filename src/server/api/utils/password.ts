@@ -19,6 +19,20 @@ export function hashPassword(password: string) {
   return `${SCRYPT_PREFIX}$${salt}$${hash}`
 }
 
+/**
+ * Whether a stored credential has been through hashPassword.
+ *
+ * False means the column holds the password as typed - which verifyPassword
+ * still accepts, so accounts set up by hand in the database table keep working.
+ * Callers use this to tell "cannot be read back" from "is sitting there in the
+ * clear and ought to be upgraded".
+ */
+export function isHashedPassword(storedPassword: string | null | undefined) {
+  if (!storedPassword) return false
+  const parts = String(storedPassword).split('$')
+  return parts.length === 3 && parts[0] === SCRYPT_PREFIX
+}
+
 export function verifyPassword(password: string, storedPassword: string | null | undefined) {
   if (!storedPassword) {
     return false

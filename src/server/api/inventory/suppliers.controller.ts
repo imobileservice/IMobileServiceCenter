@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
-import { hashPassword } from '../utils/password'
+import { hashPassword, isHashedPassword } from '../utils/password'
+import { isLockedOut, verifyAdminCredentials } from '../utils/admin-auth'
+import { decryptSecret, encryptSecret, isSecretBoxReady } from '../utils/secret-box'
 import {
   accumulate,
   buildStockItem,
@@ -26,6 +28,31 @@ const router = Router()
  */
 
 // ─── SUPPLIER LIST ───────────────────────────────────
+
+/**
+ * Prepares a supplier row to leave the server.
+ *
+ * Two jobs. It strips the credential columns - these handlers select '*' and
+ * handed the row straight back, which was shipping the scrypt hash to every
+ * browser that opened the shops page. And it replaces them with the one fact the
+ * UI does need: whether this shop's password can be read back to them, so the
+ * share card can offer that instead of a button that was always going to fail.
+ *
+ * The flag says nothing about the password itself, and the password still only
+ * comes out of POST /:id/portal-password, which re-authenticates the admin.
+ */
+const toClientSupplier = (supplier: Record<string, any> | null | undefined): any => {
+  if (!supplier) return supplier
+  const { portal_password, portal_password_enc, ...rest } = supplier
+  return {
+    ...rest,
+    portal_password_recoverable:
+      // Never hashed - it is in the table as typed, so it can simply be read.
+      Boolean(portal_password && !isHashedPassword(portal_password)) ||
+      // Or we kept an encrypted copy and still hold the key to it.
+      Boolean(portal_password_enc && isSecretBoxReady()),
+  }
+}
 
 const emptyShopStats = () => ({
   /** What the shop sees: its own list, or the shared default. */
@@ -55,7 +82,7 @@ router.get('/', async (req: Request, res: Response) => {
     if (error) throw error
 
     if (with_stats !== 'true') {
-      return res.json({ data: suppliers || [] })
+      return res.json({ data: (suppliers || []).map(toClientSupplier) })
     }
 
     /*
@@ -109,7 +136,7 @@ router.get('/', async (req: Request, res: Response) => {
       const stats = statsBySupplier.get(supplier.id) || emptyShopStats()
       const mode = supplier.category_access_mode === 'custom' ? 'custom' : 'default'
       return {
-        ...supplier,
+        ...toClientSupplier(supplier),
         category_access_mode: mode,
         // `categories` is what the shop actually sees, so a card following the
         // default reads the same number the shop's own portal would show.
@@ -731,7 +758,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (error) throw error
-    res.status(201).json({ data })
+    res.status(201).json({ data: toClientSupplier(data) })
   } catch (error: any) {
     console.error('[Inventory Suppliers] POST error:', error)
     res.status(500).json({ error: error.message })
@@ -756,6 +783,7 @@ router.put('/:id', async (req: Request, res: Response) => {
      * perfectly fine. PUT /:id/portal is the only way to set it.
      */
     delete (updates as any).portal_password
+    delete (updates as any).portal_password_enc
     delete (updates as any).portal_last_login_at
 
     const payload = { ...updates, updated_at: new Date().toISOString() }
@@ -782,7 +810,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     if (error) throw error
-    res.json({ data })
+    res.json({ data: toClientSupplier(data) })
   } catch (error: any) {
     console.error('[Inventory Suppliers] PUT error:', error)
     res.status(500).json({ error: error.message })
@@ -811,6 +839,11 @@ router.put('/:id/portal', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Password must be at least 6 characters' })
       }
       updates.portal_password = hashPassword(password.trim())
+      // The hash is what logs in. This is the copy the office can read back to a
+      // shop that has lost theirs - see utils/secret-box. Null when no key is
+      // configured, and cleared alongside the hash either way so a stale copy of
+      // the previous password can never be handed out.
+      updates.portal_password_enc = encryptSecret(password.trim())
     }
 
     if (enabled !== undefined) updates.portal_enabled = Boolean(enabled)
@@ -838,12 +871,22 @@ router.put('/:id/portal', async (req: Request, res: Response) => {
       }
     }
 
-    const { data, error } = await supabase
-      .from('inv_suppliers')
-      .update(updates)
-      .eq('id', req.params.id)
-      .select('id, name, email, portal_enabled, portal_last_login_at')
-      .single()
+    const write = () =>
+      supabase
+        .from('inv_suppliers')
+        .update(updates)
+        .eq('id', req.params.id)
+        .select('id, name, email, portal_enabled, portal_last_login_at')
+        .single()
+
+    let { data, error } = await write()
+
+    // A database without 20260817_supplier_password_recovery.sql still sets the
+    // password perfectly well - it just cannot keep a copy to read back.
+    if (error && isMissingSchema(error) && 'portal_password_enc' in updates) {
+      delete updates.portal_password_enc
+      ;({ data, error } = await write())
+    }
 
     if (error) {
       if (isMissingSchema(error)) {
@@ -855,6 +898,118 @@ router.put('/:id/portal', async (req: Request, res: Response) => {
     res.json({ data })
   } catch (error: any) {
     console.error('[Inventory Suppliers] portal access error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+/**
+ * POST /api/inventory/suppliers/:id/portal-password
+ * Body: { admin_email, admin_password }
+ *
+ * Reads one shop's portal password back to the office, for the shopkeeper who
+ * has lost theirs.
+ *
+ * The administrator has to type their own password again to get it. That is not
+ * ceremony: /api/inventory/* has no session behind it, so without this the
+ * endpoint would hand every shop credential to anyone who could reach the
+ * server. The check is the same one the admin login makes, and it is rate
+ * limited - see utils/admin-auth.
+ *
+ * Only passwords set since 20260817_supplier_password_recovery.sql (and with
+ * CREDENTIAL_SECRET configured) can be read. Anything older exists only as a
+ * scrypt hash, which is one-way; the answer there is to set a new one.
+ */
+router.post('/:id/portal-password', async (req: Request, res: Response) => {
+  try {
+    const { admin_email, admin_password } = req.body || {}
+
+    if (!admin_email || !admin_password) {
+      return res.status(400).json({ error: 'Confirm your own admin password to view this' })
+    }
+
+    if (isLockedOut(String(admin_email).toLowerCase().trim(), req)) {
+      return res.status(429).json({ error: 'Too many failed attempts. Try again in 15 minutes.' })
+    }
+
+    const admin = await verifyAdminCredentials(String(admin_email), String(admin_password), req)
+    if (!admin) {
+      return res.status(401).json({ error: 'That password is not right' })
+    }
+
+    const supabase = getSupabaseAdmin()
+
+    let { data, error } = await supabase
+      .from('inv_suppliers')
+      .select('id, name, email, portal_enabled, portal_password, portal_password_enc')
+      .eq('id', req.params.id)
+      .maybeSingle()
+
+    // Without 20260817_supplier_password_recovery.sql there is no encrypted
+    // copy, but a shop whose password was typed straight into the table can
+    // still be read - so fall back rather than refusing outright.
+    if (error && isMissingSchema(error)) {
+      ;({ data, error } = await supabase
+        .from('inv_suppliers')
+        .select('id, name, email, portal_enabled, portal_password')
+        .eq('id', req.params.id)
+        .maybeSingle())
+    }
+
+    if (error) throw error
+    if (!data) return res.status(404).json({ error: 'Shop not found' })
+
+    const stored: string | null = data.portal_password || null
+    const storedInTheClear = Boolean(stored) && !isHashedPassword(stored)
+
+    // Two ways a password can still be read: it was never hashed (set by hand in
+    // the database, which verifyPassword accepts), or we kept an encrypted copy.
+    const password = storedInTheClear ? stored : decryptSecret((data as any).portal_password_enc)
+
+    if (!password) {
+      if (!isSecretBoxReady()) {
+        return res.status(503).json({
+          error:
+            'Password recovery is not switched on. Set CREDENTIAL_SECRET on the server, then set a new password for this shop.',
+          recoverable: false,
+        })
+      }
+      return res.status(404).json({
+        error: stored
+          ? 'This password was stored one-way and cannot be read back. Set a new one to make it shareable.'
+          : 'This shop has no portal password yet.',
+        recoverable: false,
+      })
+    }
+
+    // Reading a shop's credential is worth a line in the log; the password is not.
+    console.log(`[Inventory Suppliers] ${admin.email} revealed the portal password for ${data.name}`)
+
+    /*
+     * A password sitting in the clear gets upgraded the moment we read it: hash
+     * it for logging in, keep an encrypted copy for reading back. Same password,
+     * so the shop notices nothing.
+     *
+     * Only when there is a key to encrypt under - hashing it without one would
+     * trade a readable password for an unreadable one, which is the opposite of
+     * what this endpoint is for.
+     */
+    if (storedInTheClear && isSecretBoxReady()) {
+      const { error: upgradeError } = await supabase
+        .from('inv_suppliers')
+        .update({ portal_password: hashPassword(password), portal_password_enc: encryptSecret(password) })
+        .eq('id', data.id)
+
+      if (upgradeError) {
+        // Not fatal: the caller still gets the password they asked for.
+        console.warn(`[Inventory Suppliers] Could not upgrade stored password for ${data.name}:`, upgradeError.message)
+      } else {
+        console.log(`[Inventory Suppliers] Upgraded ${data.name}'s plain-text password to a hash + encrypted copy`)
+      }
+    }
+
+    res.json({ data: { password, email: data.email, name: data.name } })
+  } catch (error: any) {
+    console.error('[Inventory Suppliers] reveal password error:', error)
     res.status(500).json({ error: error.message })
   }
 })
