@@ -127,12 +127,13 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      {/* Backdrop clicks do not close this - the card is read off the screen
+          while typing into WhatsApp, so it has to stay put. Use the X. */}
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-card border border-border rounded-lg w-full max-w-md max-h-[92vh] overflow-y-auto p-6"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-5">
           <div className="flex items-center gap-3 min-w-0">

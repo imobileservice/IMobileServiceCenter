@@ -98,12 +98,13 @@ export default function ShopOrderModal({ order, onClose, onChanged }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4">
+      {/* Backdrop clicks do not close this - an order is read off the screen
+          while picking stock off the shelf, so it stays open until dismissed. */}
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-card border border-border rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 mb-5">
           <div className="flex items-center gap-3 min-w-0">

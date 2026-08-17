@@ -249,12 +249,13 @@ export default function SupplierCategoriesModal({ supplier, onClose, onSaved }: 
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4">
+      {/* Backdrop clicks do not close this - ticking through a long category
+          list and losing it to a stray click is the whole job undone. */}
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-card border border-border rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-5">
           <div className="flex items-center gap-3">

@@ -78,12 +78,13 @@ export default function SupplierPortalModal({ supplier, onClose, onSaved }: Prop
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      {/* Backdrop clicks do not close this - losing a typed password to a stray
+          click means setting it again. Use the X. */}
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-card border border-border rounded-lg w-full max-w-md p-6"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-5">
           <div className="flex items-center gap-3">
