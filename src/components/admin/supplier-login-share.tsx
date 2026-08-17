@@ -6,7 +6,7 @@ import { Copy, Download, Eye, QrCode, ShieldAlert, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { makeQr, qrToPath, qrViewBox } from "@/lib/utils/qr-code"
-import { buildLoginCardBlob, buildLoginQrPayload, downloadBlob } from "@/lib/utils/login-card"
+import { buildLoginCardBlob, buildLoginQrPayload, copyImageToClipboard, downloadBlob } from "@/lib/utils/login-card"
 import { formatPhoneForWhatsApp, getSiteUrl } from "@/lib/utils/whatsapp"
 import { useAdminStore } from "@/lib/admin-store"
 import { useAdminUnlock } from "@/lib/admin-unlock"
@@ -34,6 +34,7 @@ interface Props {
  */
 export default function SupplierLoginShare({ supplier, password, onClose }: Props) {
   const [isSaving, setIsSaving] = useState(false)
+  const [isSending, setIsSending] = useState(false)
   const [revealed, setRevealed] = useState<string | null>(null)
 
   // Either the one just set, or the one read back from the database.
@@ -90,9 +91,14 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
     "Open the link, sign in with the email and password above, and you can order straight from us.",
   ].join("\n")
 
-  const whatsappHref = supplier.phone
-    ? `https://wa.me/${formatPhoneForWhatsApp(supplier.phone).replace("+", "")}?text=${encodeURIComponent(message)}`
-    : `https://wa.me/?text=${encodeURIComponent(message)}`
+  /**
+   * The chat to paste the card into. No prefilled text when we know the number:
+   * pasting an image opens WhatsApp's attachment preview, which discards
+   * whatever was already typed in the box.
+   */
+  const chatHref = supplier.phone
+    ? `https://wa.me/${formatPhoneForWhatsApp(supplier.phone).replace("+", "")}`
+    : `https://wa.me/?text=${encodeURIComponent(`${supplier.name} — IMobile Service Center shop portal login`)}`
 
   const copyDetails = async () => {
     try {
@@ -103,24 +109,78 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
     }
   }
 
+  const cardFileName = `${
+    supplier.name
+      .replace(/[^\w]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase() || "shop"
+  }-portal-login.png`
+
+  const renderCard = () =>
+    buildLoginCardBlob({
+      shopName: supplier.name,
+      portalUrl,
+      email: supplier.email || "",
+      password: shownPassword || null,
+    })
+
   const downloadCard = async () => {
     setIsSaving(true)
     try {
-      const blob = await buildLoginCardBlob({
-        shopName: supplier.name,
-        portalUrl,
-        email: supplier.email || "",
-        password: shownPassword || null,
-      })
-      const slug = supplier.name
-        .replace(/[^\w]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .toLowerCase()
-      downloadBlob(blob, `${slug || "shop"}-portal-login.png`)
+      downloadBlob(await renderCard(), cardFileName)
     } catch (error: any) {
       toast.error(error.message || "Could not save the card")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  /**
+   * Sends the card itself - the picture, not a wall of text.
+   *
+   * A wa.me link can only carry text; there is no URL that attaches a file. So
+   * there are two routes, and which one a machine gets is not a preference:
+   *
+   *  - a share sheet (phones, and desktops that have one) takes the PNG
+   *    directly, and WhatsApp appears in the list of places to send it
+   *  - everywhere else the card goes on the clipboard and the chat opens, so it
+   *    is one Ctrl+V. If even the clipboard refuses, the file is saved and they
+   *    attach it the usual way
+   */
+  const sendOnWhatsApp = async () => {
+    setIsSending(true)
+    try {
+      const blob = await renderCard()
+      const file = new File([blob], cardFileName, { type: "image/png" })
+      const caption = `${supplier.name} — your IMobile Service Center shop portal login`
+
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: caption, text: caption })
+        return
+      }
+
+      // Clipboard first: opening the chat takes the focus away, and a write
+      // from an unfocused document is refused.
+      const copied = await copyImageToClipboard(blob)
+      if (!copied) downloadBlob(blob, cardFileName)
+
+      const opened = window.open(chatHref, "_blank", "noopener")
+
+      if (copied) {
+        toast.success(
+          opened
+            ? "Card copied — press Ctrl+V in the chat, then send"
+            : "Card copied — open WhatsApp and press Ctrl+V"
+        )
+      } else {
+        toast.success("Card saved to your downloads — attach it in the chat")
+      }
+    } catch (error: any) {
+      // Dismissing the share sheet is not a failure.
+      if (error?.name === "AbortError") return
+      toast.error(error.message || "Could not send the card")
+    } finally {
+      setIsSending(false)
     }
   }
 
@@ -187,12 +247,14 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
         {!shownPassword && !isReading && <RevealPassword supplier={supplier} onRevealed={setRevealed} />}
 
         <div className="grid grid-cols-2 gap-2 mt-4">
-          <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="col-span-2">
-            <Button className="w-full gap-2 font-bold bg-green-600 hover:bg-green-700 text-white">
-              <WhatsAppIcon className="w-4 h-4" />
-              Send on WhatsApp
-            </Button>
-          </a>
+          <Button
+            className="col-span-2 w-full gap-2 font-bold bg-green-600 hover:bg-green-700 text-white"
+            disabled={isSending}
+            onClick={sendOnWhatsApp}
+          >
+            <WhatsAppIcon className="w-4 h-4" />
+            {isSending ? "Preparing card..." : "Send card on WhatsApp"}
+          </Button>
           <Button variant="outline" className="gap-2 font-bold" disabled={isSaving} onClick={downloadCard}>
             <Download className="w-4 h-4" />
             {isSaving ? "Saving..." : "Download"}
@@ -204,8 +266,10 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
         </div>
 
         <p className="text-[11px] text-muted-foreground mt-3">
-          WhatsApp opens with the message ready — you still press send.
-          {supplier.phone ? ` It is addressed to ${supplier.phone}.` : " Pick the chat yourself; this shop has no phone number saved."}
+          Sends this card as a picture, not as text — you still press send in WhatsApp.
+          {supplier.phone
+            ? ` The chat opens on ${supplier.phone}.`
+            : " Pick the chat yourself; this shop has no phone number saved."}
         </p>
       </motion.div>
     </div>

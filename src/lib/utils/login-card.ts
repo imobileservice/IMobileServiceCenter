@@ -181,6 +181,39 @@ export const buildLoginCardBlob = async (input: LoginCardInput): Promise<Blob> =
   return blob
 }
 
+/**
+ * Puts an image on the clipboard, so it can be pasted straight into a chat.
+ *
+ * The desktop route for sending the card: WhatsApp Web takes a Ctrl+V. False
+ * when the browser has no clipboard-image support, when the page is not the
+ * focused document, or when the user has refused permission - all of which the
+ * caller handles by saving the file instead.
+ */
+export const copyImageToClipboard = async (blob: Blob): Promise<boolean> => {
+  try {
+    if (!navigator.clipboard || typeof ClipboardItem === "undefined") return false
+
+    /*
+     * Raced against a clock because the write does not always settle: a browser
+     * waiting on a clipboard permission the user never answers leaves the
+     * promise pending forever, and the button that called this would sit on
+     * "Preparing..." with no way out. Giving up hands the caller its own
+     * fallback instead.
+     */
+    const write = navigator.clipboard
+      .write([new ClipboardItem({ [blob.type || "image/png"]: blob })])
+      .then(() => true)
+      .catch(() => false)
+
+    return await Promise.race([
+      write,
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2500)),
+    ])
+  } catch {
+    return false
+  }
+}
+
 /** Saves a blob under `filename` using a link the page clicks for the user. */
 export const downloadBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob)
