@@ -12,10 +12,17 @@ import { isMissingSchema } from '../inventory/restock.shared'
 
 export { isMissingSchema }
 
-/** Numbers the portal's Call / WhatsApp buttons use when a shop has no rep of its own. */
-export const DEFAULT_SUPPORT_PHONE = process.env.SUPPLIER_PORTAL_PHONE || '+94770344273'
+/**
+ * Numbers the portal's Call / WhatsApp buttons use when a shop has no rep of
+ * its own. 0707344273, written in international form so wa.me and tel: both
+ * take it as typed.
+ *
+ * This is the trade line the shops ring, not the number customers see on the
+ * website - those live in the public pages and are set separately.
+ */
+export const DEFAULT_SUPPORT_PHONE = process.env.SUPPLIER_PORTAL_PHONE || '+94707344273'
 export const DEFAULT_SUPPORT_WHATSAPP =
-  process.env.SUPPLIER_PORTAL_WHATSAPP || process.env.SUPPLIER_PORTAL_PHONE || '+94770344273'
+  process.env.SUPPLIER_PORTAL_WHATSAPP || process.env.SUPPLIER_PORTAL_PHONE || '+94707344273'
 
 export type CategoryAccessMode = 'default' | 'custom'
 
