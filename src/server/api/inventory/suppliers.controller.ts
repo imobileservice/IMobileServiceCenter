@@ -49,8 +49,17 @@ const toClientSupplier = (supplier: Record<string, any> | null | undefined): any
     portal_password_recoverable:
       // Never hashed - it is in the table as typed, so it can simply be read.
       Boolean(portal_password && !isHashedPassword(portal_password)) ||
-      // Or we kept an encrypted copy and still hold the key to it.
-      Boolean(portal_password_enc && isSecretBoxReady()),
+      /*
+       * Or we kept a copy and this server can actually open it. Opening it is
+       * the only honest test: a key being *set* proves nothing when the copy was
+       * written under a different one - a password set against a local server
+       * and then read from the deployed one, say. Checking only that a key
+       * exists offers a Show password button that then fails; this way the card
+       * says plainly that it cannot be read and to set a new one.
+       *
+       * The password itself goes nowhere - this only asks whether it decrypts.
+       */
+      decryptSecret(portal_password_enc) !== null,
   }
 }
 
