@@ -28,9 +28,9 @@ interface Props {
  * back from the server, which asks the admin to confirm their own password once
  * per tab - after that every card opens with everything already on it.
  *
- * The QR carries the address, the email and the password together, so a shop
- * can scan instead of typing. That makes the code itself a credential: a printed
- * card is as good as the password written on a note.
+ * The QR is the login address and nothing else, so scanning it lands the shop on
+ * the sign-in page. That also means a code on the wrong phone is not a way in -
+ * the credentials are read off the card below it, not out of the code.
  */
 export default function SupplierLoginShare({ supplier, password, onClose }: Props) {
   const [isSaving, setIsSaving] = useState(false)
@@ -40,10 +40,8 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
   const shownPassword = password || revealed
 
   const portalUrl = `${getSiteUrl()}/supplier/login`
-  const qr = useMemo(
-    () => makeQr(buildLoginQrPayload({ portalUrl, email: supplier.email, password: shownPassword }), "M"),
-    [portalUrl, supplier.email, shownPassword]
-  )
+  // The address only - see buildLoginQrPayload for why nothing else belongs here.
+  const qr = useMemo(() => makeQr(buildLoginQrPayload({ portalUrl }), "M"), [portalUrl])
 
   const adminEmail = useAdminStore((state) => state.user?.email)
   const unlockedPassword = useAdminUnlock((state) => state.password)
@@ -158,16 +156,14 @@ export default function SupplierLoginShare({ supplier, password, onClose }: Prop
               className="w-52 h-52"
               shapeRendering="crispEdges"
               role="img"
-              aria-label={`QR code for ${supplier.name}'s shop portal login`}
+              aria-label={`QR code for ${portalUrl}`}
             >
               <rect width="100%" height="100%" fill="#ffffff" />
               <path d={qrToPath(qr)} fill="#0f172a" />
             </svg>
           </div>
 
-          <p className="text-center text-[11px] font-semibold text-slate-500 mt-2">
-            {shownPassword ? "Scan for the link, email and password" : "Scan to open the portal"}
-          </p>
+          <p className="text-center text-[11px] font-semibold text-slate-500 mt-2">Scan to open the portal</p>
           <p className="text-center text-xs font-mono break-all mt-1">{portalUrl}</p>
 
           <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
