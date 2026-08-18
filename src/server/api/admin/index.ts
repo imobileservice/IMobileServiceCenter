@@ -27,6 +27,7 @@ import {
   deleteSlideHandler,
 } from './hero-slides'
 import { productSearchHandler } from './product-search'
+import { getBrandsHandler, createBrandHandler, getBrandModelsHandler } from './brands'
 
 
 const router = Router()
@@ -85,6 +86,11 @@ router.get('/categories/:id', getCategoryHandler)
 router.post('/categories', createCategoryHandler)
 router.put('/categories/:id', updateCategoryHandler)
 router.delete('/categories/:id', deleteCategoryHandler)
+
+// Admin brand endpoints
+router.get('/brands', getBrandsHandler)
+router.post('/brands', createBrandHandler)
+router.get('/brands/:name/models', getBrandModelsHandler)
 
 // Admin settings endpoints
 router.get('/settings/:key', getSettingHandler)

@@ -11,11 +11,23 @@ import { categoriesService, type Category } from "@/lib/supabase/services/catego
 import { storageService } from "@/lib/supabase/services/storage"
 import { notifyUpdate } from "@/hooks/use-realtime-updates"
 import { toast } from "sonner"
-import { MODELS_BY_BRAND, BRANDS } from "@/constants/models"
+import {
+  MODELS_BY_BRAND,
+  BRANDS,
+  normalizeBrandName,
+  extractBrandFromText,
+  isPlaceholderBrand,
+} from "@/constants/models"
+import { brandsService, type Brand } from "@/lib/supabase/services/brands"
 import { createClient } from "@/lib/supabase/client"
 import { getApiUrl } from "@/lib/utils/api"
 
 const EXCLUDED_CATEGORIES = ["accessories", "tempered-glass", "smart-watch"]
+
+// Sentinel value for the last entry of the Brand dropdown. Picking it opens the
+// "Add New Brand" dialog instead of setting a brand, which is what replaced the
+// old "Other" option that left products named "Other MOTO G30 Display".
+const ADD_BRAND_OPTION = "__add_new_brand__"
 
 interface ProductModalProps {
   isOpen: boolean
@@ -33,6 +45,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
   const [autoSearchStatus, setAutoSearchStatus] = useState('')
   const [autoSearchSuccess, setAutoSearchSuccess] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
+  const [dbBrands, setDbBrands] = useState<Brand[]>([])
+  // Models discovered at runtime (AI lookup / admin entry), keyed by brand name.
+  // Merged on top of the static MODELS_BY_BRAND list.
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, string[]>>({})
+  const [showAddBrand, setShowAddBrand] = useState(false)
+  const [newBrandName, setNewBrandName] = useState("")
+  const [addingBrand, setAddingBrand] = useState(false)
+  const [brandStatus, setBrandStatus] = useState("")
   const [formData, setFormData] = useState({
     name: "",
     category: "",
@@ -66,10 +86,49 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     return !!(formData.category && !EXCLUDED_CATEGORIES.includes(formData.category))
   }, [formData.category])
 
-  // Get available models for the selected brand
+  // Every brand the dropdown offers: the built-in catalogue plus anything an
+  // admin has added through the "Add New Brand" dialog, de-duplicated
+  // case-insensitively so "wiko" never sits next to "Wiko".
+  const allBrands = useMemo(() => {
+    const byLower = new Map<string, string>()
+    for (const brand of BRANDS) {
+      if (isPlaceholderBrand(brand)) continue
+      byLower.set(brand.toLowerCase(), brand)
+    }
+    for (const brand of dbBrands) {
+      const name = (brand.name || "").trim()
+      if (!name || isPlaceholderBrand(name)) continue
+      if (!byLower.has(name.toLowerCase())) byLower.set(name.toLowerCase(), name)
+    }
+    return Array.from(byLower.values()).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    )
+  }, [dbBrands])
+
+  // Get available models for the selected brand: static list first, then
+  // whatever was found for a brand added at runtime.
   const availableModels = useMemo(() => {
-    return formData.brand ? MODELS_BY_BRAND[formData.brand] || [] : []
-  }, [formData.brand])
+    if (!formData.brand) return []
+
+    const staticModels = MODELS_BY_BRAND[formData.brand] || []
+    const fromDb = dbBrands.find(
+      (b) => b.name.toLowerCase() === formData.brand.toLowerCase()
+    )?.models
+    const extra = [
+      ...(Array.isArray(fromDb) ? fromDb : []),
+      ...(discoveredModels[formData.brand] || []),
+    ]
+
+    const seen = new Set(staticModels.map((m) => m.toLowerCase()))
+    const merged = [...staticModels]
+    for (const model of extra) {
+      const key = (model || "").trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      merged.push(model.trim())
+    }
+    return merged
+  }, [formData.brand, dbBrands, discoveredModels])
 
   // Fetch categories when modal opens
   useEffect(() => {
@@ -83,6 +142,17 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         }
       }
       loadCategories()
+
+      // Custom brands live in the DB; failure is non-fatal because the static
+      // catalogue already covers every brand currently in stock.
+      const loadBrands = async () => {
+        try {
+          setDbBrands(await brandsService.getAll())
+        } catch (error) {
+          console.error('Failed to load brands:', error)
+        }
+      }
+      loadBrands()
     }
   }, [isOpen])
 
@@ -167,11 +237,26 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               }
             }
 
+            const parsedSpecs = specs as Record<string, string>
+
+            // Safety net for products still carrying the legacy "Other" brand:
+            // recover the real manufacturer from the model text ("MOTO G30" ->
+            // brand Motorola, model G30) so re-saving cleans the record up.
+            let resolvedBrand = product.brand || ""
+            let resolvedName = product.name || ""
+            if (isPlaceholderBrand(resolvedBrand) && parsedSpecs.model) {
+              const extracted = extractBrandFromText(parsedSpecs.model)
+              if (extracted) {
+                resolvedBrand = extracted.brand
+                parsedSpecs.model = extracted.model
+                resolvedName = resolvedName.replace(/^other\s+/i, `${extracted.brand} `).trim()
+              }
+            }
+
             // Detect custom model: if specs.model exists but isn't in the predefined list,
             // restore the "Custom" + custom_model state so the input field appears
-            const parsedSpecs = specs as Record<string, string>
-            if (parsedSpecs.model && product.brand) {
-              const brandModels = MODELS_BY_BRAND[product.brand] || []
+            if (parsedSpecs.model && resolvedBrand) {
+              const brandModels = MODELS_BY_BRAND[resolvedBrand] || []
               if (!brandModels.includes(parsedSpecs.model)) {
                 parsedSpecs.custom_model = parsedSpecs.model
                 parsedSpecs.model = "Custom"
@@ -195,9 +280,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             }
 
             setFormData({
-              name: product.name || "",
+              name: resolvedName,
               category: product.category || "",
-              brand: product.brand || "",
+              brand: resolvedBrand,
               price: product.price?.toString() || "",
               cost_price: (product as any).cost_price?.toString() || "",
               buy_price: (product as any).buy_price?.toString() || "",
@@ -292,6 +377,95 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
 
       return newData
     })
+  }
+
+  /**
+   * The Brand dropdown's last entry opens the "Add New Brand" dialog rather
+   * than selecting a value, so it needs its own handler.
+   */
+  const handleBrandSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === ADD_BRAND_OPTION) {
+      setNewBrandName("")
+      setBrandStatus("")
+      setShowAddBrand(true)
+      return
+    }
+    handleChange(e)
+  }
+
+  /**
+   * Save a brand typed into the dialog, then look up its models so the Model
+   * dropdown is populated straight away. When the lookup finds nothing the
+   * admin still has the existing "Other / Custom Model" free-text route.
+   */
+  const handleAddBrand = async () => {
+    const canonical = normalizeBrandName(newBrandName)
+
+    if (canonical.length < 2) {
+      toast.error("Please enter a brand name")
+      return
+    }
+    if (isPlaceholderBrand(canonical)) {
+      toast.error('Please enter the real manufacturer name, not "Other"')
+      return
+    }
+
+    const alreadyListed = allBrands.find((b) => b.toLowerCase() === canonical.toLowerCase())
+
+    setAddingBrand(true)
+    try {
+      let savedName = alreadyListed || canonical
+
+      if (!alreadyListed) {
+        setBrandStatus(`Adding "${canonical}"...`)
+        try {
+          const brand = await brandsService.create(canonical)
+          savedName = brand.name
+          setDbBrands((prev) =>
+            prev.some((b) => b.name.toLowerCase() === brand.name.toLowerCase())
+              ? prev
+              : [...prev, brand]
+          )
+        } catch (error: any) {
+          // The brand still gets used for this product even if it could not be
+          // stored - better a correctly branded product than a blocked save.
+          console.error('Failed to save brand:', error)
+          toast.warning(`Using "${canonical}" for this product, but it could not be saved to the brand list.`)
+        }
+      }
+
+      // Select the brand and clear any model chosen for the previous one
+      setFormData((prev) => {
+        const specs = { ...prev.specs, model: "", custom_model: "" }
+        const categoryObj = categories.find((c) => c.slug === prev.category)
+        const categoryName = categoryObj ? categoryObj.name.replace(/\(main\)/i, "").trim() : ""
+        return {
+          ...prev,
+          brand: savedName,
+          specs,
+          name: `${savedName} ${categoryName}`.trim().replace(/\s+/g, " "),
+        }
+      })
+
+      setBrandStatus(`Searching models for "${savedName}"...`)
+      const models = await brandsService.getModels(savedName)
+
+      if (models.length > 0) {
+        setDiscoveredModels((prev) => ({ ...prev, [savedName]: models }))
+        toast.success(`${savedName} added - found ${models.length} models`)
+      } else {
+        // Nothing found online - drop straight into the custom-model input so
+        // the admin can just type the model, exactly as before.
+        setFormData((prev) => ({ ...prev, specs: { ...prev.specs, model: "Custom" } }))
+        toast.success(`${savedName} added. No model list found, type the model name instead.`)
+      }
+
+      setShowAddBrand(false)
+      setNewBrandName("")
+    } finally {
+      setAddingBrand(false)
+      setBrandStatus("")
+    }
   }
 
   const handleSpecChange = (key: string, value: string) => {
@@ -605,6 +779,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     setLoading(true)
 
     try {
+      // A real brand is mandatory for model-based categories. This is what stops
+      // new products from ending up named "Other <model> Display" again.
+      if (isModelRequired && isPlaceholderBrand(formData.brand)) {
+        toast.error('Please select a real brand. Use "+ Add New Brand..." if it is not listed.')
+        setLoading(false)
+        return
+      }
+
       // Validate category-specific required fields
       const isApple = String(formData.brand || '').trim().toLowerCase() === 'apple'
       if (categoryFields) {
@@ -891,17 +1073,17 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     <select
                       name="brand"
                       value={formData.brand}
-                      onChange={handleChange}
+                      onChange={handleBrandSelectChange}
                       className="w-full px-3 py-2 border border-border rounded-lg bg-background"
                       required={!!isModelRequired}
                     >
                       <option value="">Select Brand</option>
-                      {BRANDS.map((brand) => (
+                      {allBrands.map((brand) => (
                         <option key={brand} value={brand}>
                           {brand}
                         </option>
                       ))}
-                      <option value="Other">Other</option>
+                      <option value={ADD_BRAND_OPTION}>+ Add New Brand...</option>
                     </select>
                   ) : (
                     <Input
@@ -1540,6 +1722,87 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
           </form>
         )}
       </motion.div>
+
+      {/* Add New Brand dialog - replaces the old "Other" brand option */}
+      {showAddBrand && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
+          onClick={() => { if (!addingBrand) setShowAddBrand(false) }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-card border border-border rounded-lg p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">Add New Brand</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddBrand(false)}
+                className="p-1 hover:bg-muted rounded-lg disabled:opacity-50"
+                disabled={addingBrand}
+                aria-label="Close add brand dialog"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-4">
+              Type the real manufacturer name. Its models are looked up automatically and
+              added to the Model list. If no models are found you can still type the model
+              name yourself.
+            </p>
+
+            <label htmlFor="new-brand-name" className="block text-sm font-semibold mb-2">
+              Brand Name *
+            </label>
+            <Input
+              id="new-brand-name"
+              type="text"
+              value={newBrandName}
+              onChange={(e) => setNewBrandName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  if (!addingBrand) handleAddBrand()
+                }
+              }}
+              placeholder="e.g. Infinix, Tecno, itel, ZTE"
+              autoFocus
+              disabled={addingBrand}
+            />
+
+            {brandStatus && (
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {brandStatus}
+              </p>
+            )}
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={handleAddBrand}
+                disabled={addingBrand || newBrandName.trim().length < 2}
+              >
+                {addingBrand ? "Working..." : "Add Brand & Find Models"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 bg-transparent"
+                onClick={() => setShowAddBrand(false)}
+                disabled={addingBrand}
+              >
+                Cancel
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   )
 }
