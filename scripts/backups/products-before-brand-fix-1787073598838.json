@@ -1,0 +1,682 @@
+[
+  {
+    "id": "28b1aa8c-23b7-4dcd-90b8-81a3ae5de6e5",
+    "name": "Other Tecno Pop 5 LTE Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Tecno Pop 5 LTE ",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "0223eb5d-0b51-433e-b4bf-9332e172ff74",
+    "name": "Other umidigi G5A Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "umidigi G5A",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "f4d981ae-b370-4f92-9ba6-8dfc4dfa34aa",
+    "name": "Other Wiko T10 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Wiko T10",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "89a9cda7-5c4f-4889-a74b-20f8095a92b2",
+    "name": "Other ZTE Blade A36/A56/A76 5G Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE Blade A36/A56/A76 5G",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "ad392a0d-5fc0-47fc-96c9-537fb7040e72",
+    "name": "Other NOKIA 1.4 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA 1.4",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "65b1c476-6c8c-446d-9a58-333073c273e9",
+    "name": "Other TCL 503 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "TCL 503",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "97002a25-5007-4111-b338-72a8b133ed27",
+    "name": "Other TCL 505 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "TCL 505",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "6f7a57c6-968f-48e0-bf33-77b86fe3c163",
+    "name": "Other umidigi G5 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "umidigi G5",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "2fad44a3-47ff-4de5-bc92-d876140531c8",
+    "name": "Other meizu m21 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "meizu m21",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "2f53158b-cff2-4a03-9ae0-8df968760206",
+    "name": "Other Lebest L3 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Lebest L3",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "14804a02-7292-4f31-a7cd-5e9f053567f8",
+    "name": "Other umidigi G9A lcd Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "umidigi G9A lcd",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "b5297d71-1993-450f-a981-f5f572357c23",
+    "name": "Other TCL 501 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "TCL 501",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "c60621c0-a220-410f-bcfc-3bfa444820f9",
+    "name": "Other coolpad cp16 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "coolpad cp16",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "eca3bf3d-76aa-421e-8d52-561486308f67",
+    "name": "Other zte v50 design Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "zte v50 design",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "85dd47c6-40b0-490e-8793-1c07fe8e8c9f",
+    "name": "Other ZTE A34/54 all model Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE A34/54 all model",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "a69aa8ce-24de-4645-9d5c-b97fef88b5ae",
+    "name": "Other coolpad cp12 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "coolpad cp12",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "141960ff-43ac-4c0c-b2d5-6c4d07eeaad2",
+    "name": "Other doogee N55 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "doogee N55",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "73145516-dfc7-4f1b-80b8-17fdc3f02168",
+    "name": "Other meizu M22 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "meizu M22",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "aa648687-f7cc-4c3a-96ea-5e11c0656fa6",
+    "name": "Other HUAWEI NOVA Y70 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "HUAWEI NOVA Y70",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "1108c4c1-01a3-41df-8d40-bafbb50eed33",
+    "name": "Other Infinix Hot 10 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Infinix Hot 10",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "aa7094a1-fbeb-4518-bee7-42091887c33e",
+    "name": "Other Blackview A55 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": " Blackview A55",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "34e7b671-2893-4718-9448-c3886ef64213",
+    "name": "Other ZTE A73 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE A73",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "1abaef58-ef90-4509-9c3c-01f68d037801",
+    "name": "Other Hotwav Note 12 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Hotwav Note 12",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "65d17e5c-47c4-4191-bfd1-37eea71a3232",
+    "name": "Other zte v30 vita Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "zte v30 vita",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "fc884f88-861d-481f-baf6-184c9b2949f7",
+    "name": "Other tcl 405 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "tcl 405",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "2a324691-6ca7-4553-8249-311ec928a490",
+    "name": "Other infinix smart 8 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "infinix smart 8",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "a035e310-5551-45a5-b8e1-56e7f7f04a9c",
+    "name": "Other infinix smart 5 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "infinix smart 5",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "4dcc8d85-7616-4cb3-b2c6-93a1c577cbe6",
+    "name": "Other itel 48 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "itel 48",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "95dc1553-5f4e-4b91-aa81-904535ff42ea",
+    "name": "Other infinix smart 9 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "infinix smart 9",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "05094d28-072b-4adc-8e8f-c93d66fe6755",
+    "name": "Other TECNO SPARK 8C Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "TECNO SPARK 8C ",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "8d8288ff-6331-4231-b696-aaccd353a472",
+    "name": "Other Infinix Note 10 Pro Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Infinix Note 10 Pro ",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "48b49ee1-7091-47d5-be1a-40427ee9c9bf",
+    "name": "Other NOKIA C3 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA C3",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "08b1ec8b-f4b7-4499-b825-724cbe38a18a",
+    "name": "Other NOKIA G10/G20 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA G10/G20",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "d0118a3c-7a90-4672-baf8-ea70ff007666",
+    "name": "Other zte A34/A54 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "zte A34/A54 ",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "e85deaf3-f80b-428c-95da-80dd6c1ed076",
+    "name": "Other MOTO G04S Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO G04S",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "5613f045-dea5-44d7-a6a5-3411c9bda1d9",
+    "name": "Other moto G04 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "moto G04",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "e5235990-af28-4ff4-b699-4192ba33d0d4",
+    "name": "Other MOTO E32 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO E32",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "dc64452e-a75d-40b9-a9b7-7d3552462064",
+    "name": "Other NOKIA C20 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA C20",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "5f332262-2846-4c26-b028-8392c9ed4a92",
+    "name": "Other NOKIA C01plus Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA C01plus",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "7ea2ae67-710d-4f55-aa15-32c5cd55bdda",
+    "name": "Other MOTO E13 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO E13",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "3f19e512-9135-4f80-97f5-e138201029a1",
+    "name": "Other MOTO E40 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO E40",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "4600d463-83b3-4fc2-b488-9409466ef5a2",
+    "name": "Other ZTE A5 2020 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE A5 2020",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "66b68b00-61a6-4b6d-9840-f79ff81eb203",
+    "name": "Other infinix HOT 60i Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "infinix HOT 60i",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "552af1db-6127-4079-b88a-f2b01af7ad97",
+    "name": "Other TCL 20E/20Y Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "TCL 20E/20Y",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "483b7fb9-d807-4bbc-8743-5b41dd0f8971",
+    "name": "Other Redbeat D5 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Redbeat D5",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "382d1b59-81ec-4245-8d54-04c6036afd01",
+    "name": "Other infinix smart 8 all model Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "infinix smart 8 all model",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "9e5d547a-e3e5-4d07-a236-6af73ac25ad9",
+    "name": "Other ZTE A51 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE A51",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "c2617c9c-2f7c-4944-9e43-e2c1f14f183f",
+    "name": "Other WIKO T20 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "WIKO T20",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "ca49c09d-a148-4243-90d6-7785f8a79a89",
+    "name": "Other NOKIA 2.4 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA 2.4",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "f24ccda7-21f9-464a-bfbd-c2da2751fe94",
+    "name": "Other LeBest L2 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "LeBest L2",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "3ec2468f-a384-4716-a117-2374b1f9a139",
+    "name": "Other MOTO G30 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO G30",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "5010b3ff-b3a6-4e8d-8f0b-c71d2506cae0",
+    "name": "Other NOKIA c1 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA c1",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "ea2b358d-04cd-461c-9443-924c839f30aa",
+    "name": "Other NOKIA C2 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA C2",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "feed6c61-3339-4489-aa65-21287445e33a",
+    "name": "Other NOKIA c21 plus Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA c21 plus",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "8d7e02bf-8d06-4c2b-ab8e-1605ee03226b",
+    "name": "Other NOKIA 2.3 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "NOKIA 2.3",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "92cf39c4-5fef-4913-974d-c850facea66e",
+    "name": "Other ZTE A35/A55 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE A35/A55",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "eb071968-5e0a-48cd-bc92-f1fa3fd584cf",
+    "name": "Other MOTO G40 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO G40",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "1f759d40-218a-4f11-b45b-90da681ef238",
+    "name": "Other MOTO G22 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "MOTO G22",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "6247b031-2f4d-4063-97d1-00235236dfc5",
+    "name": "Other Itel A60 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Itel A60",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "6e45f23e-88f7-458c-9e6b-941ea2ceca29",
+    "name": "Other ZTE V70 MAX Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE V70 MAX ",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "89a37572-02bc-40d9-8e4f-7af20138cd35",
+    "name": "Other nokia c20 du Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "nokia c20 du",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "b1b55647-599b-4f5d-b64d-0fdc081bf921",
+    "name": "Other Infinix Hot 10 Play Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Infinix Hot 10 Play",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "8fa75b70-558f-4b1c-ac8e-a894aa8e6e6a",
+    "name": "Other ZTE V40 Design Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "ZTE V40 Design",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "4fcd65fe-07ce-4a4a-9091-7961ea340f90",
+    "name": "Other FREEYOND F9 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "FREEYOND F9",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "9f91f66b-8fe3-4048-80bd-b67ac4ad0797",
+    "name": "Other INFINIX POP 7 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "INFINIX POP 7",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "1abe84a0-ea41-4387-8730-dc72b3725469",
+    "name": "Other blakeview 8c Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "blakeview 8c ",
+      "quality": "Original"
+    }
+  },
+  {
+    "id": "2e2ae7d6-b4cd-404c-b70b-fbca4929156b",
+    "name": "Other Blackview Wave 8 Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "Blackview Wave 8",
+      "quality": "Compatible"
+    }
+  },
+  {
+    "id": "9296ea0a-c012-4d94-8bb9-231520bcd8ba",
+    "name": "Other itel A100C Display",
+    "brand": "Other",
+    "category_id": "3ab1fd08-7201-4629-89eb-f92efb3465d0",
+    "specs": {
+      "model": "itel A100C",
+      "quality": "Compatible"
+    }
+  }
+]

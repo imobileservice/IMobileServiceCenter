@@ -63,6 +63,33 @@ const toClientSupplier = (supplier: Record<string, any> | null | undefined): any
   }
 }
 
+/**
+ * The number in a shop's portal password, used to order the Shops list.
+ *
+ * Shop logins are issued as a running sequence - MEG-01, MEG-02, MEG-03... - so
+ * that number, not the shop name, is the order the office thinks of them in.
+ * Sorting by it here means the Nth card on the page is the shop holding the Nth
+ * code.
+ *
+ * Read server-side only: the code is the password, and toClientSupplier strips
+ * both credential columns before anything reaches the browser. A shop whose
+ * password is not a code at all (or cannot be decrypted) sorts to the end
+ * rather than jumbling the numbered ones.
+ */
+const PORTAL_CODE_PATTERN = /^[A-Za-z]+[-\s]?(\d+)$/
+
+const portalCodeOrder = (supplier: Record<string, any>): number => {
+  const stored = supplier.portal_password
+  // An unhashed column holds the password as typed; otherwise use the readable
+  // copy. Same precedence the Share login card uses.
+  const plain = isHashedPassword(stored) ? decryptSecret(supplier.portal_password_enc) : stored
+
+  if (typeof plain !== 'string') return Number.MAX_SAFE_INTEGER
+
+  const match = plain.trim().match(PORTAL_CODE_PATTERN)
+  return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER
+}
+
 const emptyShopStats = () => ({
   /** What the shop sees: its own list, or the shared default. */
   categories: 0,
@@ -80,18 +107,32 @@ router.get('/', async (req: Request, res: Response) => {
     const supabase = getSupabaseAdmin()
     const { with_stats, search } = req.query
 
-    let query = supabase.from('inv_suppliers').select('*').order('name', { ascending: true })
+    // Ordered by portal code below (MEG-01, MEG-02, ...). created_at is the
+    // base order so shops sharing a code, or holding none, still come out in a
+    // stable, sensible sequence rather than whatever the table hands back.
+    let query = supabase
+      .from('inv_suppliers')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .order('name', { ascending: true })
 
     if (search && typeof search === 'string' && search.trim()) {
       const term = search.trim()
       query = query.or(`name.ilike.%${term}%,contact_person.ilike.%${term}%,phone.ilike.%${term}%,email.ilike.%${term}%`)
     }
 
-    const { data: suppliers, error } = await query
+    const { data: rawSuppliers, error } = await query
     if (error) throw error
 
+    // Stable sort: the DB already ordered by created_at, so equal codes keep
+    // that order instead of swapping around between requests.
+    const suppliers = (rawSuppliers || [])
+      .map((supplier, index) => ({ supplier, index, code: portalCodeOrder(supplier) }))
+      .sort((a, b) => a.code - b.code || a.index - b.index)
+      .map((entry) => entry.supplier)
+
     if (with_stats !== 'true') {
-      return res.json({ data: (suppliers || []).map(toClientSupplier) })
+      return res.json({ data: suppliers.map(toClientSupplier) })
     }
 
     /*
