@@ -32,7 +32,6 @@ import {
   supplierPortalService,
   type CatalogCategory,
   type CatalogItem,
-  type CatalogTotals,
   type MyOrder,
   type SupplierContact,
 } from "@/lib/services/supplier-portal.service"
@@ -89,7 +88,6 @@ export default function SupplierPortalPage() {
 
   const [items, setItems] = useState<CatalogItem[]>([])
   const [categories, setCategories] = useState<CatalogCategory[]>([])
-  const [totals, setTotals] = useState<CatalogTotals | null>(null)
   const [categoryId, setCategoryId] = useState("")
   const [search, setSearch] = useState("")
   const [inStockOnly, setInStockOnly] = useState(false)
@@ -140,7 +138,6 @@ export default function SupplierPortalPage() {
       })
       setItems(result.data || [])
       setCategories(result.categories || [])
-      setTotals(result.totals || null)
       setMigrationRequired(Boolean(result.migration_required))
     } catch (err: any) {
       // A dropped session already cleared the store; the effect above bounces to
@@ -365,14 +362,6 @@ export default function SupplierPortalPage() {
 
         {tab === "catalog" ? (
           <>
-            {totals && (
-              <div className="grid grid-cols-3 gap-3">
-                <SummaryTile label="Products" value={totals.products} />
-                <SummaryTile label="In stock" value={totals.in_stock} tone="text-emerald-500" />
-                <SummaryTile label="Out of stock" value={totals.out_of_stock} tone="text-red-500" />
-              </div>
-            )}
-
             <div className="space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -980,15 +969,6 @@ function FilterChip({
     >
       {children}
     </button>
-  )
-}
-
-function SummaryTile({ label, value, tone = "text-foreground" }: { label: string; value: number; tone?: string }) {
-  return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
-      <p className={`text-2xl font-black mt-1 ${tone}`}>{value}</p>
-    </div>
   )
 }
 
