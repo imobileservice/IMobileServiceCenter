@@ -201,6 +201,149 @@ router.get('/', async (req: Request, res: Response) => {
   }
 })
 
+// ─── BULK ACTIONS ────────────────────────────────────
+// One action applied to many shops at once, from the Shops tab's selection bar.
+// Declared before /:id so "bulk" is never read as a supplier id.
+
+/** What POST /bulk knows how to do. Anything else is rejected outright. */
+const BULK_ACTIONS = [
+  'activate',
+  'deactivate',
+  'enable_portal',
+  'disable_portal',
+  'default_categories',
+  'delete',
+] as const
+
+type BulkAction = (typeof BULK_ACTIONS)[number]
+
+/** The column each status action writes, so the missing-column fallbacks stay in one place. */
+const BULK_UPDATES: Record<Exclude<BulkAction, 'delete'>, Record<string, any>> = {
+  activate: { is_active: true },
+  deactivate: { is_active: false },
+  enable_portal: { portal_enabled: true },
+  disable_portal: { portal_enabled: false },
+  default_categories: { category_access_mode: 'default' },
+}
+
+/** The migration that adds the column an action needs, named in the error when it is absent. */
+const BULK_MIGRATION: Partial<Record<BulkAction, string>> = {
+  enable_portal: 'supabase/migrations/20260806_supplier_portal.sql',
+  disable_portal: 'supabase/migrations/20260806_supplier_portal.sql',
+  default_categories: 'supabase/migrations/20260810_supplier_default_categories.sql',
+}
+
+/**
+ * POST /api/inventory/suppliers/bulk
+ * Body: { ids: string[], action: BulkAction }
+ *
+ * The same edits the per-shop endpoints make, applied to a selection in one
+ * round trip rather than one request per card.
+ *
+ * Two things it deliberately does not do. It never writes a password - the
+ * credential columns are only ever touched by PUT /:id/portal, and enabling
+ * access here only flips the switch for shops that already have a password and
+ * an email, exactly as that endpoint requires. And it reports what it skipped
+ * instead of failing the whole batch, so selecting fifteen shops of which two
+ * have no login still turns the other thirteen on and says which two it left.
+ */
+router.post('/bulk', async (req: Request, res: Response) => {
+  try {
+    const { ids, action } = req.body || {}
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Select at least one shop' })
+    }
+
+    if (!BULK_ACTIONS.includes(action)) {
+      return res.status(400).json({ error: `action must be one of: ${BULK_ACTIONS.join(', ')}` })
+    }
+
+    // De-duplicated so a repeated id cannot inflate the count reported back.
+    const targetIds = Array.from(
+      new Set(ids.filter((id: any) => typeof id === 'string' && id.trim()).map((id: string) => id.trim()))
+    )
+
+    if (targetIds.length === 0) {
+      return res.status(400).json({ error: 'Select at least one shop' })
+    }
+
+    const supabase = getSupabaseAdmin()
+    const skipped: Array<{ id: string; name: string; reason: string }> = []
+
+    if (action === 'delete') {
+      const { data, error } = await supabase
+        .from('inv_suppliers')
+        .delete()
+        .in('id', targetIds)
+        .select('id')
+
+      if (error) throw error
+      return res.json({ action, updated: data?.length || 0, skipped })
+    }
+
+    let writeIds = targetIds
+
+    /*
+     * Turning access on is the one action with a precondition: a shop with no
+     * password or no email would read as "enabled" on the card and then fail at
+     * the login screen. Checked here in one query rather than per shop.
+     */
+    if (action === 'enable_portal') {
+      let { data: rows, error } = await supabase
+        .from('inv_suppliers')
+        .select('id, name, email, portal_password')
+        .in('id', targetIds)
+
+      if (error) {
+        if (isMissingSchema(error)) {
+          return res.status(400).json({ error: `Run ${BULK_MIGRATION.enable_portal} first` })
+        }
+        throw error
+      }
+
+      const ready = new Set<string>()
+      for (const row of rows || []) {
+        if (!row.portal_password) {
+          skipped.push({ id: row.id, name: row.name, reason: 'no password set yet' })
+        } else if (!row.email) {
+          skipped.push({ id: row.id, name: row.name, reason: 'no email address' })
+        } else {
+          ready.add(row.id)
+        }
+      }
+
+      writeIds = targetIds.filter((id) => ready.has(id))
+
+      if (writeIds.length === 0) {
+        return res.json({ action, updated: 0, skipped })
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('inv_suppliers')
+      .update({ ...BULK_UPDATES[action as Exclude<BulkAction, 'delete'>], updated_at: new Date().toISOString() })
+      .in('id', writeIds)
+      .select('id')
+
+    if (error) {
+      // An older database simply does not have the column this action writes.
+      if (isMissingSchema(error)) {
+        const migration = BULK_MIGRATION[action as BulkAction]
+        return res.status(400).json({
+          error: migration ? `Run ${migration} first` : 'This database is missing the column that action writes',
+        })
+      }
+      throw error
+    }
+
+    res.json({ action, updated: data?.length || 0, skipped })
+  } catch (error: any) {
+    console.error('[Inventory Suppliers] POST/bulk error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // ─── CATEGORY ACCESS ─────────────────────────────────
 // Which slice of the catalogue a shop sees in their own portal.
 // Declared before /:id so "categories" is never read as a supplier id.

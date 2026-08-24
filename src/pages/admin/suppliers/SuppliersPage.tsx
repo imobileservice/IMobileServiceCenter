@@ -20,6 +20,10 @@ import {
   KeyRound,
   Package,
   QrCode,
+  Ban,
+  PowerOff,
+  Loader2,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +45,7 @@ import {
   type ShopOrderStatus,
   type ShopOrderTotals,
   type Supplier,
+  type SupplierBulkAction,
   type SupplierWithStats,
 } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
@@ -64,6 +69,57 @@ const EMPTY_TOTALS: ShopOrderTotals = {
   completed: 0,
   cancelled: 0,
   pending_units: 0,
+}
+
+/**
+ * The Shops tab's selection bar.
+ *
+ * `confirm` is the sentence the admin has to agree to before it runs, and is
+ * present only on the actions that take something away — switching access back
+ * on stays a single click.
+ */
+const BULK_ACTIONS: Array<{
+  id: SupplierBulkAction
+  label: string
+  icon: typeof Store
+  className?: string
+  confirm?: (count: number) => string
+}> = [
+  { id: "activate", label: "Activate", icon: CheckCircle2 },
+  {
+    id: "deactivate",
+    label: "Deactivate",
+    icon: Ban,
+    confirm: (count) =>
+      `Deactivate ${count} shop${count === 1 ? "" : "s"}?\n\nThey stay on file with their order history, but nobody can sign in to their portal until you activate them again.`,
+  },
+  { id: "enable_portal", label: "Enable login", icon: KeyRound },
+  {
+    id: "disable_portal",
+    label: "Disable login",
+    icon: PowerOff,
+    confirm: (count) =>
+      `Disable the portal login for ${count} shop${count === 1 ? "" : "s"}?\n\nTheir password is kept — any session they have open stops working straight away.`,
+  },
+  { id: "default_categories", label: "Use default list", icon: FolderTree },
+  {
+    id: "delete",
+    label: "Delete",
+    icon: Trash2,
+    className: "text-red-600 hover:bg-red-500/10 hover:text-red-600",
+    confirm: (count) =>
+      `Delete ${count} shop${count === 1 ? "" : "s"}?\n\nTheir login, product access and order history will be removed. This cannot be undone.`,
+  },
+]
+
+/** What the toast says once a run comes back, kept beside the list it belongs to. */
+const BULK_DONE: Record<SupplierBulkAction, (count: number) => string> = {
+  activate: (n) => `${n} shop${n === 1 ? "" : "s"} activated`,
+  deactivate: (n) => `${n} shop${n === 1 ? "" : "s"} deactivated`,
+  enable_portal: (n) => `Portal login enabled for ${n} shop${n === 1 ? "" : "s"}`,
+  disable_portal: (n) => `Portal login disabled for ${n} shop${n === 1 ? "" : "s"}`,
+  default_categories: (n) => `${n} shop${n === 1 ? "" : "s"} now follow the default product list`,
+  delete: (n) => `${n} shop${n === 1 ? "" : "s"} deleted`,
 }
 
 /**
@@ -272,6 +328,11 @@ export default function SuppliersPage() {
   const [categorySupplier, setCategorySupplier] = useState<SupplierWithStats | null>(null)
   const [activeOrder, setActiveOrder] = useState<ShopOrder | null>(null)
 
+  // Bulk selection on the Shops tab. Ids rather than rows, so a refresh landing
+  // in the background never leaves the bar acting on a stale copy of a shop.
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [bulkBusy, setBulkBusy] = useState<SupplierBulkAction | null>(null)
+
   const fetchSuppliers = useCallback(async () => {
     try {
       setSuppliersLoading(true)
@@ -370,6 +431,84 @@ export default function SuppliersPage() {
         (supplier.email || "").toLowerCase().includes(term)
     )
   }, [suppliers, supplierSearch])
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+
+  // Only what the search is showing can be selected, so "Select all" means what
+  // it says on screen rather than quietly reaching past the filter.
+  const selectedVisible = useMemo(
+    () => filteredSuppliers.filter((supplier) => selectedSet.has(supplier.id)),
+    [filteredSuppliers, selectedSet]
+  )
+  const allVisibleSelected = filteredSuppliers.length > 0 && selectedVisible.length === filteredSuppliers.length
+
+  // A shop that has just been deleted must not stay in the selection - the bar
+  // would then act on a row nobody can see.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const alive = prev.filter((id) => suppliers.some((supplier) => supplier.id === id))
+      return alive.length === prev.length ? prev : alive
+    })
+  }, [suppliers])
+
+  // Leaving the tab drops the selection rather than keeping it invisibly armed.
+  useEffect(() => {
+    if (tab !== "shops") setSelectedIds([])
+  }, [tab])
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+
+  const toggleSelectAll = () =>
+    setSelectedIds(allVisibleSelected ? [] : filteredSuppliers.map((supplier) => supplier.id))
+
+  /**
+   * Runs one selection-bar action against every selected shop.
+   *
+   * The list is re-read afterwards rather than patched in place: several of
+   * these change the numbers on the cards, and a run can be partial - the
+   * server decides what actually changed and names what it left alone.
+   */
+  const runBulk = async (action: (typeof BULK_ACTIONS)[number]) => {
+    const ids = selectedIds
+    if (ids.length === 0 || bulkBusy) return
+    if (action.confirm && !confirm(action.confirm(ids.length))) return
+
+    setBulkBusy(action.id)
+    try {
+      const result = await inventorySuppliersService.bulk(ids, action.id)
+
+      if (result.updated > 0) toast.success(BULK_DONE[action.id](result.updated))
+
+      // Never silent about the ones it passed over - a login cannot be switched
+      // on for a shop with no password or no email.
+      if (result.skipped?.length) {
+        const named = result.skipped
+          .slice(0, 3)
+          .map((row) => `${row.name} (${row.reason})`)
+          .join(", ")
+        const rest = result.skipped.length > 3 ? ` +${result.skipped.length - 3} more` : ""
+        toast.warning(`Skipped ${result.skipped.length}: ${named}${rest}`)
+      } else if (result.updated === 0) {
+        toast.info("Nothing to change — those shops were already like that")
+      }
+
+      setSelectedIds([])
+      await fetchSuppliers()
+
+      // Deleting a shop takes its orders with it, and it may have been the one
+      // the Orders tab is filtered to.
+      if (action.id === "delete") {
+        if (supplierFilter && ids.includes(supplierFilter)) setSupplierFilter("")
+        fetchOrders()
+      }
+    } catch (error: any) {
+      console.error(`Bulk ${action.id} failed:`, error)
+      toast.error(error.message || `Could not ${action.label.toLowerCase()} the selected shops`)
+    } finally {
+      setBulkBusy(null)
+    }
+  }
 
   const statCards = [
     {
@@ -645,8 +784,8 @@ export default function SuppliersPage() {
           </>
         ) : tab === "shops" ? (
           <>
-            {/* Shop search */}
-            <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
+            {/* Shop search + selection */}
+            <div className="bg-card border border-border p-4 rounded-xl shadow-sm space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -656,6 +795,36 @@ export default function SuppliersPage() {
                   onChange={(e) => setSupplierSearch(e.target.value)}
                 />
               </div>
+
+              {filteredSuppliers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <label className="flex items-center gap-2 font-semibold cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-primary cursor-pointer"
+                      checked={allVisibleSelected}
+                      ref={(node) => {
+                        // Some of the shown shops but not all: the box says so
+                        // rather than reading as "none selected".
+                        if (node) node.indeterminate = selectedVisible.length > 0 && !allVisibleSelected
+                      }}
+                      onChange={toggleSelectAll}
+                    />
+                    Select all{supplierSearch.trim() ? " shown" : ""} ({filteredSuppliers.length})
+                  </label>
+                  {selectedIds.length > 0 && (
+                    <>
+                      <span className="text-muted-foreground">{selectedIds.length} selected</span>
+                      <button
+                        onClick={() => setSelectedIds([])}
+                        className="text-muted-foreground hover:text-foreground font-semibold underline underline-offset-2"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {suppliersLoading ? (
@@ -695,10 +864,19 @@ export default function SuppliersPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(index * 0.04, 0.3) }}
-                    className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col"
+                    className={`bg-card border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col ${
+                      selectedSet.has(supplier.id) ? "border-primary ring-2 ring-primary/30" : "border-border"
+                    } ${supplier.is_active === false ? "opacity-75" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3 min-w-0">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 mt-3 accent-primary cursor-pointer shrink-0"
+                          checked={selectedSet.has(supplier.id)}
+                          onChange={() => toggleSelected(supplier.id)}
+                          aria-label={`Select ${supplier.name}`}
+                        />
                         <div className="p-2.5 bg-primary/10 rounded-xl shrink-0">
                           <Store className="w-5 h-5 text-primary" />
                         </div>
@@ -711,11 +889,20 @@ export default function SuppliersPage() {
                           )}
                         </div>
                       </div>
-                      {supplier.stats.pending_orders > 0 && (
-                        <Badge className="bg-amber-500 hover:bg-amber-600 border-0 shrink-0">
-                          {supplier.stats.pending_orders} new
-                        </Badge>
-                      )}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {/* Deactivating is otherwise invisible here, and it is the
+                            one state that stops the shop signing in at all. */}
+                        {supplier.is_active === false && (
+                          <Badge variant="outline" className="border-red-300 text-red-600 bg-red-50">
+                            Inactive
+                          </Badge>
+                        )}
+                        {supplier.stats.pending_orders > 0 && (
+                          <Badge className="bg-amber-500 hover:bg-amber-600 border-0">
+                            {supplier.stats.pending_orders} new
+                          </Badge>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex flex-col gap-1 mt-3 text-xs text-muted-foreground">
@@ -858,6 +1045,54 @@ export default function SuppliersPage() {
           />
         )}
       </div>
+
+      {/* Selection bar - Shops tab only, and only with something selected. */}
+      <AnimatePresence>
+        {tab === "shops" && selectedIds.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            className="fixed bottom-5 left-4 right-4 lg:left-[17rem] z-40 flex justify-center pointer-events-none"
+          >
+            <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 bg-card border border-border rounded-2xl shadow-xl px-4 py-3 max-w-full">
+              <span className="font-bold text-sm whitespace-nowrap">
+                {selectedIds.length} shop{selectedIds.length === 1 ? "" : "s"} selected
+              </span>
+              <span className="w-px h-6 bg-border mx-1 hidden sm:block" />
+              {BULK_ACTIONS.map((action) => {
+                const Icon = action.icon
+                return (
+                  <Button
+                    key={action.id}
+                    size="sm"
+                    variant="outline"
+                    disabled={Boolean(bulkBusy)}
+                    onClick={() => runBulk(action)}
+                    className={`gap-1.5 font-bold ${action.className || ""}`}
+                  >
+                    {bulkBusy === action.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Icon className="w-4 h-4" />
+                    )}
+                    {action.label}
+                  </Button>
+                )
+              })}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={Boolean(bulkBusy)}
+                onClick={() => setSelectedIds([])}
+                aria-label="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {modalOpen && (

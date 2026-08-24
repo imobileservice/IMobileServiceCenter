@@ -322,6 +322,23 @@ export interface SupplierPayload {
   support_whatsapp?: string
 }
 
+/** What the Shops tab's selection bar can do to many shops at once. */
+export type SupplierBulkAction =
+  | 'activate'
+  | 'deactivate'
+  | 'enable_portal'
+  | 'disable_portal'
+  | 'default_categories'
+  | 'delete'
+
+export interface SupplierBulkResult {
+  action: SupplierBulkAction
+  /** Rows the server actually changed. */
+  updated: number
+  /** Shops left untouched, with the reason — shown so a partial run is never silent. */
+  skipped: Array<{ id: string; name: string; reason: string }>
+}
+
 export const inventorySuppliersService = {
   getAll: (params?: { withStats?: boolean; search?: string }) => {
     const qs = new URLSearchParams()
@@ -348,6 +365,20 @@ export const inventorySuppliersService = {
     }),
 
   delete: (id: string) => apiFetch(`/suppliers/${id}`, { method: 'DELETE' }),
+
+  /**
+   * One action applied to a selection of shops in a single request.
+   *
+   * `updated` is how many rows actually changed; `skipped` names the shops the
+   * server left alone and why — enabling portal access, for instance, passes
+   * over a shop that has no password or no email rather than switching on a
+   * login that could never be used.
+   */
+  bulk: (ids: string[], action: SupplierBulkAction) =>
+    apiFetch<SupplierBulkResult>('/suppliers/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ ids, action }),
+    }),
 
   /** Every category in the catalogue, for the access pickers. */
   getAllCategories: () => apiFetch<{ data: ProductCategory[] }>('/suppliers/categories'),
