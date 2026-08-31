@@ -1,21 +1,27 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { FileSpreadsheet, Loader2, Upload, X } from "lucide-react"
+import { Check, FileSpreadsheet, Loader2, Search, Table2, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { getApiUrl } from "@/lib/utils/api"
+import { phoneModelsService, type PhoneModel } from "@/lib/supabase/services/phone-models"
 import { toast } from "sonner"
 
 /**
- * Bulk "one product -> many models" import.
+ * "One product -> many phone models", two ways of doing the same job:
  *
- *   SKU     | Product   | Compatible Models
- *   DSP001  | Display A | Redmi Note 8, Redmi Note 8T, Redmi Note 9
+ *   Manual   a two column table - the display on the left, the phones it fits
+ *            on the right, ticked one or more at a time. Best for a handful of
+ *            products, or for fixing one afterwards.
  *
- * Accepts a paste straight out of Excel (tab separated) or a .csv file, so no
- * spreadsheet library is needed. Rows match EXISTING products only - the import
- * cannot create a product, which is what keeps one display from becoming five.
+ *   Excel    SKU | Product | Compatible Models, pasted or uploaded as .csv.
+ *            Best for the first bulk load of a whole shelf.
+ *
+ * Both write the SAME relationship rows. Neither creates a product and neither
+ * touches stock: Display A with ten compatible phones is still one product with
+ * one stock count.
  */
 
 interface ImportResultRow {
@@ -41,6 +47,15 @@ interface ParsedRow {
   sku: string
   product: string
   models: string[]
+}
+
+/** Only the fields the table needs - the admin list already has them all. */
+export interface CompatibilityProduct {
+  id: string
+  name: string
+  category?: string | null
+  brand?: string | null
+  sku?: string | null
 }
 
 const SAMPLE = `SKU\tProduct\tCompatible Models
@@ -128,17 +143,30 @@ function parseSheet(text: string): { rows: ParsedRow[]; error?: string } {
   return { rows }
 }
 
+/** Same ids in any order? Used to spot which rows actually changed. */
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every((id) => set.has(id))
+}
+
 interface CompatibilityImportModalProps {
   isOpen: boolean
   onClose: () => void
   onImported?: () => void
+  /** The admin product list, so the manual table needs no extra fetch. */
+  products?: CompatibilityProduct[]
 }
 
 export default function CompatibilityImportModal({
   isOpen,
   onClose,
   onImported,
+  products = [],
 }: CompatibilityImportModalProps) {
+  const [tab, setTab] = useState<"manual" | "sheet">("manual")
+
+  // --- Excel / csv tab ------------------------------------------------------
   const [text, setText] = useState("")
   const [mode, setMode] = useState<"merge" | "replace">("merge")
   const [running, setRunning] = useState(false)
@@ -146,7 +174,168 @@ export default function CompatibilityImportModal({
   const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [wasDryRun, setWasDryRun] = useState(false)
 
+  // --- Manual table tab -----------------------------------------------------
+  const [models, setModels] = useState<PhoneModel[]>([])
+  const [loadingTable, setLoadingTable] = useState(false)
+  const [tableMissing, setTableMissing] = useState(false)
+  /** What the database holds right now, per product id. */
+  const [saved, setSaved] = useState<Record<string, string[]>>({})
+  /** What the admin has ticked, per product id. */
+  const [draft, setDraft] = useState<Record<string, string[]>>({})
+  const [productSearch, setProductSearch] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("")
+  const [openRow, setOpenRow] = useState<string | null>(null)
+  const [modelSearch, setModelSearch] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  const modelById = useMemo(() => {
+    const map = new Map<string, PhoneModel>()
+    for (const model of models) map.set(model.id, model)
+    return map
+  }, [models])
+
+  /**
+   * Load the phone model catalogue and every product's current model list.
+   * The bulk endpoint takes 500 ids at a time, so the products are chunked.
+   */
+  const loadTable = useCallback(async () => {
+    setLoadingTable(true)
+    try {
+      const catalogue = await phoneModelsService.getAll({ limit: 2000 })
+      const byId = new Map(catalogue.map((m) => [m.id, m]))
+
+      const ids = products.map((p) => p.id)
+      const merged: Record<string, string[]> = {}
+
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200)
+        const map = await phoneModelsService.getForProducts(chunk)
+        for (const id of chunk) {
+          const attached = map[id] || []
+          merged[id] = attached.map((m) => m.id)
+          // A model already attached but past the catalogue page limit would
+          // otherwise render as a nameless chip.
+          for (const model of attached) {
+            if (!byId.has(model.id)) byId.set(model.id, model)
+          }
+        }
+      }
+
+      setModels(Array.from(byId.values()))
+      setSaved(merged)
+      setDraft(merged)
+    } finally {
+      setLoadingTable(false)
+    }
+  }, [products])
+
+  useEffect(() => {
+    if (!isOpen) return
+    setOpenRow(null)
+    setModelSearch("")
+    loadTable()
+  }, [isOpen, loadTable])
+
+  const categories = useMemo(() => {
+    const names = new Set<string>()
+    for (const product of products) {
+      if (product.category) names.add(String(product.category))
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b))
+  }, [products])
+
+  const visibleProducts = useMemo(() => {
+    const term = productSearch.trim().toLowerCase()
+
+    return products.filter((product) => {
+      if (categoryFilter && String(product.category || "") !== categoryFilter) return false
+      if (!term) return true
+
+      return (
+        String(product.name || "").toLowerCase().includes(term) ||
+        String(product.sku || "").toLowerCase().includes(term) ||
+        String(product.brand || "").toLowerCase().includes(term)
+      )
+    })
+  }, [products, productSearch, categoryFilter])
+
+  const changedIds = useMemo(
+    () => Object.keys(draft).filter((id) => !sameSet(draft[id] || [], saved[id] || [])),
+    [draft, saved]
+  )
+
+  const visibleModels = useMemo(() => {
+    const term = modelSearch.trim().toLowerCase()
+    if (!term) return models.slice(0, 300)
+
+    return models
+      .filter(
+        (model) =>
+          model.label.toLowerCase().includes(term) ||
+          model.name.toLowerCase().includes(term) ||
+          (model.model_code || "").toLowerCase().includes(term) ||
+          model.aliases.some((alias) => alias.toLowerCase().includes(term))
+      )
+      .slice(0, 300)
+  }, [models, modelSearch])
+
   if (!isOpen) return null
+
+  const toggleModelForRow = (productId: string, modelId: string) => {
+    setDraft((prev) => {
+      const current = prev[productId] || []
+      const next = current.includes(modelId)
+        ? current.filter((id) => id !== modelId)
+        : [...current, modelId]
+      return { ...prev, [productId]: next }
+    })
+  }
+
+  const addAllShownToRow = (productId: string) => {
+    setDraft((prev) => {
+      const current = prev[productId] || []
+      const set = new Set(current)
+      for (const model of visibleModels) set.add(model.id)
+      return { ...prev, [productId]: Array.from(set) }
+    })
+  }
+
+  const clearRow = (productId: string) => {
+    setDraft((prev) => ({ ...prev, [productId]: [] }))
+  }
+
+  /** Save only the rows the admin actually touched. */
+  const saveManual = async () => {
+    if (changedIds.length === 0) return
+
+    setSaving(true)
+    let done = 0
+    let failed = 0
+
+    try {
+      for (const productId of changedIds) {
+        try {
+          await phoneModelsService.setForProduct(productId, draft[productId] || [])
+          setSaved((prev) => ({ ...prev, [productId]: draft[productId] || [] }))
+          done++
+        } catch (error: any) {
+          failed++
+          if (String(error?.message || "").includes("Phone model tables not found")) {
+            setTableMissing(true)
+            break
+          }
+        }
+      }
+
+      if (done > 0) {
+        toast.success(`${done} product(s) updated. Stock unchanged.`)
+        onImported?.()
+      }
+      if (failed > 0) toast.error(`${failed} product(s) could not be saved`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const readFile = async (file: File) => {
     const content = await file.text()
@@ -192,137 +381,411 @@ export default function CompatibilityImportModal({
     }
   }
 
+  const busy = running || saving
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <motion.div
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-background border border-border rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        className="bg-background border border-border rounded-xl w-full max-w-5xl max-h-[90vh] flex flex-col"
       >
-        <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-background">
+        <div className="flex items-center justify-between p-5 border-b border-border">
           <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-bold">Import Compatible Models</h2>
+            <h2 className="text-lg font-bold">Compatible Phone Models</h2>
           </div>
-          <button type="button" onClick={onClose} disabled={running} aria-label="Close">
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div className="text-sm text-muted-foreground space-y-1">
-            <p>
-              Paste rows straight from Excel, or upload a .csv. Each row attaches models to a
-              product that <strong>already exists</strong> - importing never creates a product and
-              never changes stock.
-            </p>
-            <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">{SAMPLE}</pre>
-          </div>
-
-          <textarea
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value)
-              setResults(null)
-            }}
-            rows={8}
-            placeholder="Paste your rows here..."
-            className="w-full px-3 py-2 border border-border rounded-lg bg-background font-mono text-xs"
-            disabled={running}
-          />
-
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex items-center gap-2 px-3 py-2 border border-border rounded-lg cursor-pointer text-sm hover:bg-muted">
-              <Upload className="w-4 h-4" />
-              Upload .csv
-              <input
-                type="file"
-                accept=".csv,text/csv,text/plain"
-                className="hidden"
-                disabled={running}
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) readFile(file)
-                }}
-              />
-            </label>
-
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="import-mode"
-                checked={mode === "merge"}
-                onChange={() => setMode("merge")}
-                disabled={running}
-              />
-              Add to existing models
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="import-mode"
-                checked={mode === "replace"}
-                onChange={() => setMode("replace")}
-                disabled={running}
-              />
-              Replace the model list
-            </label>
-          </div>
-
-          {summary && (
-            <div className="p-3 rounded-lg bg-muted text-sm">
-              <p className="font-semibold mb-1">
-                {wasDryRun ? "Preview" : "Imported"}: {summary.linked} of {summary.rows} rows
-              </p>
-              <p className="text-muted-foreground text-xs">
-                {summary.compatibility_rows} compatibility links · {summary.models_created} new phone
-                models · {summary.products_created} products created · {summary.skipped} skipped
-              </p>
-            </div>
-          )}
-
-          {results && results.length > 0 && (
-            <div className="border border-border rounded-lg max-h-56 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-muted sticky top-0">
-                  <tr>
-                    <th className="text-left p-2">Row</th>
-                    <th className="text-left p-2">SKU</th>
-                    <th className="text-left p-2">Product</th>
-                    <th className="text-left p-2">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((row) => (
-                    <tr key={row.row} className="border-t border-border">
-                      <td className="p-2">{row.row}</td>
-                      <td className="p-2 font-mono">{row.sku || "-"}</td>
-                      <td className="p-2">{row.product || "-"}</td>
-                      <td
-                        className={`p-2 ${row.status === "linked" ? "text-green-600" : "text-orange-600"}`}
-                      >
-                        {row.message}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        {/* Two ways in: tick a table, or paste a sheet */}
+        <div className="flex gap-1 px-5 pt-4">
+          <button
+            type="button"
+            onClick={() => setTab("manual")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-semibold border-b-2 transition-colors ${
+              tab === "manual"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Table2 className="w-4 h-4" />
+            Manual table
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("sheet")}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-semibold border-b-2 transition-colors ${
+              tab === "sheet"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Excel / .csv
+          </button>
         </div>
 
-        <div className="flex justify-end gap-3 p-5 border-t border-border sticky bottom-0 bg-background">
-          <Button variant="outline" onClick={onClose} disabled={running}>
-            Close
-          </Button>
-          <Button variant="outline" onClick={() => run(true)} disabled={running || !text.trim()}>
-            {running ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-            Preview
-          </Button>
-          <Button onClick={() => run(false)} disabled={running || !text.trim()}>
-            {running ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-            Import
-          </Button>
+        {tableMissing && (
+          <div className="mx-5 mt-4 text-xs p-3 rounded-lg bg-destructive/10 text-destructive">
+            Phone model tables are missing. Run
+            <code className="mx-1">supabase/migrations/add_phone_model_compatibility.sql</code>
+            in the Supabase SQL editor, then reopen this window.
+          </div>
+        )}
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Manual: display on the left, the phones it fits on the right      */}
+        {/* ---------------------------------------------------------------- */}
+        {tab === "manual" && (
+          <div className="flex-1 min-h-0 flex flex-col p-5 pt-4 gap-3">
+            <p className="text-sm text-muted-foreground">
+              Pick a display on the left, then tick every phone it fits on the right. One display
+              can carry as many phones as you like - it stays <strong>one product with one stock
+              count</strong>.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="text"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Search a display by name, SKU or brand..."
+                  className="pl-9"
+                  disabled={busy}
+                />
+              </div>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 border border-border rounded-lg bg-background text-sm"
+                disabled={busy}
+                aria-label="Filter products by category"
+              >
+                <option value="">All categories</option>
+                {categories.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex-1 min-h-0 border border-border rounded-lg overflow-y-auto">
+              {loadingTable ? (
+                <div className="p-8 flex items-center justify-center text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Loading products and phone models...
+                </div>
+              ) : visibleProducts.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  {products.length === 0 ? "No products loaded." : "No product matches this search."}
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-muted sticky top-0 z-10">
+                    <tr>
+                      <th className="text-left p-2 w-10">#</th>
+                      <th className="text-left p-2 w-[38%]">Display / product</th>
+                      <th className="text-left p-2">Compatible phone models</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleProducts.map((product, index) => {
+                      const selectedIds = draft[product.id] || []
+                      const isOpen = openRow === product.id
+                      const isChanged = !sameSet(selectedIds, saved[product.id] || [])
+
+                      return (
+                        <tr
+                          key={product.id}
+                          className={`border-t border-border align-top ${isChanged ? "bg-primary/5" : ""}`}
+                        >
+                          <td className="p-2 text-muted-foreground">{index + 1}</td>
+
+                          <td className="p-2">
+                            <span className="block font-medium">{product.name}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {[product.sku, product.brand, product.category]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </td>
+
+                          <td className="p-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {selectedIds.map((modelId) => {
+                                const model = modelById.get(modelId)
+                                return (
+                                  <span
+                                    key={modelId}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted border border-border text-xs"
+                                  >
+                                    {model?.label || "Model"}
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleModelForRow(product.id, modelId)}
+                                      disabled={busy}
+                                      className="text-muted-foreground hover:text-destructive"
+                                      aria-label={`Remove ${model?.label || "model"}`}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </span>
+                                )
+                              })}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenRow(isOpen ? null : product.id)
+                                  setModelSearch("")
+                                }}
+                                disabled={busy}
+                                className="text-xs font-semibold text-primary hover:underline"
+                              >
+                                {isOpen ? "Done" : selectedIds.length > 0 ? "+ Add / edit" : "+ Select models"}
+                              </button>
+
+                              {selectedIds.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => clearRow(product.id)}
+                                  disabled={busy}
+                                  className="text-xs text-muted-foreground hover:text-destructive underline"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+
+                            {isOpen && (
+                              <div className="mt-2 p-2 border border-border rounded-lg bg-background">
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                  <div className="relative flex-1 min-w-[12rem]">
+                                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                                    <input
+                                      type="text"
+                                      value={modelSearch}
+                                      onChange={(e) => setModelSearch(e.target.value)}
+                                      placeholder="Search phone model, code or alias..."
+                                      className="w-full pl-8 pr-2 py-1.5 text-xs border border-border rounded-md bg-background"
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => addAllShownToRow(product.id)}
+                                    disabled={busy || visibleModels.length === 0}
+                                  >
+                                    <Check className="w-3.5 h-3.5 mr-1.5" />
+                                    Add all shown ({visibleModels.length})
+                                  </Button>
+                                </div>
+
+                                <div className="max-h-52 overflow-y-auto border border-border rounded-md">
+                                  {models.length === 0 ? (
+                                    <p className="p-3 text-xs text-muted-foreground">
+                                      No phone models yet. Add them from a product's own
+                                      "Compatible Phone Models" section, or import a sheet.
+                                    </p>
+                                  ) : visibleModels.length === 0 ? (
+                                    <p className="p-3 text-xs text-muted-foreground">
+                                      No model matches this search.
+                                    </p>
+                                  ) : (
+                                    <ul className="divide-y divide-border">
+                                      {visibleModels.map((model) => {
+                                        const checked = selectedIds.includes(model.id)
+                                        return (
+                                          <li key={model.id}>
+                                            <label
+                                              className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer text-xs ${
+                                                checked ? "bg-primary/5" : "hover:bg-muted"
+                                              }`}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleModelForRow(product.id, model.id)}
+                                                disabled={busy}
+                                                className="w-3.5 h-3.5 accent-primary"
+                                              />
+                                              <span className="flex-1 min-w-0 truncate">
+                                                {model.label}
+                                                {model.model_code ? (
+                                                  <span className="text-muted-foreground">
+                                                    {" "}
+                                                    · {model.model_code}
+                                                  </span>
+                                                ) : null}
+                                              </span>
+                                            </label>
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Excel / csv                                                       */}
+        {/* ---------------------------------------------------------------- */}
+        {tab === "sheet" && (
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 pt-4 space-y-4">
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>
+                Paste rows straight from Excel, or upload a .csv. Each row attaches models to a
+                product that <strong>already exists</strong> - importing never creates a product and
+                never changes stock.
+              </p>
+              <pre className="text-xs bg-muted p-3 rounded-lg overflow-x-auto">{SAMPLE}</pre>
+            </div>
+
+            <textarea
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value)
+                setResults(null)
+              }}
+              rows={8}
+              placeholder="Paste your rows here..."
+              className="w-full px-3 py-2 border border-border rounded-lg bg-background font-mono text-xs"
+              disabled={running}
+            />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 px-3 py-2 border border-border rounded-lg cursor-pointer text-sm hover:bg-muted">
+                <Upload className="w-4 h-4" />
+                Upload .csv
+                <input
+                  type="file"
+                  accept=".csv,text/csv,text/plain"
+                  className="hidden"
+                  disabled={running}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) readFile(file)
+                  }}
+                />
+              </label>
+
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="import-mode"
+                  checked={mode === "merge"}
+                  onChange={() => setMode("merge")}
+                  disabled={running}
+                />
+                Add to existing models
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="import-mode"
+                  checked={mode === "replace"}
+                  onChange={() => setMode("replace")}
+                  disabled={running}
+                />
+                Replace the model list
+              </label>
+            </div>
+
+            {summary && (
+              <div className="p-3 rounded-lg bg-muted text-sm">
+                <p className="font-semibold mb-1">
+                  {wasDryRun ? "Preview" : "Imported"}: {summary.linked} of {summary.rows} rows
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {summary.compatibility_rows} compatibility links · {summary.models_created} new
+                  phone models · {summary.products_created} products created · {summary.skipped}{" "}
+                  skipped
+                </p>
+              </div>
+            )}
+
+            {results && results.length > 0 && (
+              <div className="border border-border rounded-lg max-h-56 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted sticky top-0">
+                    <tr>
+                      <th className="text-left p-2">Row</th>
+                      <th className="text-left p-2">SKU</th>
+                      <th className="text-left p-2">Product</th>
+                      <th className="text-left p-2">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((row) => (
+                      <tr key={row.row} className="border-t border-border">
+                        <td className="p-2">{row.row}</td>
+                        <td className="p-2 font-mono">{row.sku || "-"}</td>
+                        <td className="p-2">{row.product || "-"}</td>
+                        <td
+                          className={`p-2 ${row.status === "linked" ? "text-green-600" : "text-orange-600"}`}
+                        >
+                          {row.message}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-3 p-5 border-t border-border">
+          <span className="text-xs text-muted-foreground">
+            {tab === "manual"
+              ? changedIds.length > 0
+                ? `${changedIds.length} product(s) changed - not saved yet`
+                : `${visibleProducts.length} product(s) shown`
+              : "Rows match existing products only"}
+          </span>
+
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onClose} disabled={busy}>
+              Close
+            </Button>
+
+            {tab === "manual" ? (
+              <Button onClick={saveManual} disabled={busy || changedIds.length === 0}>
+                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Save {changedIds.length > 0 ? `(${changedIds.length})` : ""}
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => run(true)} disabled={busy || !text.trim()}>
+                  {running ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Preview
+                </Button>
+                <Button onClick={() => run(false)} disabled={busy || !text.trim()}>
+                  {running ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Import
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </motion.div>
     </div>

@@ -343,7 +343,7 @@ export default function ProductsPage() {
                className="w-full sm:w-auto gap-2 font-bold"
              >
                <FileSpreadsheet className="w-4 h-4" />
-               Import Compatible Models
+               Compatible Models
              </Button>
              <Button
                variant={stockFilter === 'very_low' ? "default" : "outline"}
@@ -589,11 +589,18 @@ export default function ProductsPage() {
         onProductSaved={handleProductSaved}
       />
 
-      {/* Bulk compatibility import: SKU | Product | Compatible Models */}
+      {/* Compatible models: tick a table, or paste SKU | Product | Models */}
       <CompatibilityImportModal
         isOpen={showCompatibilityImport}
         onClose={() => setShowCompatibilityImport(false)}
         onImported={() => fetchProducts(true)}
+        products={products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          brand: p.brand,
+          sku: (p as any).sku ?? null,
+        }))}
       />
 
       {/* Barcode Print Modal */}

@@ -17,7 +17,6 @@ const HeroSection = lazyWithRetry(() => import("@/components/hero-section"))
 const BrandMarquee = lazyWithRetry(() => import("@/components/brand-marquee"))
 const CategoryGrid = lazyWithRetry(() => import("@/components/category-grid"))
 const ProductsCarousel = lazyWithRetry(() => import("@/components/products-carousel"))
-const PhoneFinder = lazyWithRetry(() => import("@/components/phone-finder"))
 
 const LoadingPlaceholder = () => <div className="h-80 bg-muted animate-pulse rounded-lg" />
 
@@ -113,11 +112,6 @@ export default function Home() {
       {/* Hero Section */}
       <Suspense fallback={<LoadingPlaceholder />}>
         <HeroSection />
-      </Suspense>
-
-      {/* Find Parts For Your Phone - renders nothing until phone models exist */}
-      <Suspense fallback={null}>
-        <PhoneFinder />
       </Suspense>
 
       {/* Products Carousel - Category Carousel */}
