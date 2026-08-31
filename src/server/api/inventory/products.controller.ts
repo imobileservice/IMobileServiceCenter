@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
+import {
+  findCompatibleProductIds,
+  findMatchingModelIds,
+  loadCompatibilityMap,
+} from '../utils/compatibility'
 
 const router = Router()
 
@@ -46,9 +51,25 @@ router.get('/', async (req: Request, res: Response) => {
       `)
       .order('created_at', { ascending: false })
 
+    // Phone models matching the search text, so "A02" also finds the display
+    // that is merely COMPATIBLE with an A02 (stocked as "M02 Display").
+    let matchedModelIds: string[] = []
+
     if (search && typeof search === 'string') {
-      // Allow searching by name, barcode, or the model name stored inside the JSONB specs column
-      query = query.or(`name.ilike.%${search}%,barcode.ilike.%${search}%,specs->>model.ilike.%${search}%`)
+      matchedModelIds = await findMatchingModelIds(supabase, search)
+      const compatibleIds = await findCompatibleProductIds(supabase, matchedModelIds)
+
+      // Existing clauses are unchanged; compatibility is added on top.
+      const clauses = [
+        `name.ilike.%${search}%`,
+        `barcode.ilike.%${search}%`,
+        `specs->>model.ilike.%${search}%`,
+      ]
+      if (compatibleIds.length > 0) {
+        clauses.push(`id.in.(${compatibleIds.join(',')})`)
+      }
+
+      query = query.or(clauses.join(','))
     }
 
     if (category && typeof category === 'string') {
@@ -62,11 +83,21 @@ router.get('/', async (req: Request, res: Response) => {
     // Debug log to see raw data from Supabase
     console.log(`[Inventory Products] Fetched ${data?.length || 0} products. First product inv_stock:`, data?.[0]?.inv_stock);
 
+    // Compatible phones per product, so the till can name the sale line after
+    // the customer's own phone. Empty map when not migrated yet.
+    const compatibilityMap = await loadCompatibilityMap(supabase, (data || []).map((p: any) => p.id))
+    const matchedSet = new Set(matchedModelIds)
+
     const products = (data || []).map((p: any) => {
       // Find primary image or use the first one available
-      const primaryImage = p.product_images?.find((img: any) => img.is_primary)?.url || 
-                           p.product_images?.[0]?.url || 
+      const primaryImage = p.product_images?.find((img: any) => img.is_primary)?.url ||
+                           p.product_images?.[0]?.url ||
                            null;
+
+      const compatibleModels = compatibilityMap.get(p.id) || []
+      // Which of this product's phones the cashier actually searched for. One
+      // clean hit means the till can name the line without asking.
+      const matchedModels = compatibleModels.filter((m: any) => matchedSet.has(m.id))
 
       // Handle both array and single object formats for inv_stock join
       const stockRec = Array.isArray(p.inv_stock) ? p.inv_stock[0] : p.inv_stock;
@@ -81,6 +112,9 @@ router.get('/', async (req: Request, res: Response) => {
         qty_padukka_new: stockRec ? (stockRec.qty_padukka_new ?? 0) : 0,
         low_stock_threshold: stockRec ? (stockRec.low_stock_threshold ?? 5) : 5,
         is_low_stock: (stockRec ? (stockRec.quantity ?? 0) : (p.stock ?? 0)) <= (stockRec ? (stockRec.low_stock_threshold ?? 5) : 5),
+        // Relationships only - the stock above is still one pool for the product
+        compatible_models: compatibleModels,
+        matched_models: matchedModels,
       });
     })
 
@@ -141,10 +175,16 @@ router.get('/barcode/:barcode', async (req: Request, res: Response) => {
 
     const stockRec = data.inv_stock?.[0];
 
+    // A scanned box may fit several phones - the till needs the list so the
+    // cashier can name the line after the customer's phone.
+    const scannedCompatibility = await loadCompatibilityMap(supabase, [data.id])
+
     res.json({
       data: {
         ...withInventoryPricing(data),
         category: data.category || data.category_id,
+        compatible_models: scannedCompatibility.get(data.id) || [],
+        matched_models: [],
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : (data.stock ?? 0),
         qty_padukka: stockRec ? (stockRec.qty_padukka ?? 0) : 0,

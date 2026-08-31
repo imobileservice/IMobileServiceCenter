@@ -1,5 +1,26 @@
 import { Request, Response } from 'express'
 import { createServerClient } from '@supabase/ssr'
+import {
+  findCompatibleProductIds,
+  findMatchingModelIds,
+  isMissingRelation,
+  loadCompatibilityMap,
+} from '../utils/compatibility'
+
+/**
+ * Does products.sku exist yet? Probed once per process so the search clause can
+ * include SKU only when add_phone_model_compatibility.sql has been applied -
+ * searching a missing column would break the whole product list.
+ */
+let skuColumnAvailable: boolean | null = null
+
+async function hasSkuColumn(supabase: any): Promise<boolean> {
+  if (skuColumnAvailable !== null) return skuColumnAvailable
+
+  const { error } = await supabase.from('products').select('sku').limit(1)
+  skuColumnAvailable = !(error && isMissingRelation(error))
+  return skuColumnAvailable
+}
 
 /**
  * GET /api/products/list
@@ -36,7 +57,23 @@ export async function listHandler(req: Request, res: Response) {
       }
     )
 
-    const { category, brand, condition, search, minPrice, maxPrice } = req.query
+    const { category, brand, condition, search, minPrice, maxPrice, phone_model, phone_model_name } = req.query
+
+    // "Find Parts For Your Phone": narrow to the products linked to one phone
+    // model. An unknown/unlinked model returns no products rather than the
+    // whole catalogue.
+    let compatibleOnlyIds: string[] | null = null
+    if (phone_model || phone_model_name) {
+      const modelIds = phone_model
+        ? [String(phone_model)]
+        : await findMatchingModelIds(supabase as any, String(phone_model_name))
+
+      compatibleOnlyIds = await findCompatibleProductIds(supabase as any, modelIds)
+
+      if (compatibleOnlyIds.length === 0) {
+        return res.json({ data: [] })
+      }
+    }
 
     // Build query - join with categories and inventory stock
     let query = supabase
@@ -79,8 +116,33 @@ export async function listHandler(req: Request, res: Response) {
       query = query.eq('condition', condition as string)
     }
 
+    if (compatibleOnlyIds) {
+      query = query.in('id', compatibleOnlyIds)
+    }
+
     if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,specs->>model.ilike.%${search}%`)
+      // Existing behaviour (name / description / specs.model) is kept exactly
+      // as-is; SKU and phone-model matches are added on top so a search for
+      // "Redmi Note 8 display" also finds a display merely *compatible* with it.
+      const clauses = [
+        `name.ilike.%${search}%`,
+        `description.ilike.%${search}%`,
+        `specs->>model.ilike.%${search}%`,
+      ]
+
+      if (await hasSkuColumn(supabase)) {
+        clauses.push(`sku.ilike.%${search}%`)
+      }
+
+      const matchedModelIds = await findMatchingModelIds(supabase as any, String(search))
+      if (matchedModelIds.length > 0) {
+        const compatibleIds = await findCompatibleProductIds(supabase as any, matchedModelIds)
+        if (compatibleIds.length > 0) {
+          clauses.push(`id.in.(${compatibleIds.join(',')})`)
+        }
+      }
+
+      query = query.or(clauses.join(','))
     }
 
     if (minPrice) {
@@ -111,6 +173,9 @@ export async function listHandler(req: Request, res: Response) {
         .in('product_id', productIds)
         .order('display_order', { ascending: true })
 
+      // Compatible phone models per product (empty map when not migrated yet)
+      const compatibilityMap = await loadCompatibilityMap(supabase as any, productIds)
+
       // Group images by product_id
       const imagesMap = new Map<string, any[]>()
       imagesData?.forEach((img: any) => {
@@ -134,6 +199,8 @@ export async function listHandler(req: Request, res: Response) {
           images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
           category: product.categories?.slug || product.category, // Use category slug from join or fallback
           stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
+          // Relationships only - stock above is still the single inv_stock value
+          compatible_models: compatibilityMap.get(product.id) || [],
         };
       });
 

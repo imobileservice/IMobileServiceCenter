@@ -1,6 +1,47 @@
 import { Request, Response, NextFunction } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { generateDeliveryBillPDF } from '../utils/invoice-generator'
+import { isMissingRelation, setProductCompatibility } from '../utils/compatibility'
+
+/**
+ * Pull `compatible_model_ids` out of a product payload.
+ *
+ * Compatibility is stored in product_compatibility, not on the products row, so
+ * the ids must be removed before the insert/update - exactly how images and the
+ * per-shop qty_* fields are handled. Returns undefined when the caller did not
+ * send the field, which means "leave existing compatibility alone".
+ */
+function extractCompatibleModelIds(payload: any): string[] | undefined {
+  if (!('compatible_model_ids' in payload)) return undefined
+
+  const raw = payload.compatible_model_ids
+  delete payload.compatible_model_ids
+
+  if (!Array.isArray(raw)) return []
+  return Array.from(new Set(raw.map((id: any) => String(id)).filter(Boolean)))
+}
+
+/**
+ * Save the compatible model set for a product. Never touches stock - it only
+ * writes join rows, so one Display A with ten models still has one inv_stock
+ * row. A failure is logged and swallowed: the product itself already saved.
+ */
+async function saveCompatibility(
+  supabase: any,
+  productId: string,
+  modelIds: string[] | undefined
+) {
+  if (modelIds === undefined || !productId) return
+
+  const result = await setProductCompatibility(supabase, productId, modelIds)
+  if (!result.ok) {
+    console.error('[Admin CRUD] Failed to save phone compatibility:', result.error)
+  } else if (result.added || result.removed) {
+    console.log(
+      `[Admin CRUD] Compatibility for ${productId}: +${result.added} / -${result.removed} models`
+    )
+  }
+}
 
 // Async error wrapper
 const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) => {
@@ -50,6 +91,9 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   delete productData.qty_padukka
   delete productData.qty_padukka_new
 
+  // Compatible phone models live in their own join table
+  const compatibleModelIds = extractCompatibleModelIds(productData)
+
   console.log(`[Admin] Creating product with stock: ${totalStock}, qty_meegoda: ${qty_meegoda}, qty_padukka: ${qty_padukka}, qty_padukka_new: ${qty_padukka_new}`)
 
   if (productData.category && !productData.category_id) {
@@ -97,16 +141,30 @@ export const createProductHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   // Insert product (without image fields)
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('products')
     .insert(productData)
     .select()
     .single()
 
+  // `sku` only exists once add_phone_model_compatibility.sql has been applied.
+  // Retry without it so product creation keeps working on an un-migrated DB.
+  if (error && isMissingRelation(error) && productData.sku !== undefined) {
+    console.warn('[Admin CRUD] products.sku missing - retrying without SKU. Run add_phone_model_compatibility.sql')
+    const { sku, ...withoutSku } = productData
+    const retry = await supabase.from('products').insert(withoutSku).select().single()
+    data = retry.data
+    error = retry.error
+  }
+
   if (error) {
     console.error('Error creating product:', error)
     return res.status(500).json({ error: error.message })
   }
+
+  // One product row, many compatible models. Written after the product exists
+  // so the join rows have a valid product_id.
+  await saveCompatibility(supabase, data?.id, compatibleModelIds)
 
   // Initialize stock in inv_stock so it appears in Inventory
   // The DB trigger trg_update_total_quantity will auto-compute quantity from shop qtys
@@ -188,6 +246,9 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
   delete updateData.qty_padukka
   delete updateData.qty_padukka_new
 
+  // Compatible phone models live in their own join table
+  const compatibleModelIds = extractCompatibleModelIds(updateData)
+
   if (updateData.category && !updateData.category_id) {
     // Get category_id from slug
     const { data: categoryData, error: categoryError } = await supabase
@@ -208,17 +269,30 @@ export const updateProductHandler = asyncHandler(async (req: Request, res: Respo
   }
 
   // Update product (without image fields)
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('products')
     .update(updateData)
     .eq('id', id)
     .select()
     .single()
 
+  // Same un-migrated-DB guard as create: drop SKU rather than fail the save.
+  if (error && isMissingRelation(error) && updateData.sku !== undefined) {
+    console.warn('[Admin CRUD] products.sku missing - retrying without SKU. Run add_phone_model_compatibility.sql')
+    const { sku, ...withoutSku } = updateData
+    const retry = await supabase.from('products').update(withoutSku).eq('id', id).select().single()
+    data = retry.data
+    error = retry.error
+  }
+
   if (error) {
     console.error('Error updating product:', error)
     return res.status(500).json({ error: error.message })
   }
+
+  // Replaces the compatible model set (adds new, removes unticked). Stock is
+  // untouched by design.
+  await saveCompatibility(supabase, id, compatibleModelIds)
 
   // Sync inventory stock if stock was updated
   if (updateData.stock !== undefined || qty_meegoda !== undefined || qty_padukka !== undefined || qty_padukka_new !== undefined) {

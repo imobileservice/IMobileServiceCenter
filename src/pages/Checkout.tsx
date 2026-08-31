@@ -14,6 +14,34 @@ import OrderSummary from "@/components/order-summary"
 import { toast } from "sonner"
 import { getApiUrl } from "@/lib/utils/api"
 import { formatCurrency } from "@/lib/utils/currency"
+import { composeModelLabelName } from "@/lib/labels/label-sheet"
+import { getSelectedPhoneModel, type SelectedPhoneModel } from "@/lib/phone-model-session"
+
+/**
+ * The order line name for a shopper who told us his phone.
+ *
+ * A display stocked as "Samsung M02 Display" is written to an A02 owner's order
+ * as "Samsung A02 Display" when the part is compatible with his phone. Falls
+ * back to the product's own name whenever anything is unknown - an order must
+ * never carry a guessed model.
+ */
+const soldAsProductName = (product: any, shopperModel: SelectedPhoneModel | null): string => {
+  const fallback = product?.name || ''
+  if (!shopperModel?.id) return fallback
+
+  const fits = Array.isArray(product?.compatible_models)
+    && product.compatible_models.some((m: any) => m.id === shopperModel.id)
+  if (!fits) return fallback
+
+  const specs = typeof product?.specs === 'string'
+    ? (() => { try { return JSON.parse(product.specs) } catch { return {} } })()
+    : (product?.specs || {})
+
+  return composeModelLabelName(
+    { id: '', name: fallback, barcode: null, brand: product?.brand, model: specs?.model },
+    shopperModel.name
+  ) || fallback
+}
 
 
 export default function CheckoutPage() {
@@ -133,9 +161,14 @@ export default function CheckoutPage() {
             const tax = 0 // Tax removed as requested
             const total = subtotal + shipping + tax
 
+            // If the shopper told us his phone and this part fits it, his order
+            // is written in HIS model name. product_id is unchanged, so stock
+            // and fulfilment still point at the one physical product.
+            const shopperModel = getSelectedPhoneModel()
+
             const orderItems = cartItems.map(item => ({
                 product_id: item.product_id,
-                product_name: item.products.name,
+                product_name: soldAsProductName(item.products, shopperModel),
                 product_image: item.products.image,
                 quantity: item.quantity,
                 price: getPrice(item),

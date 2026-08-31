@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Suspense } from "react"
 import { lazyWithRetry } from "@/lib/chunk-recovery"
 import { productsService } from "@/lib/supabase/services/products"
+import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
 import type { Database } from "@/lib/supabase/types"
 
@@ -31,6 +32,10 @@ export default function ShopPage() {
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const [selectedCategory, setSelectedCategory] = useState<string | null>(searchParams.get("category"))
   const [selectedBrand, setSelectedBrand] = useState<string | null>(searchParams.get("brand"))
+  // "Find Parts For Your Phone" narrows the list to products compatible with one
+  // phone model. It is a filter over the same products - never a separate list.
+  const [phoneModel, setPhoneModel] = useState<string | null>(searchParams.get("phone_model"))
+  const [phoneModelName, setPhoneModelName] = useState<string | null>(searchParams.get("phone_model_name"))
   const [priceRange, setPriceRange] = useState([0, 1399990])
   const [dynamicFilters, setDynamicFilters] = useState<Record<string, any>>({})
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
@@ -43,6 +48,7 @@ export default function ShopPage() {
   const filtersRef = useRef({
     selectedCategory,
     selectedBrand,
+    phoneModel,
     priceRange,
     searchQuery,
     dynamicFilters,
@@ -56,11 +62,12 @@ export default function ShopPage() {
     filtersRef.current = {
       selectedCategory,
       selectedBrand,
+      phoneModel,
       priceRange,
       searchQuery,
       dynamicFilters,
     }
-  }, [selectedCategory, selectedBrand, priceRange, searchQuery, dynamicFilters])
+  }, [selectedCategory, selectedBrand, phoneModel, priceRange, searchQuery, dynamicFilters])
 
   const handleDynamicFilterChange = useCallback((key: string, value: any) => {
     setDynamicFilters(prev => {
@@ -89,6 +96,7 @@ export default function ShopPage() {
         maxPrice?: number
         search?: string
         dynamicFilters?: Record<string, any>
+        phoneModel?: string
       } = {}
 
       const currentFilters = filtersRef.current
@@ -118,6 +126,11 @@ export default function ShopPage() {
           maxPrice: filters.maxPrice,
           search: filters.search
         })
+      }
+
+      // Compatible-with-this-phone filter (from the phone finder)
+      if (currentFilters.phoneModel) {
+        filters.phoneModel = currentFilters.phoneModel
       }
 
       // Always apply price range filter (ensures all products respect price filter)
@@ -168,13 +181,15 @@ export default function ShopPage() {
     loadProducts()
     // Reset to page 1 when filters change
     setCurrentPage(1)
-  }, [selectedCategory, selectedBrand, priceRange, searchQuery, dynamicFilters, loadProducts])
+  }, [selectedCategory, selectedBrand, phoneModel, priceRange, searchQuery, dynamicFilters, loadProducts])
 
   // Sync state with URL parameters when they change (e.g. navigation)
   useEffect(() => {
     const categoryParam = searchParams.get("category")
     const brandParam = searchParams.get("brand")
     const searchParam = searchParams.get("search")
+    const phoneModelParam = searchParams.get("phone_model")
+    const phoneModelNameParam = searchParams.get("phone_model_name")
 
     // Only update if value changed to avoid infinite loops
     if (categoryParam !== selectedCategory) {
@@ -190,6 +205,12 @@ export default function ShopPage() {
     }
     if (searchParam && searchParam !== searchQuery) {
       setSearchQuery(searchParam)
+    }
+    if (phoneModelParam !== phoneModel) {
+      setPhoneModel(phoneModelParam)
+    }
+    if (phoneModelNameParam !== phoneModelName) {
+      setPhoneModelName(phoneModelNameParam)
     }
   }, [searchParams])
 
@@ -285,8 +306,32 @@ export default function ShopPage() {
         </div>
       </div>
 
+      {/* Active phone compatibility filter */}
+      {phoneModel && (
+        <div className="pt-20 lg:pt-4 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg bg-primary/10 border border-primary/20">
+            <p className="text-sm font-medium">
+              Showing parts compatible with{" "}
+              <span className="font-bold">{phoneModelName || "your phone"}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams)
+                next.delete("phone_model")
+                next.delete("phone_model_name")
+                setSearchParams(next)
+              }}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
-      <div className="pt-20 lg:pt-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={`${phoneModel ? "pt-4" : "pt-20"} lg:pt-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`}>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Sidebar - Desktop */}
           <div className="hidden lg:block">
@@ -369,6 +414,14 @@ export default function ShopPage() {
                       ? (typeof product.specs === 'string' ? JSON.parse(product.specs) : product.specs) as Record<string, string>
                       : {}
                     const modelName: string = specsObj?.model || specsObj?.Model || ""
+
+                    // The shopper picked his own phone, and this product is
+                    // compatible with it: show it under HIS model name. One
+                    // product, one stock - only the wording changes.
+                    const chosenModel = phoneModel
+                      ? (product as any).compatible_models?.find((m: any) => m.id === phoneModel)
+                      : undefined
+
                     // Construct: prepend brand if missing, inject model if not already in name
                     let displayName = String(product.name || "")
                     if (product.brand && !displayName.toLowerCase().startsWith(String(product.brand).toLowerCase())) {
@@ -379,6 +432,19 @@ export default function ShopPage() {
                       const brandPrefix = product.brand ? `${product.brand} ` : ""
                       const rest = displayName.startsWith(brandPrefix) ? displayName.slice(brandPrefix.length) : displayName
                       displayName = `${brandPrefix}${modelName} ${rest}`.trim().replace(/\s+/g, " ")
+                    }
+
+                    if (chosenModel) {
+                      displayName = composeModelLabelName(
+                        {
+                          id: product.id,
+                          name: String(product.name || ""),
+                          barcode: null,
+                          brand: product.brand || undefined,
+                          model: modelName || undefined,
+                        },
+                        chosenModel.name
+                      ) || displayName
                     }
                     const productCardProps = {
                       id: product.id,

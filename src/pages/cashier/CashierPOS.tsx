@@ -29,15 +29,35 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receipt"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
+import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
+
+interface PosPhoneModel {
+  id: string
+  name: string
+  label: string
+}
 
 interface CartItem {
   id: string
+  /** Internal product name - what the box on the shelf says. */
   name: string
   price: number
   quantity: number
   stock: number
   image?: string
+  /**
+   * The customer's own phone. One display stocked as "M02 Display" may be sold
+   * to an A02 customer as "Samsung A02 Display": `soldAs` is the printed name
+   * on screen and on the bill, nothing more. `id` above is still the real
+   * product, so the same single stock pool is debited either way.
+   */
+  soldAs?: string
+  phoneModelId?: string
+  compatibleModels?: PosPhoneModel[]
+  /** Needed to rebuild the printed name when the cashier changes the phone. */
+  brand?: string
+  baseModel?: string
 }
 
 type PaymentMethod = 'cash' | 'card' | 'bank_transfer'
@@ -242,6 +262,44 @@ export default function CashierPOS() {
     }
   }
 
+  /**
+   * The name the customer sees for one compatible phone, e.g. a display
+   * stocked as "Samsung M02 Display" sold to an A02 customer as
+   * "Samsung A02 Display". Printed text only - never a different product.
+   */
+  const soldAsName = (
+    productName: string,
+    brand?: string,
+    baseModel?: string,
+    modelName?: string
+  ) => {
+    if (!modelName) return undefined
+    return composeModelLabelName(
+      { id: '', name: productName || '', barcode: null, brand, model: baseModel },
+      modelName
+    )
+  }
+
+  /** Cashier picks (or clears) the customer's phone on a cart line. */
+  const setCartItemModel = (id: string, modelId: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.id !== id) return item
+
+      if (!modelId) {
+        return { ...item, phoneModelId: undefined, soldAs: undefined }
+      }
+
+      const model = item.compatibleModels?.find(m => m.id === modelId)
+      if (!model) return item
+
+      return {
+        ...item,
+        phoneModelId: model.id,
+        soldAs: soldAsName(item.name, item.brand, item.baseModel, model.name),
+      }
+    }))
+  }
+
   const addToCart = (product: any) => {
     const shopName = cashier?.shop || 'Meegoda'
     let availableStock = 0
@@ -262,13 +320,31 @@ export default function CashierPOS() {
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         )
       }
+      const compatibleModels: PosPhoneModel[] = Array.isArray(product.compatible_models)
+        ? product.compatible_models
+        : []
+      // The cashier searched for a phone and exactly one of this product's
+      // phones matched - name the line after it without asking. Anything less
+      // certain keeps the internal name until the cashier picks.
+      const matched: PosPhoneModel[] = Array.isArray(product.matched_models)
+        ? product.matched_models
+        : []
+      const autoModel = matched.length === 1 ? matched[0] : undefined
+
       return [...prev, {
         id: product.id,
         name: getDisplayName(product),
         price: inventoryPrice,
         quantity: 1,
         stock: availableStock,
-        image: product.image
+        image: product.image,
+        compatibleModels,
+        brand: product.brand || undefined,
+        baseModel: product.specs?.model || undefined,
+        phoneModelId: autoModel?.id,
+        soldAs: autoModel
+          ? soldAsName(product.name, product.brand, product.specs?.model, autoModel.name)
+          : undefined,
       }]
     })
     setSearchTerm("")
@@ -317,7 +393,11 @@ export default function CashierPOS() {
         items: cart.map(item => ({
           product_id: item.id,
           quantity: item.quantity,
-          price: item.price
+          price: item.price,
+          // Printed name + which phone it was sold for. product_id above is
+          // unchanged, so this never splits or double-counts stock.
+          ...(item.soldAs ? { sold_as: item.soldAs } : {}),
+          ...(item.phoneModelId ? { phone_model_id: item.phoneModelId } : {}),
         }))
       }
 
@@ -330,7 +410,8 @@ export default function CashierPOS() {
         customer_phone: res.data?.customer_phone || customerPhone,
         payment_method: res.data?.payment_method || paymentMethod,
         items: cart.map(item => ({
-          product_name: item.name,
+          // The receipt shows the customer's own phone when one was chosen
+          product_name: item.soldAs || item.name,
           price: item.price,
           quantity: item.quantity,
           total_price: item.price * item.quantity
@@ -525,9 +606,35 @@ export default function CashierPOS() {
                           <ScanBarcode className="w-6 h-6 text-muted-foreground" />
                         )}
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold leading-tight line-clamp-1">{getDisplayName(item)}</h4>
+                      <div className="flex-1 min-w-0">
+                        {/* The customer's phone name when one was chosen, else
+                            the internal product name. Either way the same one
+                            product and the same one stock pool is sold. */}
+                        <h4 className="font-bold leading-tight line-clamp-1">
+                          {item.soldAs || getDisplayName(item)}
+                        </h4>
                         <p className="text-sm text-primary font-semibold">{formatCurrency(item.price)}</p>
+
+                        {(item.compatibleModels?.length || 0) > 0 && (
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <select
+                              value={item.phoneModelId || ''}
+                              onChange={(e) => setCartItemModel(item.id, e.target.value)}
+                              className="text-[11px] px-1.5 py-0.5 border border-border rounded bg-background max-w-[220px]"
+                              aria-label="Customer's phone model"
+                            >
+                              <option value="">Customer's phone: not set</option>
+                              {item.compatibleModels!.map(model => (
+                                <option key={model.id} value={model.id}>{model.label}</option>
+                              ))}
+                            </select>
+                            {item.soldAs && (
+                              <span className="text-[10px] text-muted-foreground truncate">
+                                stock: {item.name}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-1 bg-background border border-border rounded-lg p-1">
                         <Button 

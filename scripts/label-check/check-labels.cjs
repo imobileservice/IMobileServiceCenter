@@ -47,7 +47,9 @@ if (!CHROME) {
 
 const proofMode = process.argv.includes('--proof');
 const qty = parseInt(process.argv.slice(2).find(a => /^\d+$/.test(a)) || '3', 10);
-const expectedLabels = qty + 2; // the harness adds 2 extra distinct products
+// The harness adds 2 extra distinct products, plus 3 per-phone-model stickers
+// for one multi-fit display (same barcode, different printed model name).
+const expectedLabels = qty + 2 + 3;
 
 fs.mkdirSync(OUT, { recursive: true });
 

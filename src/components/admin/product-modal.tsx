@@ -19,6 +19,8 @@ import {
   isPlaceholderBrand,
 } from "@/constants/models"
 import { brandsService, type Brand } from "@/lib/supabase/services/brands"
+import { phoneModelsService, type PhoneModel } from "@/lib/supabase/services/phone-models"
+import CompatibleModelsPicker from "@/components/admin/compatible-models-picker"
 import { createClient } from "@/lib/supabase/client"
 import { getApiUrl } from "@/lib/utils/api"
 
@@ -33,7 +35,15 @@ interface ProductModalProps {
   isOpen: boolean
   onClose: () => void
   editingProductId?: string | null
-  onProductSaved?: (product: { name: string; barcode: string; price: number }) => void
+  onProductSaved?: (product: {
+    id?: string
+    name: string
+    barcode: string
+    price: number
+    /** Let the label modal offer a sticker per compatible phone model. */
+    brand?: string
+    model?: string
+  }) => void
 }
 
 export default function ProductModal({ isOpen, onClose, editingProductId, onProductSaved }: ProductModalProps) {
@@ -53,9 +63,13 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
   const [newBrandName, setNewBrandName] = useState("")
   const [addingBrand, setAddingBrand] = useState(false)
   const [brandStatus, setBrandStatus] = useState("")
+  // Phone models this ONE product fits. Saved to product_compatibility, never
+  // to the products row - so it can never duplicate the product or its stock.
+  const [compatibleModels, setCompatibleModels] = useState<PhoneModel[]>([])
   const [formData, setFormData] = useState({
     name: "",
     category: "",
+    sku: "",
     brand: "",
     price: "",
     cost_price: "",
@@ -282,6 +296,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             setFormData({
               name: resolvedName,
               category: product.category || "",
+              sku: (product as any).sku || "",
               brand: resolvedBrand,
               price: product.price?.toString() || "",
               cost_price: (product as any).cost_price?.toString() || "",
@@ -304,6 +319,13 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             // Initialize search query with product name
             setSearchQuery(product.name || "")
 
+            // Existing compatible models so the admin can add/remove later
+            try {
+              setCompatibleModels(await phoneModelsService.getForProduct(editingProductId))
+            } catch (err) {
+              console.error('Failed to load compatible models:', err)
+            }
+
             // Shop stock quantities are now fetched above before setFormData
           }
         } catch (error) {
@@ -316,9 +338,11 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       fetchProduct()
     } else {
       // Reset form for new product
+      setCompatibleModels([])
       setFormData({
         name: "",
         category: "",
+        sku: "",
         brand: "",
         price: "",
         cost_price: "",
@@ -830,6 +854,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       const productData: any = {
         name: formData.name,
         category: formData.category,
+        sku: formData.sku.trim() || null,
         brand: formData.brand || null,
         price: sellPrice, // Sell price is the main price shown to customers
         cost_price: costPrice,
@@ -845,6 +870,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         condition: formData.condition,
         specs: Object.keys(specsToSave).length > 0 ? specsToSave : null,
         is_featured: formData.is_featured,
+        // Relationship rows, saved by the API into product_compatibility.
+        // One product, many models - stock stays a single value.
+        compatible_model_ids: compatibleModels.map((m) => m.id),
       }
 
       // Set primary image
@@ -919,7 +947,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
           const price = (created as any).price ?? (created as any).data?.price ?? basePrice
           const name = (created as any).name ?? (created as any).data?.name ?? formData.name
           if (barcode) {
-            setTimeout(() => onProductSaved({ name, barcode, price }), 200)
+            setTimeout(() => onProductSaved({
+              id: createdId,
+              name,
+              barcode,
+              price,
+              brand: formData.brand || undefined,
+              model: specsToSave.model || undefined,
+            }), 200)
           }
         }
       }
@@ -1045,6 +1080,21 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold mb-2">SKU</label>
+                <Input
+                  type="text"
+                  name="sku"
+                  value={formData.sku}
+                  onChange={handleChange}
+                  placeholder="DSP001"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Optional shop code for this one physical item. The scannable barcode is still
+                  generated automatically.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="category-select" className="block text-sm font-semibold mb-2">Category *</label>
@@ -1140,6 +1190,18 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                   </div>
                 </div>
               )}
+
+              {/* One product -> many phone models. Applies to any spare part
+                  (display, battery, charging port, camera...), not just displays. */}
+              <div className="pt-4 border-t border-border">
+                <CompatibleModelsPicker
+                  value={compatibleModels}
+                  onChange={setCompatibleModels}
+                  brand={formData.brand}
+                  brandModelSuggestions={availableModels}
+                  disabled={loading}
+                />
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

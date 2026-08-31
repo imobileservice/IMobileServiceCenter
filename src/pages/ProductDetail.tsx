@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate, useParams, Link } from "react-router-dom"
 import { motion } from "framer-motion"
-import { ShoppingCart, ArrowLeft, Star, Truck, Shield, RotateCcw, Heart, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
+import { ShoppingCart, ArrowLeft, Star, Truck, Shield, RotateCcw, Heart, Loader2, ChevronLeft, ChevronRight, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuthStore } from "@/lib/store"
 import { cartService } from "@/lib/supabase/services/cart"
@@ -14,6 +14,8 @@ import ProductReviews from "@/components/product-reviews"
 import SimilarProducts from "@/components/similar-products"
 import { getApiUrl } from "@/lib/utils/api"
 import { formatCurrency } from "@/lib/utils/currency"
+import { composeModelLabelName } from "@/lib/labels/label-sheet"
+import { getSelectedPhoneModel } from "@/lib/phone-model-session"
 
 // Product type matching database schema
 interface Product {
@@ -37,7 +39,31 @@ interface Product {
     color?: string
     price: number
   }>
+  /**
+   * Phones this one part fits. A relationship list only - `stock` above is the
+   * single stock value for the physical product, whatever its length.
+   */
+  compatible_models?: Array<{
+    id: string
+    name: string
+    label: string
+    brand_name?: string
+    model_code?: string
+  }>
 }
+
+/** Compatible models shown before the "View all" link kicks in. */
+const COMPATIBLE_MODELS_PREVIEW = 8
+
+/**
+ * Whether a customer may see the full list of phones a part fits.
+ *
+ * Off: the shop sells one physical display to owners of several different
+ * phones, and a buyer who sees the other models on the list stops trusting that
+ * the part is "for his phone". He is instead shown his OWN model name (see
+ * soldAsName below), which is what he came in asking for.
+ */
+const SHOW_COMPATIBLE_MODELS_TO_CUSTOMERS = false
 
 export default function ProductDetailPage() {
   const navigate = useNavigate()
@@ -57,6 +83,9 @@ export default function ProductDetailPage() {
   const [selectedColor, setSelectedColor] = useState<string>("")
   const [currentPrice, setCurrentPrice] = useState<number>(0)
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0)
+  const [showAllCompatible, setShowAllCompatible] = useState(false)
+  // The phone the shopper picked in "Find Parts For Your Phone", if any
+  const [shopperModel] = useState(() => getSelectedPhoneModel())
 
   // Variant structure type
   interface VariantConfig {
@@ -352,6 +381,23 @@ export default function ProductDetailPage() {
     const rest = displayName.startsWith(brandPrefix) ? displayName.slice(brandPrefix.length) : displayName
     displayName = `${brandPrefix}${specsModelName} ${rest}`.trim().replace(/\s+/g, " ")
   }
+
+  // The shopper told us his phone and this part fits it: show it under HIS
+  // model name. Same product, same price, same one stock pool - only wording.
+  const soldAsName = shopperModel && product.compatible_models?.some((m) => m.id === shopperModel.id)
+    ? composeModelLabelName(
+        {
+          id: product.id,
+          name: String(product.name || ""),
+          barcode: null,
+          brand: product.brand,
+          model: specsModelName || undefined,
+        },
+        shopperModel.name
+      )
+    : ""
+
+  if (soldAsName) displayName = soldAsName
 
   // Check if product is mobile phone or tablet (needs variant selectors)
   // More flexible category check - handle both slug format and display format
@@ -720,6 +766,49 @@ export default function ProductDetailPage() {
                     <div className="text-sm text-muted-foreground italic">
                       Variant options will be available once configured in the admin panel.
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* Compatible phone models.
+                  Deliberately NOT shown to customers: the shop does not want a
+                  buyer to learn that the part he is buying also fits other
+                  phones. The list stays available to staff through the admin
+                  product form and the till. */}
+              {SHOW_COMPATIBLE_MODELS_TO_CUSTOMERS && (product.compatible_models?.length || 0) > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-bold mb-3">
+                    Compatible Models{" "}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      ({product.compatible_models!.length})
+                    </span>
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {(showAllCompatible
+                      ? product.compatible_models!
+                      : product.compatible_models!.slice(0, COMPATIBLE_MODELS_PREVIEW)
+                    ).map((model) => (
+                      <Link
+                        key={model.id}
+                        to={`/shop?phone_model=${encodeURIComponent(model.id)}&phone_model_name=${encodeURIComponent(model.label || model.name)}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted hover:bg-primary/10 border border-border text-sm transition-colors"
+                        title={`See all parts for ${model.label || model.name}`}
+                      >
+                        <Check className="w-3.5 h-3.5 text-primary" />
+                        {model.label || model.name}
+                      </Link>
+                    ))}
+                  </div>
+                  {product.compatible_models!.length > COMPATIBLE_MODELS_PREVIEW && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCompatible((prev) => !prev)}
+                      className="mt-3 text-sm font-medium text-primary hover:underline"
+                    >
+                      {showAllCompatible
+                        ? "Show fewer models"
+                        : `View all ${product.compatible_models!.length} compatible models`}
+                    </button>
                   )}
                 </div>
               )}

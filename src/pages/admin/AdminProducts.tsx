@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X, Check, Loader2 } from "lucide-react"
+import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X, Check, Loader2, FileSpreadsheet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -12,6 +12,7 @@ import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import type { Database } from "@/lib/supabase/types"
 import BarcodeLabelModal from "@/components/admin/barcode-label-modal"
+import CompatibilityImportModal from "@/components/admin/compatibility-import-modal"
 import { printLabelCopies } from "@/lib/labels/print-labels"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
@@ -28,6 +29,7 @@ export default function ProductsPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
   const [stockFilter, setStockFilter] = useState<'all' | 'very_low' | 'low'>('all')
+  const [showCompatibilityImport, setShowCompatibilityImport] = useState(false)
 
   const [restockProduct, setRestockProduct] = useState<any>(null)
   const [restockQtyMeegoda, setRestockQtyMeegoda] = useState("")
@@ -123,9 +125,24 @@ export default function ProductsPage() {
     else toast.error('Could not open the printer')
   }
 
-  const handleProductSaved = (product: { name: string; barcode: string; price: number }) => {
-    // Auto-open barcode print modal for newly created products
-    setPrintingProducts([{ name: product.name, barcode: product.barcode, price: product.price }])
+  const handleProductSaved = (product: {
+    id?: string
+    name: string
+    barcode: string
+    price: number
+    brand?: string
+    model?: string
+  }) => {
+    // Auto-open barcode print modal for newly created products. The id is what
+    // lets that modal offer one sticker per compatible phone model.
+    setPrintingProducts([{
+      id: product.id,
+      name: product.name,
+      barcode: product.barcode,
+      price: product.price,
+      brand: product.brand,
+      model: product.model,
+    }])
     // Refresh product list
     fetchProducts(true)
   }
@@ -150,7 +167,9 @@ export default function ProductsPage() {
       id: p.id,
       name: getDisplayName(p),
       barcode: (p as any).barcode,
-      price: p.price
+      price: p.price,
+      brand: (p as any).brand || undefined,
+      model: (p as any).specs?.model || undefined,
     })));
   }
 
@@ -318,6 +337,14 @@ export default function ProductsPage() {
            </div>
            
            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+             <Button
+               variant="outline"
+               onClick={() => setShowCompatibilityImport(true)}
+               className="w-full sm:w-auto gap-2 font-bold"
+             >
+               <FileSpreadsheet className="w-4 h-4" />
+               Import Compatible Models
+             </Button>
              <Button
                variant={stockFilter === 'very_low' ? "default" : "outline"}
                onClick={() => setStockFilter(stockFilter === 'very_low' ? 'all' : 'very_low')}
@@ -515,7 +542,16 @@ export default function ProductsPage() {
                         onClick={(e) => {
                           const barcode = (product as any).barcode
                           if (!barcode) return
-                          const item = { id: product.id, name: getDisplayName(product), barcode, price: product.price }
+                          // brand + model let the label modal swap in another
+                          // compatible phone's name without changing the barcode
+                          const item = {
+                            id: product.id,
+                            name: getDisplayName(product),
+                            barcode,
+                            price: product.price,
+                            brand: (product as any).brand || undefined,
+                            model: (product as any).specs?.model || undefined,
+                          }
                           // Shift/Ctrl-click skips the modal and sends one sticker straight out.
                           if (e.shiftKey || e.ctrlKey || e.metaKey) handleQuickPrint(item)
                           else setPrintingProducts([item])
@@ -551,6 +587,13 @@ export default function ProductsPage() {
         onClose={handleModalClose}
         editingProductId={editingProduct}
         onProductSaved={handleProductSaved}
+      />
+
+      {/* Bulk compatibility import: SKU | Product | Compatible Models */}
+      <CompatibilityImportModal
+        isOpen={showCompatibilityImport}
+        onClose={() => setShowCompatibilityImport(false)}
+        onImported={() => fetchProducts(true)}
       />
 
       {/* Barcode Print Modal */}

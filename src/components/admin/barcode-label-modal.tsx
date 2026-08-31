@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Printer, Minus, Plus, Tag, ScrollText, FileText } from "lucide-react"
+import { X, Printer, Minus, Plus, Tag, ScrollText, FileText, Smartphone, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Barcode from 'react-barcode'
 import { printLabels } from '@/lib/labels/print-labels'
@@ -9,8 +9,12 @@ import {
   LABEL_H_MM,
   BARCODE_W_MM,
   BARCODE_H_MM,
+  composeModelLabelName,
+  nameSizeClass,
+  NAME_ONE_LINE_MAX,
   type LabelProduct,
 } from '@/lib/labels/label-sheet'
+import { phoneModelsService, type PhoneModel } from '@/lib/supabase/services/phone-models'
 
 export type { LabelProduct }
 
@@ -30,8 +34,17 @@ interface BarcodeLabelModalProps {
   products: LabelProduct[] | null
 }
 
+/** Stable key for a product in the print queue. */
+const keyOf = (p: LabelProduct) => p.id || p.barcode || ''
+
 export default function BarcodeLabelModal({ isOpen, onClose, products }: BarcodeLabelModalProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({})
+  // Copies per compatible phone model: { productId: { phoneModelId: copies } }.
+  // Each of those stickers carries the SAME barcode as the product - only the
+  // printed model name differs, so stock stays one pool.
+  const [modelQuantities, setModelQuantities] = useState<Record<string, Record<string, number>>>({})
+  const [compatibility, setCompatibility] = useState<Record<string, PhoneModel[]>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [printMode, setPrintMode] = useState<'thermal' | 'a4'>('thermal')
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -39,11 +52,32 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
     if (products?.length) {
       const initial: Record<string, number> = {}
       products.forEach(p => {
-        initial[p.id || p.barcode || ''] = 1
+        initial[keyOf(p)] = 1
       })
       setQuantities(initial)
+      setModelQuantities({})
+      setExpanded({})
     }
   }, [products])
+
+  // Compatible models for every product in the queue, in one request.
+  useEffect(() => {
+    if (!isOpen || !products?.length) return
+
+    const ids = products.map(p => p.id).filter(Boolean) as string[]
+    if (ids.length === 0) return
+
+    let cancelled = false
+    phoneModelsService.getForProducts(ids).then(map => {
+      if (cancelled) return
+      setCompatibility(map)
+      // Left collapsed on purpose. The shop pre-prints ONE sticker per box with
+      // the internal name; per-phone stickers are the exception, not the
+      // default, so the admin has to ask for them.
+    })
+
+    return () => { cancelled = true }
+  }, [isOpen, products])
 
   if (!products || products.length === 0) return null
 
@@ -54,16 +88,50 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
     }))
   }
 
-  // Flatten the array of copies to spool to the printer
+  const setModelQuantity = (productId: string, modelId: string, value: number) => {
+    setModelQuantities(prev => ({
+      ...prev,
+      [productId]: {
+        ...(prev[productId] || {}),
+        [modelId]: Math.max(0, Math.min(200, value)),
+      },
+    }))
+  }
+
+  const updateModelQuantity = (productId: string, modelId: string, delta: number) => {
+    setModelQuantity(productId, modelId, (modelQuantities[productId]?.[modelId] || 0) + delta)
+  }
+
+  /** One sticker for every phone this product fits. */
+  const setOnePerModel = (productId: string, models: PhoneModel[], value: number) => {
+    const next: Record<string, number> = {}
+    models.forEach(m => { next[m.id] = value })
+    setModelQuantities(prev => ({ ...prev, [productId]: next }))
+  }
+
+  // Flatten the array of copies to spool to the printer. Generic stickers keep
+  // the product name; per-model stickers swap in that phone's name.
   const printItems = products.flatMap(p => {
-    const q = quantities[p.id || p.barcode || ''] || 0
-    return Array.from({ length: q }).fill(p) as LabelProduct[]
+    const id = keyOf(p)
+
+    const generic = Array.from({ length: quantities[id] || 0 }).fill(p) as LabelProduct[]
+
+    const perModel = (compatibility[p.id || ''] || []).flatMap(model => {
+      const copies = modelQuantities[id]?.[model.id] || 0
+      if (copies === 0) return [] as LabelProduct[]
+
+      const named: LabelProduct = { ...p, name: composeModelLabelName(p, model.name) }
+      return Array.from({ length: copies }).fill(named) as LabelProduct[]
+    })
+
+    return [...generic, ...perModel]
   })
 
   const totalLabels = printItems.length
 
-  // Preview the first product for visual representation
-  const previewProduct = products[0] || null
+  // Preview whatever is first in the queue, so a per-model sticker is visible
+  // before it is printed.
+  const previewProduct = printItems[0] || products[0] || null
 
   const handlePrint = () => {
     if (printItems.length === 0) return
@@ -164,9 +232,28 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                           {previewProduct.barcode}
                         </p>
 
-                        <p style={{ fontSize: `${pt(6.5)}px`, fontWeight: 700, textAlign: 'center', margin: `${mm(0.6)}px 0 0`, lineHeight: 1.15, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {previewProduct.name}
-                        </p>
+                        {(() => {
+                          // Mirrors .name / .name.sm / .name.wrap in label-sheet.ts
+                          const cls = nameSizeClass(previewProduct.name || '')
+                          const wraps = cls.includes('wrap')
+                          return (
+                            <p style={{
+                              fontSize: `${pt(cls ? 5.5 : 6.5)}px`,
+                              fontWeight: 700,
+                              textAlign: 'center',
+                              margin: `${mm(0.6)}px 0 0`,
+                              lineHeight: 1.15,
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              textOverflow: wraps ? 'clip' : 'ellipsis',
+                              whiteSpace: wraps ? 'normal' : 'nowrap',
+                              overflowWrap: wraps ? 'anywhere' : 'normal',
+                              maxHeight: wraps ? `${mm(5)}px` : undefined,
+                            }}>
+                              {previewProduct.name}
+                            </p>
+                          )
+                        })()}
                         {!isDisplay && previewProduct.price !== undefined && (
                           <p style={{ fontSize: `${pt(7)}px`, fontWeight: 800, textAlign: 'center', margin: `${mm(0.4)}px 0 0`, lineHeight: 1.1 }}>
                             Rs. {previewProduct.price.toLocaleString()}
@@ -256,8 +343,14 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                       const id = p.id || p.barcode || '';
                       if (!id) return null;
                       const isDisplay = p.name?.toLowerCase().includes('display');
+                      const models = compatibility[p.id || ''] || []
+                      const modelCopies = modelQuantities[id] || {}
+                      const modelTotal = Object.values(modelCopies).reduce((a, b) => a + b, 0)
+                      const isExpanded = expanded[id]
+
                       return (
-                        <div key={id} className="flex items-center justify-between border-b border-border/50 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
+                        <div key={id} className="border-b border-border/50 last:border-0 pb-3 mb-3 last:pb-0 last:mb-0">
+                        <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0 pr-4">
                             <p className="font-semibold text-xs truncate leading-tight">{p.name}</p>
                             <div className="flex items-center gap-2 mt-0.5">
@@ -281,6 +374,97 @@ export default function BarcodeLabelModal({ isOpen, onClose, products }: Barcode
                             <button onClick={() => updateQuantity(id, 1)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted"><Plus className="w-3 h-3"/></button>
                             <button onClick={() => updateQuantity(id, 10)} className="w-7 h-7 rounded bg-background border border-border shadow-sm flex justify-center items-center hover:bg-muted text-[10px] font-bold">+10</button>
                           </div>
+                        </div>
+
+                        {/* Per phone model stickers. Same barcode on every one:
+                            the model changes the printed text, never the SKU. */}
+                        {models.length > 0 && (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              onClick={() => setExpanded(prev => ({ ...prev, [id]: !prev[id] }))}
+                              className="w-full flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
+                            >
+                              <Smartphone className="w-3.5 h-3.5" />
+                              Print per phone model ({models.length})
+                              {modelTotal > 0 && (
+                                <span className="text-[10px] bg-primary/10 px-1.5 py-0.5 rounded font-bold">
+                                  {modelTotal} label{modelTotal === 1 ? '' : 's'}
+                                </span>
+                              )}
+                              <ChevronDown className={`w-3.5 h-3.5 ml-auto transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isExpanded && (
+                              <div className="mt-2 rounded-lg border border-border bg-background p-2">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                  <p className="text-[10px] text-muted-foreground leading-tight">
+                                    Every sticker below carries barcode{' '}
+                                    <b className="font-mono">{p.barcode}</b> — one stock pool, one SKU.
+                                  </p>
+                                  <div className="flex gap-1 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setOnePerModel(id, models, 1)}
+                                      className="px-2 py-1 rounded border border-border text-[10px] font-bold hover:bg-muted"
+                                    >
+                                      ×1 each
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setOnePerModel(id, models, 0)}
+                                      className="px-2 py-1 rounded border border-border text-[10px] font-bold hover:bg-muted"
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                                  {models.map(model => {
+                                    const labelText = composeModelLabelName(p, model.name)
+                                    const copies = modelCopies[model.id] || 0
+                                    return (
+                                      <div key={model.id} className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-[11px] font-semibold truncate leading-tight">{model.label}</p>
+                                          <p className="text-[9px] text-muted-foreground truncate leading-tight">
+                                            prints: {labelText}
+                                            {labelText.length > NAME_ONE_LINE_MAX && ' · small type'}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => updateModelQuantity(id, model.id, -1)}
+                                            className="w-6 h-6 rounded bg-background border border-border flex justify-center items-center hover:bg-muted"
+                                          >
+                                            <Minus className="w-3 h-3" />
+                                          </button>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max="200"
+                                            value={copies}
+                                            onChange={(e) => setModelQuantity(id, model.id, parseInt(e.target.value) || 0)}
+                                            className="w-10 h-6 text-center font-bold text-xs border border-border rounded bg-background focus:outline-none focus:ring-1 focus:ring-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => updateModelQuantity(id, model.id, 1)}
+                                            className="w-6 h-6 rounded bg-background border border-border flex justify-center items-center hover:bg-muted"
+                                          >
+                                            <Plus className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         </div>
                       )
                     })}

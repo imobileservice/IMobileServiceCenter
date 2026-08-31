@@ -97,6 +97,10 @@ export const productsService = {
     minPrice?: number
     maxPrice?: number
     dynamicFilters?: Record<string, any>
+    /** phone_models.id - shows every product compatible with that phone. */
+    phoneModel?: string
+    /** Free-text phone model, used when only the name is known. */
+    phoneModelName?: string
   }) {
     return withRetry(async () => {
       // Check if we have Supabase credentials - if not, skip API and use direct calls
@@ -118,6 +122,8 @@ export const productsService = {
           if (filters?.search) params.set('search', filters.search)
           if (filters?.minPrice !== undefined) params.set('minPrice', String(filters.minPrice))
           if (filters?.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice))
+          if (filters?.phoneModel) params.set('phone_model', filters.phoneModel)
+          if (filters?.phoneModelName) params.set('phone_model_name', filters.phoneModelName)
 
           const queryString = params.toString()
           const cacheBuster = `_t=${Date.now()}`
@@ -171,6 +177,25 @@ export const productsService = {
         }
 
         let query = supabase.from('products').select('*')
+
+        // Phone compatibility filter has to be honoured here too, otherwise an
+        // API outage would silently show the whole catalogue for "Redmi Note 8".
+        if (filters?.phoneModel) {
+          const { data: links, error: linkError } = await supabase
+            .from('product_compatibility')
+            .select('product_id')
+            .eq('phone_model_id', filters.phoneModel)
+
+          if (linkError) {
+            console.warn('[productsService] Compatibility lookup failed:', linkError.message)
+            return [] as Product[]
+          }
+
+          const compatibleIds = Array.from(new Set((links || []).map((l: any) => l.product_id)))
+          if (compatibleIds.length === 0) return [] as Product[]
+
+          query = query.in('id', compatibleIds)
+        }
 
         // Filter by category_id if available, otherwise try category field (backward compatibility)
         if (categoryFilter) {

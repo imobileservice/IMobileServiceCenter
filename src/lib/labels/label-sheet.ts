@@ -5,6 +5,76 @@ export interface LabelProduct {
   name: string
   barcode: string | null
   price?: number
+  /**
+   * Brand and the model already baked into `name`. Both are needed to swap in a
+   * different compatible model when a sticker is printed for one specific phone
+   * ("Redmi Note 8 Display" -> "Redmi Note 9S Display"). The BARCODE never
+   * changes with the model - it identifies the physical product, so all of those
+   * stickers scan to the same SKU and the same single stock pool.
+   */
+  brand?: string
+  model?: string
+}
+
+/**
+ * The sticker text for one compatible phone model.
+ *
+ * Mirrors how the product form auto-generates a name (brand + model + part), so
+ * a per-model sticker reads exactly like a normal one:
+ *
+ *   name "Redmi Note 8 Display", brand "Redmi", model "Note 8"
+ *     + "Note 9S"  ->  "Redmi Note 9S Display"
+ *
+ * The part word is whatever remains after the brand and the current model are
+ * removed, which keeps qualifiers like "Incell" or "W/F" on the label.
+ */
+export const composeModelLabelName = (product: LabelProduct, modelName: string): string => {
+  const model = (modelName || '').trim()
+  if (!model) return product.name
+
+  const brand = (product.brand || '').trim()
+  let part = (product.name || '').trim()
+
+  // Strip a leading brand ("Redmi Note 8 Display" -> "Note 8 Display")
+  if (brand && part.toLowerCase().startsWith(brand.toLowerCase())) {
+    part = part.slice(brand.length).trim()
+  }
+
+  // Strip the model this product was named after, wherever it sits
+  const baseModel = (product.model || '').trim()
+  if (baseModel) {
+    const index = part.toLowerCase().indexOf(baseModel.toLowerCase())
+    if (index !== -1) {
+      part = (part.slice(0, index) + part.slice(index + baseModel.length)).trim()
+    }
+  }
+
+  part = part.replace(/\s+/g, ' ').trim()
+
+  // A model name that already carries its brand ("Xiaomi Redmi Note 8") must not
+  // get the brand a second time.
+  const modelHasBrand = brand && model.toLowerCase().startsWith(brand.toLowerCase())
+  const prefix = modelHasBrand ? model : [brand, model].filter(Boolean).join(' ')
+
+  return [prefix, part].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Type size for the name line, chosen from its length.
+ *
+ * The line is 37.4mm wide: about 31 characters at 6.5pt and 37 at 5.5pt. Past
+ * that the name wraps to two lines instead of being silently cut off with an
+ * ellipsis, which is what used to happen to the longer multi-model names.
+ * Two 5.5pt lines add ~1.8mm and the layout has ~2.8mm of headroom.
+ */
+export const NAME_ONE_LINE_MAX = 30
+export const NAME_SMALL_MAX = 36
+
+export const nameSizeClass = (name: string): string => {
+  const length = (name || '').length
+  if (length <= NAME_ONE_LINE_MAX) return ''
+  if (length <= NAME_SMALL_MAX) return ' sm'
+  return ' sm wrap'
 }
 
 export type PrintMode = 'thermal' | 'a4'
@@ -90,7 +160,7 @@ export const buildLabelSheetHtml = (items: LabelProduct[], mode: PrintMode): str
       `<p class="shop${isDisplay ? '' : ' long'}">${isDisplay ? 'imobileservicecenter.lk' : 'IMobile Service &amp; Repair Center'}</p>` +
       `<div class="bars">${svgCache[prod.barcode || ''] || ''}</div>` +
       `<p class="code">${esc(prod.barcode || '')}</p>` +
-      `<p class="name">${esc(prod.name || '')}</p>` +
+      `<p class="name${nameSizeClass(prod.name || '')}">${esc(prod.name || '')}</p>` +
       priceHtml + taglineHtml +
       `</div></div>`
   }).join('')
@@ -204,6 +274,11 @@ html, body {
   max-width: 100%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Long names step down a size, then wrap to two lines, rather than losing their
+   tail to an ellipsis. A model name is the whole point of the sticker, so it
+   must never be the part that gets cut. */
+.name.sm { font-size: 5.5pt; }
+.name.wrap { white-space: normal; overflow-wrap: anywhere; max-height: 5mm; }
 .price { font-size: 7pt; font-weight: 800; line-height: 1.1; margin: 0.4mm 0 0; color: #000; }
 /* Was 4pt grey, which the thermal head dropped almost entirely. */
 .tagline { font-size: 5.5pt; font-weight: 700; line-height: 1.1; margin: 0.4mm 0 0; color: #000; }

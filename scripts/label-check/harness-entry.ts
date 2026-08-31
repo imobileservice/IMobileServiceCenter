@@ -1,6 +1,6 @@
 // Renders the REAL label sheet builder used by the app, so what Chrome prints here
 // is byte-for-byte what the Print button produces.
-import { buildLabelSheetHtml, type LabelProduct } from '@/lib/labels/label-sheet'
+import { buildLabelSheetHtml, composeModelLabelName, type LabelProduct } from '@/lib/labels/label-sheet'
 
 const params = new URLSearchParams(location.search)
 const qty = parseInt(params.get('qty') || '3', 10)
@@ -12,10 +12,32 @@ const base: LabelProduct[] = [
   { id: '3', name: 'Very Long Product Name That Should Truncate Cleanly Here', barcode: '000234', price: 999999 },
 ]
 
+/**
+ * One physical display that fits several phones, printed for a specific model.
+ * Every one of these carries barcode 000235 - only the printed name changes, so
+ * they all scan back to the same SKU and the same stock pool.
+ */
+const multiFit: LabelProduct = {
+  id: '4',
+  name: 'Redmi Note 8 Display',
+  barcode: '000235',
+  brand: 'Redmi',
+  model: 'Note 8',
+}
+
+const perModel: LabelProduct[] = ['Note 8T', 'Note 9S', 'Note 10 Pro Max 5G Special'].map(
+  (model, i) => ({
+    ...multiFit,
+    id: `4-${i}`,
+    name: composeModelLabelName(multiFit, model),
+  })
+)
+
 // Mimic the modal's spool: `qty` copies of the first product, then one of each other.
 const items: LabelProduct[] = [
   ...Array.from({ length: qty }, () => base[0]),
   ...base.slice(1),
+  ...perModel,
 ]
 
 const html = buildLabelSheetHtml(items, mode)

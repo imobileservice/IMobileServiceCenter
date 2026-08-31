@@ -78,6 +78,22 @@ router.post('/', async (req: Request, res: Response) => {
 
     const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
 
+    /**
+     * Only the fields process_sale understands are forwarded.
+     *
+     * `sold_as` renames the printed line after the customer's own phone
+     * ("Samsung A02 Display" for a display stocked as M02). It is the receipt
+     * text ONLY - product_id is unchanged, so one stock pool is debited exactly
+     * once no matter which model name was used.
+     */
+    const rpcItems = items.map((item: any) => ({
+      product_id: item.product_id,
+      quantity: item.quantity,
+      price: item.price,
+      ...(item.sold_as ? { sold_as: String(item.sold_as).slice(0, 200) } : {}),
+      ...(item.phone_model_id ? { phone_model_id: String(item.phone_model_id) } : {}),
+    }))
+
     const rpcArgs: any = {
       p_customer_id: customer_id || null,
       p_customer_name: customer_name || 'Walk-in Customer',
@@ -88,7 +104,7 @@ router.post('/', async (req: Request, res: Response) => {
       p_tax: Number(tax || 0),
       p_notes: notes || null,
       p_created_by: posSession?.cashier_email || created_by || 'cashier',
-      p_items: items,
+      p_items: rpcItems,
       p_shop: posSession?.shop || req.body.shop || 'Meegoda',
     }
 

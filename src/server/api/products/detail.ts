@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import { createServerClient } from '@supabase/ssr'
+import { loadCompatibilityMap } from '../utils/compatibility'
 
 /**
  * GET /api/products/:id
@@ -87,6 +88,10 @@ export async function detailHandler(req: Request, res: Response) {
     // Resolve stock from join
     const stockRec = Array.isArray(product.inv_stock) ? product.inv_stock[0] : product.inv_stock;
 
+    // Compatible phone models. Purely a relationship list - it never affects
+    // the stock resolved above, which stays the one inv_stock row.
+    const compatibilityMap = await loadCompatibilityMap(supabase as any, [id])
+
     // Combine product data with images
     const productWithImages = {
       ...product,
@@ -94,6 +99,7 @@ export async function detailHandler(req: Request, res: Response) {
       images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
       category: product.categories?.slug || product.category, // Use category slug from join or fallback
       stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
+      compatible_models: compatibilityMap.get(id) || [],
     };
 
     return res.json({ data: productWithImages })

@@ -28,6 +28,17 @@ import {
 } from './hero-slides'
 import { productSearchHandler } from './product-search'
 import { getBrandsHandler, createBrandHandler, getBrandModelsHandler } from './brands'
+import {
+  getPhoneModelsHandler,
+  createPhoneModelHandler,
+  bulkCreatePhoneModelsHandler,
+  updatePhoneModelHandler,
+  deletePhoneModelHandler,
+  getProductCompatibilityHandler,
+  setProductCompatibilityHandler,
+  bulkProductCompatibilityHandler,
+} from './phone-models'
+import { importCompatibilityHandler } from './compatibility-import'
 
 
 const router = Router()
@@ -63,6 +74,23 @@ router.get('/data/stats', getStatsHandler)
 router.post('/products', createProductHandler)
 router.put('/products/:id', updateProductHandler)
 router.delete('/products/:id', deleteProductHandler)
+
+// Phone model compatibility: one product <-> many phone models.
+// Declared before nothing else touches /products/:id, so ordering is free here.
+// Declared before '/products/:id/compatibility' so "compatibility" is not read
+// as a product id.
+router.post('/products/compatibility/bulk', bulkProductCompatibilityHandler)
+router.get('/products/:id/compatibility', getProductCompatibilityHandler)
+router.put('/products/:id/compatibility', setProductCompatibilityHandler)
+
+router.get('/phone-models', getPhoneModelsHandler)
+router.post('/phone-models', createPhoneModelHandler)
+router.post('/phone-models/bulk', bulkCreatePhoneModelsHandler)
+router.put('/phone-models/:id', updatePhoneModelHandler)
+router.delete('/phone-models/:id', deletePhoneModelHandler)
+
+// Spreadsheet import: SKU | Product | Compatible Models
+router.post('/compatibility/import', importCompatibilityHandler)
 
 // Product auto-search endpoint (POST for production, GET for diagnostic check)
 router.post('/product-search', productSearchHandler)
