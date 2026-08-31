@@ -1,6 +1,24 @@
 import { getApiUrl } from '../../utils/api'
 
 /**
+ * Every request here is bounded.
+ *
+ * These calls run inside dialogs that wait on them - the product form showed
+ * "Loading product details..." until its compatibility call came back - so a
+ * request the network never answers must fail rather than hang for ever.
+ */
+const REQUEST_TIMEOUT_MS = 8000
+
+const timeoutSignal = (): AbortSignal | undefined => {
+  try {
+    return AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  } catch {
+    // Older browsers without AbortSignal.timeout - no bound, same as before.
+    return undefined
+  }
+}
+
+/**
  * Phone models and product compatibility.
  *
  * A phone model is shared reference data ("Redmi Note 8" exists once); a
@@ -36,6 +54,7 @@ async function getJson(path: string): Promise<any | null> {
   try {
     const response = await fetch(getApiUrl(path), {
       headers: { 'Content-Type': 'application/json' },
+      signal: timeoutSignal(),
     })
     if (!response.ok) return null
     return await response.json()
@@ -70,6 +89,7 @@ export const phoneModelsService = {
     const response = await fetch(getApiUrl('/api/admin/phone-models'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: timeoutSignal(),
       body: JSON.stringify({
         brand: input.brand,
         brand_id: input.brandId,
@@ -92,6 +112,7 @@ export const phoneModelsService = {
     const response = await fetch(getApiUrl('/api/admin/phone-models/bulk'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: timeoutSignal(),
       body: JSON.stringify({
         brand: input.brand,
         brand_id: input.brandId,
@@ -108,6 +129,7 @@ export const phoneModelsService = {
     const response = await fetch(getApiUrl(`/api/admin/phone-models/${id}`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
+      signal: timeoutSignal(),
       body: JSON.stringify(updates),
     })
 
@@ -117,7 +139,10 @@ export const phoneModelsService = {
   },
 
   async remove(id: string): Promise<void> {
-    const response = await fetch(getApiUrl(`/api/admin/phone-models/${id}`), { method: 'DELETE' })
+    const response = await fetch(getApiUrl(`/api/admin/phone-models/${id}`), {
+      method: 'DELETE',
+      signal: timeoutSignal(),
+    })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
       throw new Error(data.error || 'Failed to delete phone model')
@@ -139,6 +164,7 @@ export const phoneModelsService = {
       const response = await fetch(getApiUrl('/api/admin/products/compatibility/bulk'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+      signal: timeoutSignal(),
         body: JSON.stringify({ product_ids: productIds }),
       })
 
@@ -157,6 +183,7 @@ export const phoneModelsService = {
     const response = await fetch(getApiUrl(`/api/admin/products/${productId}/compatibility`), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
+      signal: timeoutSignal(),
       body: JSON.stringify({ phone_model_ids: phoneModelIds }),
     })
 

@@ -62,54 +62,89 @@ const MODEL_SELECT = 'id, brand_id, name, model_code, aliases, is_active, brands
 
 export { MODEL_SELECT }
 
+interface SearchableModel {
+  id: string
+  /** Lower-cased haystack: "redmi 10 4g", the bare name, the code, the aliases. */
+  haystacks: string[]
+}
+
 /**
- * Phone model ids whose name / code / alias matches the search text.
- * Returns [] (never throws) when the tables are missing.
+ * The whole model list, briefly cached.
+ *
+ * The catalogue is a few hundred rows and POS search fires on every keystroke,
+ * so it is read once and reused for a few seconds. A model added in the admin
+ * shows up on the next refill.
+ */
+let modelCache: { at: number; models: SearchableModel[] } | null = null
+const MODEL_CACHE_MS = 30_000
+
+async function loadSearchableModels(supabase: SupabaseClient): Promise<SearchableModel[]> {
+  if (modelCache && Date.now() - modelCache.at < MODEL_CACHE_MS) return modelCache.models
+
+  const { data, error } = await supabase
+    .from('phone_models')
+    .select('id, name, model_code, aliases, brands:brand_id (name)')
+    .limit(5000)
+
+  if (error) {
+    if (!isMissingRelation(error)) {
+      console.warn('[Compatibility] Model load failed:', error.message)
+    }
+    return []
+  }
+
+  const models: SearchableModel[] = (data || []).map((row: any) => {
+    const brand = Array.isArray(row.brands) ? row.brands[0] : row.brands
+    const brandName = brand?.name || ''
+    const aliases: string[] = Array.isArray(row.aliases) ? row.aliases : []
+
+    return {
+      id: row.id,
+      haystacks: [
+        // The brand lives in its own column, so a cashier typing the natural
+        // "Redmi 10 4G" would never match the stored name "10 4G" on its own.
+        [brandName, row.name].filter(Boolean).join(' '),
+        row.name || '',
+        row.model_code || '',
+        ...aliases.map((a) => String(a)),
+      ]
+        .filter(Boolean)
+        .map((s) => s.toLowerCase()),
+    }
+  })
+
+  modelCache = { at: Date.now(), models }
+  return models
+}
+
+/**
+ * Phone model ids whose brand+name / name / code / alias matches the search
+ * text. Returns [] (never throws) when the tables are missing.
+ *
+ * Matching is done here rather than in SQL because the useful haystack spans
+ * two tables (brand name + model name) and a text[] of aliases, neither of
+ * which PostgREST can ILIKE across in one query.
  */
 export async function findMatchingModelIds(
   supabase: SupabaseClient,
   search: string,
   limit = 200
 ): Promise<string[]> {
-  const term = search.trim()
+  const term = search.trim().toLowerCase()
   if (!term) return []
 
   try {
-    const escaped = term.replace(/[%,()]/g, ' ').trim()
-    if (!escaped) return []
+    const models = await loadSearchableModels(supabase)
+    const ids: string[] = []
 
-    const { data, error } = await supabase
-      .from('phone_models')
-      .select('id, name, model_code, aliases')
-      .or(`name.ilike.%${escaped}%,model_code.ilike.%${escaped}%`)
-      .limit(limit)
-
-    if (error) {
-      if (!isMissingRelation(error)) {
-        console.warn('[Compatibility] Model search failed:', error.message)
-      }
-      return []
-    }
-
-    const ids = new Set<string>((data || []).map((m: any) => m.id))
-
-    // Aliases are a text[]; ILIKE cannot reach inside it from PostgREST, so the
-    // alias pass is done here. The model table is small (hundreds of rows).
-    const { data: aliasRows } = await supabase
-      .from('phone_models')
-      .select('id, aliases')
-      .not('aliases', 'eq', '{}')
-      .limit(2000)
-
-    const lowered = escaped.toLowerCase()
-    for (const row of aliasRows || []) {
-      const aliases: string[] = Array.isArray(row.aliases) ? row.aliases : []
-      if (aliases.some((a) => String(a).toLowerCase().includes(lowered))) {
-        ids.add(row.id)
+    for (const model of models) {
+      if (model.haystacks.some((h) => h.includes(term))) {
+        ids.push(model.id)
+        if (ids.length >= limit) break
       }
     }
 
-    return Array.from(ids)
+    return ids
   } catch (e: any) {
     console.warn('[Compatibility] Model search threw:', e?.message)
     return []

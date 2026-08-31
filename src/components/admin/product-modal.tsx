@@ -46,6 +46,27 @@ interface ProductModalProps {
   }) => void
 }
 
+/**
+ * Resolve to null instead of hanging.
+ *
+ * "Loading product details..." is shown until the whole load settles, so a
+ * single stalled call (the Supabase client waiting on a token refresh, a
+ * request the network never answers) used to leave the form stuck for good.
+ * Every await in the load path goes through here, so the worst case is a
+ * missing field rather than a dead dialog.
+ */
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T | null> {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<null>((resolve) =>
+      setTimeout(() => {
+        console.warn(`[ProductModal] ${label} timed out after ${ms}ms - continuing without it`)
+        resolve(null)
+      }, ms)
+    ),
+  ])
+}
+
 export default function ProductModal({ isOpen, onClose, editingProductId, onProductSaved }: ProductModalProps) {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -207,8 +228,22 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       const fetchProduct = async () => {
         try {
           setFetching(true)
-          const product = await productsService.getById(editingProductId)
-          if (product) {
+          setCompatibleModels([])
+
+          const product = await withTimeout(
+            productsService.getById(editingProductId),
+            12000,
+            'product load'
+          )
+
+          if (!product) {
+            // Nothing came back in time - show the form rather than a dialog
+            // that never opens, and say why.
+            toast.error('Could not load this product. Close and try again.')
+            return
+          }
+
+          {
             // Parse specs if it's a string
             let specs = {}
             if (product.specs) {
@@ -283,7 +318,12 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             let shopQtyPadukkaNew = "0"
             try {
               const supabase = createClient()
-              const { data: stockData } = await supabase.from('inv_stock').select('*').eq('product_id', editingProductId).single()
+              const stockResult = await withTimeout<{ data: any }>(
+                supabase.from('inv_stock').select('*').eq('product_id', editingProductId).single(),
+                6000,
+                'shop stock'
+              )
+              const stockData = stockResult?.data
               if (stockData) {
                 shopQtyMeegoda = stockData.qty_meegoda?.toString() || "0"
                 shopQtyPadukka = stockData.qty_padukka?.toString() || "0"
@@ -319,12 +359,13 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
             // Initialize search query with product name
             setSearchQuery(product.name || "")
 
-            // Existing compatible models so the admin can add/remove later
-            try {
-              setCompatibleModels(await phoneModelsService.getForProduct(editingProductId))
-            } catch (err) {
-              console.error('Failed to load compatible models:', err)
-            }
+            // Existing compatible models so the admin can add/remove later.
+            // Deliberately NOT awaited: the form is usable without it, so a
+            // slow compatibility call must never hold the whole dialog shut.
+            phoneModelsService
+              .getForProduct(editingProductId)
+              .then((models) => setCompatibleModels(models))
+              .catch((err) => console.error('Failed to load compatible models:', err))
 
             // Shop stock quantities are now fetched above before setFormData
           }
