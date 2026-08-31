@@ -36,6 +36,8 @@ interface PosPhoneModel {
   id: string
   name: string
   label: string
+  /** The PHONE brand - a Poco panel also fits a Redmi, and the bill must say Redmi. */
+  brand_name?: string
 }
 
 interface CartItem {
@@ -271,12 +273,14 @@ export default function CashierPOS() {
     productName: string,
     brand?: string,
     baseModel?: string,
-    modelName?: string
+    modelName?: string,
+    modelBrand?: string
   ) => {
     if (!modelName) return undefined
     return composeModelLabelName(
       { id: '', name: productName || '', barcode: null, brand, model: baseModel },
-      modelName
+      modelName,
+      modelBrand
     )
   }
 
@@ -295,7 +299,7 @@ export default function CashierPOS() {
       return {
         ...item,
         phoneModelId: model.id,
-        soldAs: soldAsName(item.name, item.brand, item.baseModel, model.name),
+        soldAs: soldAsName(item.name, item.brand, item.baseModel, model.name, model.brand_name),
       }
     }))
   }
@@ -343,7 +347,7 @@ export default function CashierPOS() {
         baseModel: product.specs?.model || undefined,
         phoneModelId: autoModel?.id,
         soldAs: autoModel
-          ? soldAsName(product.name, product.brand, product.specs?.model, autoModel.name)
+          ? soldAsName(product.name, product.brand, product.specs?.model, autoModel.name, autoModel.brand_name)
           : undefined,
       }]
     })

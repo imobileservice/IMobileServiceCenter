@@ -5,7 +5,9 @@ import {
   findMatchingModelIds,
   isMissingRelation,
   loadCompatibilityMap,
+  pickCustomerModel,
 } from '../utils/compatibility'
+import { encodeListing } from '../utils/listing-token'
 
 /**
  * Does products.sku exist yet? Probed once per process so the search clause can
@@ -57,17 +59,49 @@ export async function listHandler(req: Request, res: Response) {
       }
     )
 
-    const { category, brand, condition, search, minPrice, maxPrice, phone_model, phone_model_name } = req.query
+    const {
+      category,
+      brand,
+      condition,
+      search,
+      minPrice,
+      maxPrice,
+      phone_model,
+      phone_model_name,
+      expand_models,
+    } = req.query
+
+    /**
+     * List one entry per PHONE this part fits, instead of one per product.
+     *
+     * A manufacturer builds one panel that goes into several phones, so one
+     * box on the shelf is genuinely "the display for" each of them. Listing it
+     * once, under one model name, makes the shop look like it stocks a handful
+     * of parts. Listing it under every phone it fits shows the real coverage -
+     * and whichever entry the customer buys, he gets a part that fits his
+     * phone, from the same single stock pool.
+     *
+     * Opt-in, because the admin product list uses this endpoint too and must
+     * keep seeing exactly one row per product.
+     */
+    const expandModels = expand_models === '1' || expand_models === 'true'
 
     // "Find Parts For Your Phone": narrow to the products linked to one phone
     // model. An unknown/unlinked model returns no products rather than the
     // whole catalogue.
     let compatibleOnlyIds: string[] | null = null
+
+    // Which phone the shopper is shopping for. Collected from an explicit
+    // pick, from a "what phone do you have" name, or from the search box - a
+    // customer typing "A02" IS telling us his phone.
+    const shopperModelIds = new Set<string>()
+
     if (phone_model || phone_model_name) {
       const modelIds = phone_model
         ? [String(phone_model)]
         : await findMatchingModelIds(supabase as any, String(phone_model_name))
 
+      for (const id of modelIds) shopperModelIds.add(id)
       compatibleOnlyIds = await findCompatibleProductIds(supabase as any, modelIds)
 
       if (compatibleOnlyIds.length === 0) {
@@ -136,6 +170,7 @@ export async function listHandler(req: Request, res: Response) {
 
       const matchedModelIds = await findMatchingModelIds(supabase as any, String(search))
       if (matchedModelIds.length > 0) {
+        for (const id of matchedModelIds) shopperModelIds.add(id)
         const compatibleIds = await findCompatibleProductIds(supabase as any, matchedModelIds)
         if (compatibleIds.length > 0) {
           clauses.push(`id.in.(${compatibleIds.join(',')})`)
@@ -186,7 +221,7 @@ export async function listHandler(req: Request, res: Response) {
       })
 
       // Attach images to products
-      const productsWithImages = data.map((product: any) => {
+      const productsWithImages: any[] = data.map((product: any) => {
         const images = imagesMap.get(product.id) || [];
         const primaryImage = imagesData?.find((img: any) => img.product_id === product.id && img.is_primary)?.url || images[0];
 
@@ -199,12 +234,64 @@ export async function listHandler(req: Request, res: Response) {
           images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
           category: product.categories?.slug || product.category, // Use category slug from join or fallback
           stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
-          // Relationships only - stock above is still the single inv_stock value
-          compatible_models: compatibilityMap.get(product.id) || [],
+          // ONLY the shopper's own phone, never the full fit list. This payload
+          // reaches the customer's browser, so anything in it is public.
+          customer_model: pickCustomerModel(compatibilityMap.get(product.id) || [], shopperModelIds),
         };
       });
 
-      return res.json({ data: productsWithImages })
+      if (!expandModels) {
+        return res.json({ data: productsWithImages })
+      }
+
+      // One listing per phone. Same product id, same price, same single stock
+      // value on every one of them - only the phone it is listed under differs.
+      const listings: any[] = []
+      for (const product of productsWithImages) {
+        const all = compatibilityMap.get(product.id) || []
+
+        // When the shopper named a phone - by searching "A02" or picking it -
+        // he gets the entry for HIS phone and not the ones for the other
+        // phones the same part happens to fit.
+        const models =
+          shopperModelIds.size > 0
+            ? all.filter((m) => shopperModelIds.has(m.id))
+            : all
+
+        // Nothing linked yet: the product keeps its own single listing, so a
+        // part that has never been given a phone list is still on sale.
+        if (models.length === 0) {
+          listings.push({ ...product, listing_id: encodeListing(product.id, null), customer_model: null })
+          continue
+        }
+
+        for (const model of models) {
+          listings.push({
+            ...product,
+            // The card needs its own React key and its own link; the product
+            // id is untouched so the cart still points at the real box.
+            // Opaque on purpose: two listings of one product must not share a
+            // visible id in the address bar.
+            listing_id: encodeListing(product.id, model.id),
+            customer_model: {
+              id: model.id,
+              name: model.name,
+              label: model.label,
+              brand_name: model.brand_name,
+            },
+          })
+        }
+      }
+
+      // Alphabetical by the name the customer actually reads, otherwise the
+      // entries for one product sit in a clump and look like duplicates.
+      listings.sort((a, b) =>
+        String(a.customer_model?.label || a.name).localeCompare(
+          String(b.customer_model?.label || b.name)
+        )
+      )
+
+      return res.json({ data: listings })
     }
 
     return res.json({ data: data || [] })

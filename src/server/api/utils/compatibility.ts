@@ -119,6 +119,22 @@ export function stripBrandPrefix(name: string, brandName?: string | null): strin
   return stripped || model
 }
 
+/**
+ * The ONE phone a shopper is allowed to be told about: his own.
+ *
+ * A customer must never learn that the part he is buying also fits five other
+ * phones - that is the shop's business, not his. So storefront responses carry
+ * `customer_model` (the phone HE asked for, when this product fits it) and
+ * never the full compatible list. The admin and the till still get everything.
+ */
+export function pickCustomerModel(
+  compatibleModels: ReturnType<typeof shapeModel>[],
+  wantedModelIds: Set<string>
+): ReturnType<typeof shapeModel> | null {
+  if (!compatibleModels.length || wantedModelIds.size === 0) return null
+  return compatibleModels.find((m) => wantedModelIds.has(m.id)) || null
+}
+
 export interface PhoneModelRow {
   id: string
   brand_id: string
@@ -342,19 +358,41 @@ export async function setProductCompatibility(
   }
 
   const existing = new Set((existingRows || []).map((r: any) => r.phone_model_id))
-  const toAdd = wanted.filter((id) => !existing.has(id))
-  const toRemove = Array.from(existing).filter((id) => !wanted.includes(id as string)) as string[]
 
-  if (toRemove.length > 0) {
-    const { error } = await supabase
-      .from('product_compatibility')
-      .delete()
-      .eq('product_id', productId)
-      .in('phone_model_id', toRemove)
+  // Drop ids that no longer exist. A picker opened before a model was merged
+  // away still holds the old id; without this the insert below fails on the
+  // foreign key and takes the whole save with it.
+  let requested = wanted
+  if (wanted.length > 0) {
+    const { data: liveRows, error: liveError } = await supabase
+      .from('phone_models')
+      .select('id')
+      .in('id', wanted)
 
-    if (error) return { ok: false, error: error.message, added: 0, removed: 0 }
+    if (liveError) {
+      if (isMissingRelation(liveError)) {
+        return { ok: false, error: COMPAT_TABLE_MISSING, added: 0, removed: 0 }
+      }
+      return { ok: false, error: liveError.message, added: 0, removed: 0 }
+    }
+
+    const live = new Set((liveRows || []).map((r: any) => r.id))
+    const dropped = wanted.filter((id) => !live.has(id))
+    if (dropped.length > 0) {
+      console.warn(
+        `[Compatibility] ${dropped.length} phone model(s) no longer exist and were ignored for product ${productId}`
+      )
+    }
+    requested = wanted.filter((id) => live.has(id))
   }
 
+  const toAdd = requested.filter((id) => !existing.has(id))
+  const toRemove = Array.from(existing).filter((id) => !requested.includes(id as string)) as string[]
+
+  // ADD BEFORE REMOVE, always. The reverse order once cost a real link: the
+  // delete committed, the insert then failed, and the product quietly came out
+  // of the save fitting fewer phones than it went in with. Failing here leaves
+  // the existing set exactly as it was.
   if (toAdd.length > 0) {
     const { error } = await supabase
       .from('product_compatibility')
@@ -363,7 +401,17 @@ export async function setProductCompatibility(
         { onConflict: 'product_id,phone_model_id', ignoreDuplicates: true }
       )
 
-    if (error) return { ok: false, error: error.message, added: 0, removed: toRemove.length }
+    if (error) return { ok: false, error: error.message, added: 0, removed: 0 }
+  }
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from('product_compatibility')
+      .delete()
+      .eq('product_id', productId)
+      .in('phone_model_id', toRemove)
+
+    if (error) return { ok: false, error: error.message, added: toAdd.length, removed: 0 }
   }
 
   return { ok: true, added: toAdd.length, removed: toRemove.length }

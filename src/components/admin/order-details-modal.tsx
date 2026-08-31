@@ -5,6 +5,7 @@ import { motion } from "framer-motion"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ordersService } from "@/lib/supabase/services/orders"
+import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/utils/currency"
 import { notifyUpdate } from "@/hooks/use-realtime-updates"
@@ -18,9 +19,17 @@ interface OrderDetailsModalProps {
   onClose: () => void
 }
 
+/** What the shop actually has to take off the shelf, keyed by product id. */
+interface StockItem {
+  name: string
+  sku?: string | null
+  barcode?: string | null
+}
+
 export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModalProps) {
   const [order, setOrder] = useState<Order | null>(null)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  const [stockItems, setStockItems] = useState<Record<string, StockItem>>({})
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
 
@@ -33,7 +42,34 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
         setLoading(true)
         const data = await ordersService.getById(orderId)
         setOrder(data)
-        setOrderItems((data as any).order_items || [])
+
+        const items = (data as any).order_items || []
+        setOrderItems(items)
+
+        // The line name is what the CUSTOMER was shown - his own phone model.
+        // Staff still have to pick the real box off the shelf, which may be
+        // stocked under a different name, so look that up by product id.
+        const ids = Array.from(
+          new Set(items.map((i: any) => i.product_id).filter(Boolean))
+        ) as string[]
+
+        if (ids.length > 0) {
+          const supabase = createClient()
+          const { data: products } = await supabase
+            .from('products')
+            .select('id, name, sku, barcode')
+            .in('id', ids)
+
+          const map: Record<string, StockItem> = {}
+          for (const p of products || []) {
+            map[(p as any).id] = {
+              name: (p as any).name,
+              sku: (p as any).sku,
+              barcode: (p as any).barcode,
+            }
+          }
+          setStockItems(map)
+        }
       } catch (error) {
         console.error('Failed to fetch order:', error)
         toast.error('Failed to load order details')
@@ -157,15 +193,34 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
             <div className="border-t border-border pt-6">
               <h3 className="font-bold mb-4">Order Items</h3>
               <div className="space-y-2">
-                {orderItems.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-lg">
-                    <div>
+                {orderItems.map((item) => {
+                  const stock = item.product_id ? stockItems[item.product_id] : undefined
+                  // Only worth showing when the two differ - that is exactly
+                  // the case where staff would otherwise hunt for a product
+                  // that is not on the shelf under that name.
+                  const differs = stock && stock.name !== item.product_name
+
+                  return (
+                  <div key={item.id} className="flex justify-between items-start gap-3 p-3 bg-muted rounded-lg">
+                    <div className="min-w-0">
                       <p className="font-semibold">{item.product_name}</p>
                       <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                      {differs && (
+                        <p className="text-xs mt-1.5 px-2 py-1 rounded bg-background border border-border inline-block">
+                          <span className="text-muted-foreground">Send from stock: </span>
+                          <span className="font-semibold">{stock!.name}</span>
+                          {(stock!.sku || stock!.barcode) && (
+                            <span className="text-muted-foreground font-mono">
+                              {' '}· {stock!.sku || stock!.barcode}
+                            </span>
+                          )}
+                        </p>
+                      )}
                     </div>
-                    <p className="font-semibold">{formatCurrency(Number(item.price || 0) * item.quantity)}</p>
+                    <p className="font-semibold whitespace-nowrap">{formatCurrency(Number(item.price || 0) * item.quantity)}</p>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

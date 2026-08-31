@@ -105,3 +105,63 @@ export async function compatibilityModelsHandler(req: Request, res: Response) {
 
   return res.json({ models: (data || []).map(shapeModel) })
 }
+
+/**
+ * POST /api/products/customer-models  { product_ids, phone_model_id }
+ *
+ * "For the phone this shopper is buying for, which of these cart lines fit it,
+ * and what is that phone called?"
+ *
+ * Answers ONLY about the phone he asked about. It never reveals the other
+ * phones a part fits, so an order can be written in his model name without the
+ * browser ever holding the shop's compatibility list.
+ */
+export async function customerModelsHandler(req: Request, res: Response) {
+  const supabase = getSupabase()
+  if (!supabase) return res.json({ models: {} })
+
+  const productIds: string[] = Array.isArray(req.body?.product_ids)
+    ? req.body.product_ids.map((id: any) => String(id)).filter(Boolean)
+    : []
+  const phoneModelId = String(req.body?.phone_model_id || '').trim()
+
+  if (!phoneModelId || productIds.length === 0) return res.json({ models: {} })
+  if (productIds.length > 200) {
+    return res.status(400).json({ error: 'Too many products in one request' })
+  }
+
+  const { data: modelRow, error: modelError } = await supabase
+    .from('phone_models')
+    .select(MODEL_SELECT)
+    .eq('id', phoneModelId)
+    .maybeSingle()
+
+  if (modelError || !modelRow) {
+    if (modelError && !isMissingRelation(modelError)) {
+      console.warn('[Compatibility] Customer model lookup failed:', modelError.message)
+    }
+    return res.json({ models: {} })
+  }
+
+  const model = shapeModel(modelRow)
+
+  const { data: links, error: linkError } = await supabase
+    .from('product_compatibility')
+    .select('product_id')
+    .eq('phone_model_id', phoneModelId)
+    .in('product_id', productIds)
+
+  if (linkError) {
+    if (!isMissingRelation(linkError)) {
+      console.warn('[Compatibility] Customer link lookup failed:', linkError.message)
+    }
+    return res.json({ models: {} })
+  }
+
+  const models: Record<string, { id: string; name: string; label: string }> = {}
+  for (const row of links || []) {
+    models[(row as any).product_id] = { id: model.id, name: model.name, label: model.label }
+  }
+
+  return res.json({ models })
+}

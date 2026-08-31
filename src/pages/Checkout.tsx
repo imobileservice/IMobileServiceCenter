@@ -25,13 +25,13 @@ import { getSelectedPhoneModel, type SelectedPhoneModel } from "@/lib/phone-mode
  * back to the product's own name whenever anything is unknown - an order must
  * never carry a guessed model.
  */
-const soldAsProductName = (product: any, shopperModel: SelectedPhoneModel | null): string => {
+const soldAsProductName = (
+  product: any,
+  shopperModel: SelectedPhoneModel | null,
+  fitsShopperPhone: boolean
+): string => {
   const fallback = product?.name || ''
-  if (!shopperModel?.id) return fallback
-
-  const fits = Array.isArray(product?.compatible_models)
-    && product.compatible_models.some((m: any) => m.id === shopperModel.id)
-  if (!fits) return fallback
+  if (!shopperModel?.id || !fitsShopperPhone) return fallback
 
   const specs = typeof product?.specs === 'string'
     ? (() => { try { return JSON.parse(product.specs) } catch { return {} } })()
@@ -39,7 +39,8 @@ const soldAsProductName = (product: any, shopperModel: SelectedPhoneModel | null
 
   return composeModelLabelName(
     { id: '', name: fallback, barcode: null, brand: product?.brand, model: specs?.model },
-    shopperModel.name
+    shopperModel.name,
+    shopperModel.brand
   ) || fallback
 }
 
@@ -166,9 +167,38 @@ export default function CheckoutPage() {
             // and fulfilment still point at the one physical product.
             const shopperModel = getSelectedPhoneModel()
 
+            // Ask the server which of these lines actually fit his phone. The
+            // answer covers his phone only, so nothing about the other phones
+            // a part fits ever reaches the browser. A failure here simply
+            // means the order keeps the shop's own product name.
+            let fittingProductIds = new Set<string>()
+            if (shopperModel?.id) {
+                try {
+                    const response = await fetch(getApiUrl('/api/products/customer-models'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product_ids: cartItems.map(i => i.product_id),
+                            phone_model_id: shopperModel.id,
+                        }),
+                        signal: AbortSignal.timeout(8000),
+                    })
+                    if (response.ok) {
+                        const payload = await response.json()
+                        fittingProductIds = new Set(Object.keys(payload?.models || {}))
+                    }
+                } catch (error) {
+                    console.warn('[Checkout] Could not confirm the phone model:', error)
+                }
+            }
+
             const orderItems = cartItems.map(item => ({
                 product_id: item.product_id,
-                product_name: soldAsProductName(item.products, shopperModel),
+                product_name: soldAsProductName(
+                    item.products,
+                    shopperModel,
+                    fittingProductIds.has(item.product_id)
+                ),
                 product_image: item.products.image,
                 quantity: item.quantity,
                 price: getPrice(item),

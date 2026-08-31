@@ -28,7 +28,20 @@ export interface LabelProduct {
  * The part word is whatever remains after the brand and the current model are
  * removed, which keeps qualifiers like "Incell" or "W/F" on the label.
  */
-export const composeModelLabelName = (product: LabelProduct, modelName: string): string => {
+/**
+ * Name a part after the phone it is being sold for.
+ *
+ * `modelBrand` is the brand of the PHONE, which is not always the brand of the
+ * product: a Poco panel also fits a Redmi 10 4G, and that customer must read
+ * "Redmi 10 4G Display", never "Poco 10 4G Display". Leave it out and the
+ * product's own brand is used, which is right whenever the phone and the part
+ * share a brand - the case for label printing.
+ */
+export const composeModelLabelName = (
+  product: LabelProduct,
+  modelName: string,
+  modelBrand?: string
+): string => {
   const model = (modelName || '').trim()
   if (!model) return product.name
 
@@ -51,10 +64,13 @@ export const composeModelLabelName = (product: LabelProduct, modelName: string):
 
   part = part.replace(/\s+/g, ' ').trim()
 
+  // The phone's own brand wins over the part's.
+  const phoneBrand = (modelBrand || brand || '').trim()
+
   // A model name that already carries its brand ("Xiaomi Redmi Note 8") must not
   // get the brand a second time.
-  const modelHasBrand = brand && model.toLowerCase().startsWith(brand.toLowerCase())
-  const prefix = modelHasBrand ? model : [brand, model].filter(Boolean).join(' ')
+  const modelHasBrand = phoneBrand && model.toLowerCase().startsWith(phoneBrand.toLowerCase())
+  const prefix = modelHasBrand ? model : [phoneBrand, model].filter(Boolean).join(' ')
 
   return [prefix, part].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
 }

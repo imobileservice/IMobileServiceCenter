@@ -15,7 +15,7 @@ import SimilarProducts from "@/components/similar-products"
 import { getApiUrl } from "@/lib/utils/api"
 import { formatCurrency } from "@/lib/utils/currency"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
-import { getSelectedPhoneModel } from "@/lib/phone-model-session"
+import { getSelectedPhoneModel, setSelectedPhoneModel } from "@/lib/phone-model-session"
 
 // Product type matching database schema
 interface Product {
@@ -50,6 +50,18 @@ interface Product {
     brand_name?: string
     model_code?: string
   }>
+  /**
+   * The ONE phone this shopper asked for, when this part fits it. The server
+   * sends only this - never the full fit list - so his browser never holds the
+   * fact that the part also suits other phones.
+   */
+  customer_model?: {
+    id: string
+    name: string
+    label?: string
+    /** The PHONE's brand, which can differ from the part's. */
+    brand_name?: string
+  } | null
 }
 
 /** Compatible models shown before the "View all" link kicks in. */
@@ -134,7 +146,18 @@ export default function ProductDetailPage() {
         setError(null)
       }
 
-      const response = await fetch(getApiUrl(`/api/products/${id}`), {
+      // Tell the server which phone this shopper is buying for. It answers
+      // with that ONE model name if the part fits it, and never with the
+      // other phones the part also fits.
+      //
+      // The link he followed carries the phone the listing was shown under,
+      // which beats whatever the session remembers - he may well have come
+      // from a different phone's listing.
+      const fromLink = new URLSearchParams(window.location.search).get('phone_model')
+      const wantedId = fromLink || getSelectedPhoneModel()?.id || ''
+      const query = wantedId ? `?phone_model=${encodeURIComponent(wantedId)}` : ''
+
+      const response = await fetch(getApiUrl(`/api/products/${id}${query}`), {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -167,6 +190,16 @@ export default function ProductDetailPage() {
       const result = await response.json()
       const productData = result.data
       setProduct(productData)
+
+      // Keep his phone for the cart and the order he is about to place.
+      if (productData?.customer_model?.id) {
+        setSelectedPhoneModel({
+          id: productData.customer_model.id,
+          name: productData.customer_model.name,
+          label: productData.customer_model.label || productData.customer_model.name,
+          brand: productData.customer_model.brand_name,
+        })
+      }
 
       // Debug: Log product data to help diagnose selector issues
       console.log('[ProductDetail] Product loaded:', {
@@ -384,7 +417,7 @@ export default function ProductDetailPage() {
 
   // The shopper told us his phone and this part fits it: show it under HIS
   // model name. Same product, same price, same one stock pool - only wording.
-  const soldAsName = shopperModel && product.compatible_models?.some((m) => m.id === shopperModel.id)
+  const soldAsName = product.customer_model?.name
     ? composeModelLabelName(
         {
           id: product.id,
@@ -393,7 +426,8 @@ export default function ProductDetailPage() {
           brand: product.brand,
           model: specsModelName || undefined,
         },
-        shopperModel.name
+        product.customer_model!.name,
+        product.customer_model!.brand_name
       )
     : ""
 

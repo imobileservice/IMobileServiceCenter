@@ -3,7 +3,11 @@ import { listHandler } from './list'
 import { categoriesHandler } from './categories'
 import { detailHandler } from './detail'
 import { featuredHandler } from './featured'
-import { compatibilityBrandsHandler, compatibilityModelsHandler } from './compatibility'
+import {
+  compatibilityBrandsHandler,
+  compatibilityModelsHandler,
+  customerModelsHandler,
+} from './compatibility'
 
 const router = Router()
 
@@ -14,6 +18,8 @@ router.get('/featured', featuredHandler)
 // "compatibility" is read as a product id.
 router.get('/compatibility/brands', compatibilityBrandsHandler)
 router.get('/compatibility/models', compatibilityModelsHandler)
+// Names one phone for a set of cart lines - never the full fit list.
+router.post('/customer-models', customerModelsHandler)
 router.get('/:id', detailHandler)
 
 export default router

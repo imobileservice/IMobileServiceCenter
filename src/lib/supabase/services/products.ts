@@ -101,6 +101,12 @@ export const productsService = {
     phoneModel?: string
     /** Free-text phone model, used when only the name is known. */
     phoneModelName?: string
+    /**
+     * List one entry per compatible phone instead of one per product, so the
+     * shop shows a display for every phone it can actually serve. Storefront
+     * only - the admin product list must stay one row per product.
+     */
+    expandModels?: boolean
   }) {
     return withRetry(async () => {
       // Check if we have Supabase credentials - if not, skip API and use direct calls
@@ -124,6 +130,7 @@ export const productsService = {
           if (filters?.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice))
           if (filters?.phoneModel) params.set('phone_model', filters.phoneModel)
           if (filters?.phoneModelName) params.set('phone_model_name', filters.phoneModelName)
+          if (filters?.expandModels) params.set('expand_models', '1')
 
           const queryString = params.toString()
           const cacheBuster = `_t=${Date.now()}`

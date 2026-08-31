@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { createServerClient } from '@supabase/ssr'
-import { loadCompatibilityMap } from '../utils/compatibility'
+import { loadCompatibilityMap, pickCustomerModel } from '../utils/compatibility'
+import { decodeListing } from '../utils/listing-token'
 
 /**
  * GET /api/products/:id
@@ -8,11 +9,14 @@ import { loadCompatibilityMap } from '../utils/compatibility'
  */
 export async function detailHandler(req: Request, res: Response) {
   try {
-    const { id } = req.params
+    // A shop link carries an opaque listing token that hides which product it
+    // points at and which phone it was listed under. A plain product id still
+    // works, so bookmarked links and the admin keep functioning.
+    const { productId: id, phoneModelId: listingModelId } = decodeListing(req.params.id)
 
     if (!id) {
-      return res.status(400).json({
-        error: 'Product ID is required',
+      return res.status(404).json({
+        error: 'Product not found',
       })
     }
 
@@ -92,6 +96,13 @@ export async function detailHandler(req: Request, res: Response) {
     // the stock resolved above, which stays the one inv_stock row.
     const compatibilityMap = await loadCompatibilityMap(supabase as any, [id])
 
+    // The shopper tells us his phone with ?phone_model=<id>. He is shown that
+    // one name and nothing else - the other phones this part fits are the
+    // shop's business, and this response goes straight to his browser.
+    const wanted = new Set<string>()
+    if (listingModelId) wanted.add(listingModelId)
+    if (req.query.phone_model) wanted.add(String(req.query.phone_model))
+
     // Combine product data with images
     const productWithImages = {
       ...product,
@@ -99,7 +110,7 @@ export async function detailHandler(req: Request, res: Response) {
       images: images.length > 0 ? images : (product.images || [product.image].filter(Boolean)), // Fallback to old field
       category: product.categories?.slug || product.category, // Use category slug from join or fallback
       stock: stockRec ? (stockRec.quantity ?? 0) : (product.stock ?? 0),
-      compatible_models: compatibilityMap.get(id) || [],
+      customer_model: pickCustomerModel(compatibilityMap.get(id) || [], wanted),
     };
 
     return res.json({ data: productWithImages })

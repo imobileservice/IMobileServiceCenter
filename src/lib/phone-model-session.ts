@@ -21,6 +21,8 @@ export interface SelectedPhoneModel {
   name: string
   /** Brand + model, e.g. "Samsung A02" - for showing back to the shopper. */
   label: string
+  /** The PHONE's brand, which may differ from the part's. */
+  brand?: string
 }
 
 export const getSelectedPhoneModel = (): SelectedPhoneModel | null => {
@@ -31,7 +33,12 @@ export const getSelectedPhoneModel = (): SelectedPhoneModel | null => {
     const parsed = JSON.parse(raw)
     if (!parsed?.id || !parsed?.name) return null
 
-    return { id: String(parsed.id), name: String(parsed.name), label: String(parsed.label || parsed.name) }
+    return {
+      id: String(parsed.id),
+      name: String(parsed.name),
+      label: String(parsed.label || parsed.name),
+      brand: parsed.brand ? String(parsed.brand) : undefined,
+    }
   } catch {
     return null
   }

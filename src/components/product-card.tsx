@@ -19,10 +19,20 @@ interface ProductCardProps {
   originalPrice?: number
   specs?: string
   stock?: number
+  /**
+   * The phone this card is listed under. Carried into the product link so the
+   * page opens named after the same phone the customer just clicked.
+   */
+  phoneModelId?: string
+  /**
+   * Opaque address for this listing. Two listings of one product get two
+   * unrelated tokens, so the shared product id never shows in the address bar.
+   */
+  listingId?: string
   onQuickView?: () => void
 }
 
-function ProductCard({ id, name, price, originalPrice, image, condition, discount, specs, stock, onQuickView }: ProductCardProps) {
+function ProductCard({ id, name, price, originalPrice, image, condition, discount, specs, stock, phoneModelId, listingId, onQuickView }: ProductCardProps) {
   const navigate = useNavigate()
   const [isHovered, setIsHovered] = useState(false)
   const [quantity, setQuantity] = useState(0)
@@ -255,7 +265,7 @@ function ProductCard({ id, name, price, originalPrice, image, condition, discoun
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Clickable Link Wrapper */}
-      <Link to={`/product/${id}`} className="block">
+      <Link to={`/product/${listingId || id}`} className="block">
         {/* Image Container - Full Image View */}
         <div className="relative h-48 sm:h-56 md:h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-muted dark:to-muted/50 overflow-hidden flex items-center justify-center p-3 sm:p-4">
           <motion.div

@@ -9,6 +9,7 @@ import { Suspense } from "react"
 import { lazyWithRetry } from "@/lib/chunk-recovery"
 import { productsService } from "@/lib/supabase/services/products"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
+import { setSelectedPhoneModel } from "@/lib/phone-model-session"
 import { useRealtimeUpdates } from "@/hooks/use-realtime-updates"
 import type { Database } from "@/lib/supabase/types"
 
@@ -97,6 +98,7 @@ export default function ShopPage() {
         search?: string
         dynamicFilters?: Record<string, any>
         phoneModel?: string
+        expandModels?: boolean
       } = {}
 
       const currentFilters = filtersRef.current
@@ -133,6 +135,11 @@ export default function ShopPage() {
         filters.phoneModel = currentFilters.phoneModel
       }
 
+      // One entry per phone, not one per product. A single panel fits several
+      // phones, so it is listed under each of them - the shop shows what it
+      // can really supply instead of a short list of part names.
+      filters.expandModels = true
+
       // Always apply price range filter (ensures all products respect price filter)
       filters.minPrice = currentFilters.priceRange[0]
       filters.maxPrice = currentFilters.priceRange[1]
@@ -163,6 +170,27 @@ export default function ShopPage() {
         ),
       ])
       setProducts(data || [])
+
+      // A shopper who SEARCHED "A02" has told us his phone. Remember it for
+      // the rest of his visit so the product page, the cart and his order all
+      // keep calling the part by HIS model name.
+      //
+      // Only on a search or an explicit pick. Plain browsing must not silently
+      // adopt whichever phone happens to head the list.
+      const askedForAPhone = Boolean(
+        currentFilters.searchQuery?.trim() || currentFilters.phoneModel
+      )
+      const matched = askedForAPhone
+        ? ((data || []) as any[]).find((p) => p?.customer_model?.id)?.customer_model
+        : null
+      if (matched?.id) {
+        setSelectedPhoneModel({
+          id: matched.id,
+          name: matched.name,
+          label: matched.label || matched.name,
+          brand: matched.brand_name,
+        })
+      }
     } catch (error) {
       console.error("Error loading products:", error)
       // Only update to empty array if not silent (to avoid clearing on background errors)
@@ -415,12 +443,11 @@ export default function ShopPage() {
                       : {}
                     const modelName: string = specsObj?.model || specsObj?.Model || ""
 
-                    // The shopper picked his own phone, and this product is
-                    // compatible with it: show it under HIS model name. One
-                    // product, one stock - only the wording changes.
-                    const chosenModel = phoneModel
-                      ? (product as any).compatible_models?.find((m: any) => m.id === phoneModel)
-                      : undefined
+                    // The server tells us which ONE phone this shopper asked
+                    // for, when this product fits it. He is never sent the
+                    // other phones it fits. One product, one stock - only the
+                    // wording changes.
+                    const chosenModel = (product as any).customer_model || undefined
 
                     // Construct: prepend brand if missing, inject model if not already in name
                     let displayName = String(product.name || "")
@@ -443,7 +470,8 @@ export default function ShopPage() {
                           brand: product.brand || undefined,
                           model: modelName || undefined,
                         },
-                        chosenModel.name
+                        chosenModel.name,
+                        chosenModel.brand_name
                       ) || displayName
                     }
                     const productCardProps = {
@@ -458,9 +486,11 @@ export default function ShopPage() {
                       specs: product.specs ? JSON.stringify(product.specs) : undefined,
                       discount: discount,
                       stock: product.stock,
+                      phoneModelId: chosenModel?.id,
+                      listingId: (product as any).listing_id,
                     }
                     return (
-                      <motion.div key={product.id} variants={itemVariants}>
+                      <motion.div key={(product as any).listing_id || product.id} variants={itemVariants}>
                         <Suspense fallback={<LoadingPlaceholder />}>
                           <MemoizedProductCard {...productCardProps} onQuickView={() => handleProductClick(product)} />
                         </Suspense>
