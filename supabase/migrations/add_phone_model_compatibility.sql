@@ -136,10 +136,17 @@ CREATE POLICY "Only admins can manage compatibility" ON product_compatibility
 -- for an A32 4G. Seeding those verbatim splits one phone into several "models",
 -- so a cashier searching the real phone name finds only some of the stock.
 -- The grade is kept on the product as specs.quality - nothing is lost here.
-CREATE OR REPLACE FUNCTION clean_phone_model_name(raw TEXT)
+-- An earlier version of this file defined a one-argument version. Leaving it
+-- in place would make clean_phone_model_name(x) ambiguous against the new
+-- two-argument form with its default, so it goes first.
+DROP FUNCTION IF EXISTS clean_phone_model_name(TEXT);
+
+CREATE OR REPLACE FUNCTION clean_phone_model_name(raw TEXT, brand TEXT DEFAULT NULL)
 RETURNS TEXT AS $$
 DECLARE
   out_name TEXT := TRIM(COALESCE(raw, ''));
+  brand_name TEXT := TRIM(COALESCE(brand, ''));
+  stripped TEXT;
   grade TEXT;
   grades TEXT[] := ARRAY[
     'with frame', 'w/frame', 'w/f', 'wf', 'without frame', 'no frame',
@@ -149,6 +156,15 @@ DECLARE
   ];
 BEGIN
   IF out_name = '' THEN RETURN ''; END IF;
+
+  -- A model that repeats its own brand prints twice: "samsung A32" under
+  -- Samsung becomes "Samsung samsung A32" on the picker and on a bill.
+  IF brand_name <> '' THEN
+    stripped := TRIM(REGEXP_REPLACE(out_name, '^' || brand_name || '\M[[:space:]-]*', '', 'i'));
+    IF stripped <> '' THEN
+      out_name := stripped;
+    END IF;
+  END IF;
 
   FOREACH grade IN ARRAY grades LOOP
     -- Whole token only, so the "4G" in "10 4G" and the "F" in "F62" survive.
@@ -170,18 +186,18 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 
 -- 6a. From brands.models (the cached/AI-discovered model list per brand)
 INSERT INTO phone_models (brand_id, name)
-SELECT b.id, clean_phone_model_name(m.value)
+SELECT b.id, clean_phone_model_name(m.value, b.name)
 FROM brands b
 CROSS JOIN LATERAL jsonb_array_elements_text(
   CASE WHEN jsonb_typeof(b.models) = 'array' THEN b.models ELSE '[]'::jsonb END
 ) AS m(value)
-WHERE clean_phone_model_name(m.value) <> ''
+WHERE clean_phone_model_name(m.value, b.name) <> ''
 ON CONFLICT DO NOTHING;
 
 -- 6b. From the model already typed on existing products (products.specs->>'model'),
 --     so today's catalogue is represented straight away.
 INSERT INTO phone_models (brand_id, name)
-SELECT DISTINCT b.id, clean_phone_model_name(p.specs->>'model')
+SELECT DISTINCT b.id, clean_phone_model_name(p.specs->>'model', b.name)
 FROM products p
 JOIN brands b ON LOWER(b.name) = LOWER(TRIM(p.brand))
 WHERE p.specs->>'model' IS NOT NULL
@@ -199,7 +215,99 @@ FROM products p
 JOIN brands b ON LOWER(b.name) = LOWER(TRIM(p.brand))
 JOIN phone_models pm
   ON pm.brand_id = b.id
- AND LOWER(pm.name) = LOWER(clean_phone_model_name(p.specs->>'model'))
+ AND LOWER(pm.name) = LOWER(clean_phone_model_name(p.specs->>'model', b.name))
 WHERE p.specs->>'model' IS NOT NULL
   AND TRIM(p.specs->>'model') <> ''
 ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- 7. Fold duplicate models into one row
+-- ---------------------------------------------------------------------------
+-- This is what makes the file genuinely safe to re-run.
+--
+-- Section 6 only ever INSERTS. So when the seed rule changed - it now stores
+-- "M02" where it used to store "M02 W/F" - a second run added the clean name
+-- BESIDE the old one instead of correcting it, and every affected display
+-- ended up showing two chips for the same phone.
+--
+-- This section converges the table instead: for each brand, every row whose
+-- cleaned name is the same phone collapses into ONE row. Links and past sale
+-- lines are moved to the survivor first, so nothing is lost, and the survivor
+-- is then stored under its clean name.
+--
+-- Run it as many times as you like - once the catalogue is clean it does
+-- nothing. It never touches products, product names, inv_stock or sale totals.
+DO $$
+DECLARE
+  has_sale_col BOOLEAN;
+  grp RECORD;
+  keep_id UUID;
+BEGIN
+  -- inv_sale_items.phone_model_id only exists once add_sold_as_model_name.sql
+  -- has been run; skip that step cleanly when it has not.
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'inv_sale_items'
+      AND column_name = 'phone_model_id'
+  ) INTO has_sale_col;
+
+  FOR grp IN
+    SELECT pm.brand_id AS brand_id,
+           LOWER(clean_phone_model_name(pm.name, b.name)) AS key
+    FROM phone_models pm
+    JOIN brands b ON b.id = pm.brand_id
+    GROUP BY pm.brand_id, LOWER(clean_phone_model_name(pm.name, b.name))
+    HAVING COUNT(*) > 1
+  LOOP
+    -- Keep the row that is already stored clean; otherwise the oldest, which
+    -- is the one most likely to be referenced elsewhere.
+    SELECT pm.id INTO keep_id
+    FROM phone_models pm
+    JOIN brands b ON b.id = pm.brand_id
+    WHERE pm.brand_id = grp.brand_id
+      AND LOWER(clean_phone_model_name(pm.name, b.name)) = grp.key
+    ORDER BY (pm.name = clean_phone_model_name(pm.name, b.name)) DESC, pm.created_at ASC
+    LIMIT 1;
+
+    -- Every product linked to a duplicate becomes linked to the survivor.
+    INSERT INTO product_compatibility (product_id, phone_model_id)
+    SELECT DISTINCT pc.product_id, keep_id
+    FROM product_compatibility pc
+    JOIN phone_models pm ON pm.id = pc.phone_model_id
+    JOIN brands b ON b.id = pm.brand_id
+    WHERE pm.brand_id = grp.brand_id
+      AND LOWER(clean_phone_model_name(pm.name, b.name)) = grp.key
+      AND pc.phone_model_id <> keep_id
+    ON CONFLICT DO NOTHING;
+
+    -- Past sales keep pointing at a model that still exists.
+    IF has_sale_col THEN
+      UPDATE inv_sale_items s
+      SET phone_model_id = keep_id
+      WHERE s.phone_model_id IN (
+        SELECT pm.id
+        FROM phone_models pm
+        JOIN brands b ON b.id = pm.brand_id
+        WHERE pm.brand_id = grp.brand_id
+          AND LOWER(clean_phone_model_name(pm.name, b.name)) = grp.key
+          AND pm.id <> keep_id
+      );
+    END IF;
+
+    -- The duplicates go; their join rows cascade away with them.
+    DELETE FROM phone_models pm
+    USING brands b
+    WHERE b.id = pm.brand_id
+      AND pm.brand_id = grp.brand_id
+      AND LOWER(clean_phone_model_name(pm.name, b.name)) = grp.key
+      AND pm.id <> keep_id;
+  END LOOP;
+
+  -- With the duplicates gone, each surviving name is free to be stored clean.
+  UPDATE phone_models pm
+  SET name = clean_phone_model_name(pm.name, b.name)
+  FROM brands b
+  WHERE b.id = pm.brand_id
+    AND pm.name <> clean_phone_model_name(pm.name, b.name);
+END $$;
