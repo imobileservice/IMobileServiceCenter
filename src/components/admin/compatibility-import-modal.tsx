@@ -143,6 +143,17 @@ function parseSheet(text: string): { rows: ParsedRow[]; error?: string } {
   return { rows }
 }
 
+/**
+ * Is this product a display?
+ *
+ * The catalogue names them plainly ("Samsung A32 4G Incell Display") and files
+ * them under a display category, so either signal is enough. Written as one
+ * test so the manual table and anything added later stay in agreement.
+ */
+export function isDisplay(name?: string | null, category?: string | null): boolean {
+  return /display|lcd|screen/i.test(`${name || ""} ${category || ""}`)
+}
+
 /** Same ids in any order? Used to spot which rows actually changed. */
 function sameSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false
@@ -183,7 +194,7 @@ export default function CompatibilityImportModal({
   /** What the admin has ticked, per product id. */
   const [draft, setDraft] = useState<Record<string, string[]>>({})
   const [productSearch, setProductSearch] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState("")
+  const [brandFilter, setBrandFilter] = useState("")
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState("")
   const [saving, setSaving] = useState(false)
@@ -195,7 +206,48 @@ export default function CompatibilityImportModal({
   }, [models])
 
   /**
-   * Load the phone model catalogue and every product's current model list.
+   * Only displays go in the left column. A power bank or a charging cable has
+   * no "which phone does this fit" question, and listing them buries the 200+
+   * displays this screen exists for.
+   */
+  const displayProducts = useMemo(
+    () => products.filter((p) => isDisplay(p.name, p.category)),
+    [products]
+  )
+
+  /**
+   * Only phone models go in the right column.
+   *
+   * The migration seeded phone_models from every product's specs.model, so the
+   * catalogue also picked up accessory names ("Aspor A337 30000mah"). A brand
+   * that the shop stocks a display for is a phone brand; one that only ever
+   * appears on power banks is not - so its entries are hidden here rather than
+   * deleted, which keeps the data intact if it turns out to be wanted.
+   */
+  const phoneBrandNames = useMemo(() => {
+    const names = new Set<string>()
+    for (const product of displayProducts) {
+      if (product.brand) names.add(String(product.brand).trim().toLowerCase())
+    }
+    return names
+  }, [displayProducts])
+
+  const phoneModels = useMemo(() => {
+    // Anything already ticked on a display stays offered, whatever its brand -
+    // hiding a model that is in use would look like data loss.
+    const inUse = new Set<string>()
+    for (const product of displayProducts) {
+      for (const id of draft[product.id] || []) inUse.add(id)
+    }
+
+    return models.filter(
+      (model) =>
+        inUse.has(model.id) || phoneBrandNames.has((model.brand_name || "").trim().toLowerCase())
+    )
+  }, [models, phoneBrandNames, displayProducts, draft])
+
+  /**
+   * Load the phone model catalogue and each display's current model list.
    * The bulk endpoint takes 500 ids at a time, so the products are chunked.
    */
   const loadTable = useCallback(async () => {
@@ -204,7 +256,7 @@ export default function CompatibilityImportModal({
       const catalogue = await phoneModelsService.getAll({ limit: 2000 })
       const byId = new Map(catalogue.map((m) => [m.id, m]))
 
-      const ids = products.map((p) => p.id)
+      const ids = displayProducts.map((p) => p.id)
       const merged: Record<string, string[]> = {}
 
       for (let i = 0; i < ids.length; i += 200) {
@@ -227,7 +279,7 @@ export default function CompatibilityImportModal({
     } finally {
       setLoadingTable(false)
     }
-  }, [products])
+  }, [displayProducts])
 
   useEffect(() => {
     if (!isOpen) return
@@ -236,19 +288,19 @@ export default function CompatibilityImportModal({
     loadTable()
   }, [isOpen, loadTable])
 
-  const categories = useMemo(() => {
+  const productBrands = useMemo(() => {
     const names = new Set<string>()
-    for (const product of products) {
-      if (product.category) names.add(String(product.category))
+    for (const product of displayProducts) {
+      if (product.brand) names.add(String(product.brand))
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b))
-  }, [products])
+  }, [displayProducts])
 
   const visibleProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase()
 
-    return products.filter((product) => {
-      if (categoryFilter && String(product.category || "") !== categoryFilter) return false
+    return displayProducts.filter((product) => {
+      if (brandFilter && String(product.brand || "") !== brandFilter) return false
       if (!term) return true
 
       return (
@@ -257,7 +309,7 @@ export default function CompatibilityImportModal({
         String(product.brand || "").toLowerCase().includes(term)
       )
     })
-  }, [products, productSearch, categoryFilter])
+  }, [displayProducts, productSearch, brandFilter])
 
   const changedIds = useMemo(
     () => Object.keys(draft).filter((id) => !sameSet(draft[id] || [], saved[id] || [])),
@@ -266,9 +318,9 @@ export default function CompatibilityImportModal({
 
   const visibleModels = useMemo(() => {
     const term = modelSearch.trim().toLowerCase()
-    if (!term) return models.slice(0, 300)
+    if (!term) return phoneModels.slice(0, 300)
 
-    return models
+    return phoneModels
       .filter(
         (model) =>
           model.label.toLowerCase().includes(term) ||
@@ -277,7 +329,7 @@ export default function CompatibilityImportModal({
           model.aliases.some((alias) => alias.toLowerCase().includes(term))
       )
       .slice(0, 300)
-  }, [models, modelSearch])
+  }, [phoneModels, modelSearch])
 
   if (!isOpen) return null
 
@@ -444,7 +496,7 @@ export default function CompatibilityImportModal({
             <p className="text-sm text-muted-foreground">
               Pick a display on the left, then tick every phone it fits on the right. One display
               can carry as many phones as you like - it stays <strong>one product with one stock
-              count</strong>.
+              count</strong>. Only displays and phone models are listed here.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
@@ -460,14 +512,14 @@ export default function CompatibilityImportModal({
                 />
               </div>
               <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
                 className="px-3 py-2 border border-border rounded-lg bg-background text-sm"
                 disabled={busy}
-                aria-label="Filter products by category"
+                aria-label="Filter displays by brand"
               >
-                <option value="">All categories</option>
-                {categories.map((name) => (
+                <option value="">All brands</option>
+                {productBrands.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -483,14 +535,14 @@ export default function CompatibilityImportModal({
                 </div>
               ) : visibleProducts.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
-                  {products.length === 0 ? "No products loaded." : "No product matches this search."}
+                  {displayProducts.length === 0 ? "No displays found in the catalogue." : "No display matches this search."}
                 </div>
               ) : (
                 <table className="w-full text-sm">
                   <thead className="bg-muted sticky top-0 z-10">
                     <tr>
                       <th className="text-left p-2 w-10">#</th>
-                      <th className="text-left p-2 w-[38%]">Display / product</th>
+                      <th className="text-left p-2 w-[38%]">Display</th>
                       <th className="text-left p-2">Compatible phone models</th>
                     </tr>
                   </thead>
@@ -590,7 +642,7 @@ export default function CompatibilityImportModal({
                                 </div>
 
                                 <div className="max-h-52 overflow-y-auto border border-border rounded-md">
-                                  {models.length === 0 ? (
+                                  {phoneModels.length === 0 ? (
                                     <p className="p-3 text-xs text-muted-foreground">
                                       No phone models yet. Add them from a product's own
                                       "Compatible Phone Models" section, or import a sheet.
@@ -759,7 +811,7 @@ export default function CompatibilityImportModal({
             {tab === "manual"
               ? changedIds.length > 0
                 ? `${changedIds.length} product(s) changed - not saved yet`
-                : `${visibleProducts.length} product(s) shown`
+                : `${visibleProducts.length} display(s) shown`
               : "Rows match existing products only"}
           </span>
 
