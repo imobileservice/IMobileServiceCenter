@@ -129,20 +129,59 @@ CREATE POLICY "Only admins can manage compatibility" ON product_compatibility
 -- Additive only: nothing is updated or deleted, duplicates are skipped. This is
 -- what stops the admin from starting with an empty model picker.
 
+-- 6z. Display grades are NOT phone models.
+--
+-- The shop writes the panel grade into a display's model text: "M02 W/F" is a
+-- With Frame display for a phone called M02; "A32 4G Incell" is an Incell panel
+-- for an A32 4G. Seeding those verbatim splits one phone into several "models",
+-- so a cashier searching the real phone name finds only some of the stock.
+-- The grade is kept on the product as specs.quality - nothing is lost here.
+CREATE OR REPLACE FUNCTION clean_phone_model_name(raw TEXT)
+RETURNS TEXT AS $$
+DECLARE
+  out_name TEXT := TRIM(COALESCE(raw, ''));
+  grade TEXT;
+  grades TEXT[] := ARRAY[
+    'with frame', 'w/frame', 'w/f', 'wf', 'without frame', 'no frame',
+    'incell', 'in-cell', 'in cell', 'amoled', 'soft oled', 'hard oled',
+    'oled', 'tft', 'ips', 'lcd', 'service pack', 'original', 'oem',
+    'combo', 'folder', 'display', 'screen'
+  ];
+BEGIN
+  IF out_name = '' THEN RETURN ''; END IF;
+
+  FOREACH grade IN ARRAY grades LOOP
+    -- Whole token only, so the "4G" in "10 4G" and the "F" in "F62" survive.
+    out_name := REGEXP_REPLACE(
+      out_name,
+      '(^|[[:space:](/-])' || grade || '($|[[:space:])/-])',
+      '\1 \2',
+      'gi'
+    );
+  END LOOP;
+
+  out_name := TRIM(REGEXP_REPLACE(out_name, '\s+', ' ', 'g'));
+  out_name := TRIM(BOTH ' /-' FROM out_name);
+
+  -- Never erase a name completely - fall back to what was given.
+  RETURN COALESCE(NULLIF(out_name, ''), TRIM(raw));
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 -- 6a. From brands.models (the cached/AI-discovered model list per brand)
 INSERT INTO phone_models (brand_id, name)
-SELECT b.id, TRIM(m.value)
+SELECT b.id, clean_phone_model_name(m.value)
 FROM brands b
 CROSS JOIN LATERAL jsonb_array_elements_text(
   CASE WHEN jsonb_typeof(b.models) = 'array' THEN b.models ELSE '[]'::jsonb END
 ) AS m(value)
-WHERE TRIM(m.value) <> ''
+WHERE clean_phone_model_name(m.value) <> ''
 ON CONFLICT DO NOTHING;
 
 -- 6b. From the model already typed on existing products (products.specs->>'model'),
 --     so today's catalogue is represented straight away.
 INSERT INTO phone_models (brand_id, name)
-SELECT DISTINCT b.id, TRIM(p.specs->>'model')
+SELECT DISTINCT b.id, clean_phone_model_name(p.specs->>'model')
 FROM products p
 JOIN brands b ON LOWER(b.name) = LOWER(TRIM(p.brand))
 WHERE p.specs->>'model' IS NOT NULL
@@ -160,7 +199,7 @@ FROM products p
 JOIN brands b ON LOWER(b.name) = LOWER(TRIM(p.brand))
 JOIN phone_models pm
   ON pm.brand_id = b.id
- AND LOWER(pm.name) = LOWER(TRIM(p.specs->>'model'))
+ AND LOWER(pm.name) = LOWER(clean_phone_model_name(p.specs->>'model'))
 WHERE p.specs->>'model' IS NOT NULL
   AND TRIM(p.specs->>'model') <> ''
 ON CONFLICT DO NOTHING;

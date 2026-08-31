@@ -1,7 +1,12 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
-import { COMPAT_TABLE_MISSING, isMissingRelation } from '../utils/compatibility'
+import {
+  COMPAT_TABLE_MISSING,
+  isMissingRelation,
+  normalizeModelName,
+  stripBrandPrefix,
+} from '../utils/compatibility'
 
 /**
  * Bulk compatibility import.
@@ -113,9 +118,12 @@ export const importCompatibilityHandler = asyncHandler(async (req: Request, res:
 
   const ensureModel = async (
     brandId: string,
-    name: string
+    name: string,
+    brandName = ''
   ): Promise<{ id: string; created: boolean } | null> => {
-    const clean = name.trim()
+    // A sheet often carries the display grade in the model cell
+    // ("A05 W/F"). The phone is the A05 - the grade belongs to the product.
+    const clean = normalizeModelName(stripBrandPrefix(name.trim(), brandName))
     if (!clean) return null
 
     const existing = modelsByKey.get(modelKey(brandId, clean))
@@ -233,7 +241,7 @@ export const importCompatibilityHandler = asyncHandler(async (req: Request, res:
       const brand = await ensureBrand(brandName)
       if (!brand) continue
 
-      const model = await ensureModel(brand.id, modelName)
+      const model = await ensureModel(brand.id, modelName, brand.name)
       if (!model) continue
 
       if (model.created) record.created_models++

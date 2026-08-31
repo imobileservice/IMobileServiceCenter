@@ -6,8 +6,10 @@ import {
   MODEL_SELECT,
   isMissingRelation,
   loadCompatibilityMap,
+  normalizeModelName,
   setProductCompatibility,
   shapeModel,
+  stripBrandPrefix,
 } from '../utils/compatibility'
 
 /**
@@ -133,22 +135,27 @@ export const getPhoneModelsHandler = asyncHandler(async (req: Request, res: Resp
 export const createPhoneModelHandler = asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabaseAdmin()
 
-  const name = String(req.body?.name || '').trim()
+  const rawName = String(req.body?.name || '').trim()
   const modelCode = String(req.body?.model_code || '').trim() || null
   const aliases = cleanAliases(req.body?.aliases)
   let brandId = String(req.body?.brand_id || '').trim()
+  let brandName = String(req.body?.brand || '').trim()
 
-  if (name.length < 1) {
+  if (rawName.length < 1) {
     return res.status(400).json({ error: 'Model name is required' })
   }
 
   if (!brandId) {
-    const brand = await resolveBrandId(supabase, String(req.body?.brand || ''))
+    const brand = await resolveBrandId(supabase, brandName)
     if (!brand) {
       return res.status(400).json({ error: 'A brand is required to add a phone model' })
     }
     brandId = brand.id
+    brandName = brand.name || brandName
   }
+
+  // "M02 W/F" is a display grade on a phone called M02. Store the phone.
+  const name = normalizeModelName(stripBrandPrefix(rawName, brandName))
 
   // Never create a duplicate model - reuse the existing row instead.
   const { data: existing } = await supabase
@@ -189,19 +196,23 @@ export const bulkCreatePhoneModelsHandler = asyncHandler(async (req: Request, re
 
   const names: string[] = Array.isArray(req.body?.names) ? req.body.names : []
   let brandId = String(req.body?.brand_id || '').trim()
+  let brandName = String(req.body?.brand || '').trim()
 
   if (!brandId) {
-    const brand = await resolveBrandId(supabase, String(req.body?.brand || ''))
+    const brand = await resolveBrandId(supabase, brandName)
     if (!brand) {
       return res.status(400).json({ error: 'A brand is required to add phone models' })
     }
     brandId = brand.id
+    brandName = brand.name || brandName
   }
 
   const cleaned: string[] = []
   const seen = new Set<string>()
   for (const value of names) {
-    const name = String(value || '').trim()
+    // Drop display grades ("A05 W/F" -> "A05") and a repeated brand, so a
+    // bulk import cannot split one phone across several model rows.
+    const name = normalizeModelName(stripBrandPrefix(String(value || '').trim(), brandName))
     if (!name || name.toLowerCase() === 'custom') continue
     const key = name.toLowerCase()
     if (seen.has(key)) continue

@@ -31,6 +31,94 @@ export function isMissingRelation(error: any): boolean {
   )
 }
 
+/**
+ * Quality grades the shop writes into a DISPLAY's name - they say what the
+ * part is made of, not which phone it fits.
+ *
+ *   "Samsung M02 W/F Display"   W/F = With Frame, a display grade
+ *   "Samsung A32 4G Incell"     Incell = a panel type
+ *
+ * The phone is "Samsung M02" either way. The grade already lives on the
+ * product as specs.quality, so stripping it from the MODEL name loses nothing
+ * and stops one phone splitting into "M02", "M02 W/F" and "M02 Incell".
+ */
+const QUALITY_TOKENS = [
+  'with frame',
+  'w/frame',
+  'w/f',
+  'wf',
+  'without frame',
+  'no frame',
+  'incell',
+  'in-cell',
+  'in cell',
+  'amoled',
+  'soft oled',
+  'hard oled',
+  'oled',
+  'tft',
+  'ips',
+  'lcd',
+  'service pack',
+  'original',
+  'oem',
+  'combo',
+  'folder',
+  'display',
+  'screen',
+]
+
+/**
+ * Strip display quality grades from a phone model name.
+ *
+ *   "M02 W/F"      -> "M02"
+ *   "10 4G W/F"    -> "10 4G"
+ *   "A32 4G Incell"-> "A32 4G"
+ *   "Redmi Note 8" -> "Redmi Note 8"   (unchanged)
+ *
+ * Returns the original text when stripping would leave nothing, so a model
+ * genuinely called "Display" is never erased.
+ */
+export function normalizeModelName(raw: string): string {
+  const original = String(raw || '').trim()
+  if (!original) return ''
+
+  let out = original
+  for (const token of QUALITY_TOKENS) {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // Whole token only: bounded by start/end, whitespace, slash, dash or bracket.
+    // "W/F" must go; the "4G" in "10 4G" and the "F" in "F62" must stay.
+    out = out.replace(new RegExp(`(^|[\\s(\\[/-])${escaped}($|[\\s)\\]/-])`, 'gi'), '$1 $2')
+  }
+
+  out = out
+    .replace(/\s*[/-]\s*$/g, '')
+    .replace(/^\s*[/-]\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return out || original
+}
+
+/**
+ * Drop a brand name the model repeats.
+ *
+ * The label is composed as "<brand> <model>", so a model stored as
+ * "samsung A32" under Samsung prints "Samsung samsung A32" - on the picker,
+ * and on a customer's bill. Only a leading whole-word repeat is removed, and
+ * never when it would empty the name (a brand whose model IS the brand name).
+ */
+export function stripBrandPrefix(name: string, brandName?: string | null): string {
+  const model = String(name || '').trim()
+  const brand = String(brandName || '').trim()
+  if (!model || !brand) return model
+
+  const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const stripped = model.replace(new RegExp(`^${escaped}\\b[\\s-]*`, 'i'), '').trim()
+
+  return stripped || model
+}
+
 export interface PhoneModelRow {
   id: string
   brand_id: string
