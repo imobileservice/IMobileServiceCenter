@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { motion } from "framer-motion"
 import { X, Plus, Trash2, Upload, Loader2, Sparkles, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -164,6 +164,36 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     }
     return merged
   }, [formData.brand, dbBrands, discoveredModels])
+
+  /**
+   * Fold models added through the compatibility picker into this brand's list.
+   *
+   * A phone typed into "Compatible Phone Models" is a real phone, so it belongs
+   * in the "Model" dropdown too. The server already writes it to brands.models;
+   * merging it here as well means the dropdown offers it in this same session
+   * rather than only after the modal is reopened.
+   */
+  const mergeDiscoveredModels = useCallback((brand: string, names: string[]) => {
+    const brandKey = (brand || "").trim()
+    if (!brandKey || names.length === 0) return
+
+    setDiscoveredModels((prev) => {
+      const current = prev[brandKey] || []
+      const seen = new Set(current.map((m) => m.trim().toLowerCase()))
+      const additions: string[] = []
+
+      for (const raw of names) {
+        const name = String(raw || "").trim()
+        const key = name.toLowerCase()
+        if (!name || seen.has(key)) continue
+        seen.add(key)
+        additions.push(name)
+      }
+
+      if (additions.length === 0) return prev
+      return { ...prev, [brandKey]: [...current, ...additions] }
+    })
+  }, [])
 
   // Fetch categories when modal opens
   useEffect(() => {
@@ -1240,6 +1270,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                   onChange={setCompatibleModels}
                   brand={formData.brand}
                   brandModelSuggestions={availableModels}
+                  onModelsCreated={mergeDiscoveredModels}
                   disabled={loading}
                 />
               </div>

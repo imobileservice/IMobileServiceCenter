@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
 import {
+  addModelsToBrandCatalogue,
   COMPAT_TABLE_MISSING,
   isMissingRelation,
   normalizeModelName,
@@ -116,6 +117,9 @@ export const importCompatibilityHandler = asyncHandler(async (req: Request, res:
     return brand
   }
 
+  /** Models this import brought into existence, per brand id. */
+  const newModelsByBrand = new Map<string, string[]>()
+
   const ensureModel = async (
     brandId: string,
     name: string,
@@ -143,6 +147,11 @@ export const importCompatibilityHandler = asyncHandler(async (req: Request, res:
     }
 
     modelsByKey.set(modelKey(brandId, clean), data.id)
+    // Also offer it in the product form's Model dropdown - flushed per brand
+    // once the whole sheet is processed.
+    const created = newModelsByBrand.get(brandId) || []
+    created.push(clean)
+    newModelsByBrand.set(brandId, created)
     return { id: data.id, created: true }
   }
 
@@ -289,6 +298,12 @@ export const importCompatibilityHandler = asyncHandler(async (req: Request, res:
     totalLinked += modelIds.length
     totalCreatedModels += record.created_models
     results.push(record)
+  }
+
+  // One product -> many phones, and every phone the sheet introduced becomes
+  // selectable as a product's own model too.
+  for (const [brandId, names] of newModelsByBrand) {
+    await addModelsToBrandCatalogue(supabase, brandId, names)
   }
 
   return res.json({

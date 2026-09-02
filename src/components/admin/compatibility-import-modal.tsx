@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Check, FileSpreadsheet, Loader2, Search, Table2, Upload, X } from "lucide-react"
+import { Check, FileSpreadsheet, Loader2, Plus, Search, Table2, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { getApiUrl } from "@/lib/utils/api"
@@ -198,6 +198,13 @@ export default function CompatibilityImportModal({
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [modelSearch, setModelSearch] = useState("")
   const [saving, setSaving] = useState(false)
+  // "The phone this display fits is not in the list yet" - typed in here rather
+  // than in a second screen, then ticked on the open row straight away.
+  const [showNewModel, setShowNewModel] = useState(false)
+  const [newModelBrand, setNewModelBrand] = useState("")
+  const [newModelName, setNewModelName] = useState("")
+  const [newModelCode, setNewModelCode] = useState("")
+  const [creatingModel, setCreatingModel] = useState(false)
 
   const modelById = useMemo(() => {
     const map = new Map<string, PhoneModel>()
@@ -285,6 +292,9 @@ export default function CompatibilityImportModal({
     if (!isOpen) return
     setOpenRow(null)
     setModelSearch("")
+    setShowNewModel(false)
+    setNewModelName("")
+    setNewModelCode("")
     loadTable()
   }, [isOpen, loadTable])
 
@@ -295,6 +305,25 @@ export default function CompatibilityImportModal({
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b))
   }, [displayProducts])
+
+  /**
+   * Brands the new-model form can file a phone under: every brand the shop
+   * stocks a display for, plus every brand already present in the phone model
+   * catalogue. A brand typed on a product but never on a model still shows,
+   * which is exactly the case that needs a new model most.
+   */
+  const allBrandNames = useMemo(() => {
+    const byLower = new Map<string, string>()
+    for (const product of displayProducts) {
+      const name = String(product.brand || "").trim()
+      if (name && !byLower.has(name.toLowerCase())) byLower.set(name.toLowerCase(), name)
+    }
+    for (const model of models) {
+      const name = String(model.brand_name || "").trim()
+      if (name && !byLower.has(name.toLowerCase())) byLower.set(name.toLowerCase(), name)
+    }
+    return Array.from(byLower.values()).sort((a, b) => a.localeCompare(b))
+  }, [displayProducts, models])
 
   const visibleProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase()
@@ -354,6 +383,63 @@ export default function CompatibilityImportModal({
 
   const clearRow = (productId: string) => {
     setDraft((prev) => ({ ...prev, [productId]: [] }))
+  }
+
+  /** Open the inline form for a row, seeded with what was already typed. */
+  const openNewModelForm = (product: CompatibilityProduct) => {
+    setShowNewModel(true)
+    setNewModelBrand((prev) => prev || String(product.brand || ""))
+    setNewModelName((prev) => prev || modelSearch.trim())
+  }
+
+  /**
+   * Add a phone the catalogue has never heard of, then tick it on this row.
+   *
+   * The same call also extends the brand's model list, so the new phone turns
+   * up in the product form's own "Model" dropdown without anyone retyping it.
+   * An existing model is returned rather than duplicated, so pressing Add twice
+   * is harmless.
+   */
+  const createModelForRow = async (product: CompatibilityProduct) => {
+    const name = newModelName.trim()
+    const brand = (newModelBrand || product.brand || "").trim()
+
+    if (!name) {
+      toast.error("Enter the phone model name")
+      return
+    }
+    if (!brand) {
+      toast.error("Pick the phone brand for this model")
+      return
+    }
+
+    setCreatingModel(true)
+    try {
+      const model = await phoneModelsService.create({
+        brand,
+        name,
+        modelCode: newModelCode.trim() || undefined,
+      })
+
+      setModels((prev) => (prev.some((m) => m.id === model.id) ? prev : [...prev, model]))
+      setDraft((prev) => {
+        const current = prev[product.id] || []
+        if (current.includes(model.id)) return prev
+        return { ...prev, [product.id]: [...current, model.id] }
+      })
+
+      setNewModelName("")
+      setNewModelCode("")
+      setModelSearch("")
+      toast.success(`${model.label} added to the phone model list and ticked here`)
+    } catch (error: any) {
+      if (String(error?.message || "").includes("Phone model tables not found")) {
+        setTableMissing(true)
+      }
+      toast.error(error?.message || "Could not add the phone model")
+    } finally {
+      setCreatingModel(false)
+    }
   }
 
   /** Save only the rows the admin actually touched. */
@@ -433,7 +519,7 @@ export default function CompatibilityImportModal({
     }
   }
 
-  const busy = running || saving
+  const busy = running || saving || creatingModel
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -596,6 +682,12 @@ export default function CompatibilityImportModal({
                                 onClick={() => {
                                   setOpenRow(isOpen ? null : product.id)
                                   setModelSearch("")
+                                  // A half-typed model belongs to the row it was
+                                  // started on, not to the next one opened.
+                                  setShowNewModel(false)
+                                  setNewModelName("")
+                                  setNewModelCode("")
+                                  setNewModelBrand(String(product.brand || ""))
                                 }}
                                 disabled={busy}
                                 className="text-xs font-semibold text-primary hover:underline"
@@ -639,17 +731,110 @@ export default function CompatibilityImportModal({
                                     <Check className="w-3.5 h-3.5 mr-1.5" />
                                     Add all shown ({visibleModels.length})
                                   </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() =>
+                                      showNewModel ? setShowNewModel(false) : openNewModelForm(product)
+                                    }
+                                    disabled={busy}
+                                  >
+                                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                                    New model
+                                  </Button>
                                 </div>
+
+                                {/* Phone missing from the catalogue? Add it here. */}
+                                {showNewModel && (
+                                  <div className="mb-2 p-2 rounded-md border border-primary/40 bg-primary/5">
+                                    <p className="text-[11px] text-muted-foreground mb-2">
+                                      Not in the list? Add the phone here - it is saved to the phone
+                                      model catalogue (so the product form&apos;s <strong>Model</strong>{" "}
+                                      dropdown offers it too) and ticked on this display right away.
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1fr_auto] gap-2">
+                                      <select
+                                        value={newModelBrand}
+                                        onChange={(e) => setNewModelBrand(e.target.value)}
+                                        className="px-2 py-1.5 text-xs border border-border rounded-md bg-background"
+                                        disabled={busy}
+                                        aria-label="Brand for the new phone model"
+                                      >
+                                        <option value="">Brand...</option>
+                                        {allBrandNames.map((name) => (
+                                          <option key={name} value={name}>
+                                            {name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="text"
+                                        value={newModelName}
+                                        onChange={(e) => setNewModelName(e.target.value)}
+                                        placeholder="Phone model (e.g. Redmi Note 14)"
+                                        className="px-2 py-1.5 text-xs border border-border rounded-md bg-background"
+                                        disabled={busy}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault()
+                                            createModelForRow(product)
+                                          }
+                                        }}
+                                      />
+                                      <input
+                                        type="text"
+                                        value={newModelCode}
+                                        onChange={(e) => setNewModelCode(e.target.value)}
+                                        placeholder="Model code (optional)"
+                                        className="px-2 py-1.5 text-xs border border-border rounded-md bg-background"
+                                        disabled={busy}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault()
+                                            createModelForRow(product)
+                                          }
+                                        }}
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={() => createModelForRow(product)}
+                                        disabled={busy || !newModelName.trim()}
+                                      >
+                                        {creatingModel ? (
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                          "Add"
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div className="max-h-52 overflow-y-auto border border-border rounded-md">
                                   {phoneModels.length === 0 ? (
                                     <p className="p-3 text-xs text-muted-foreground">
-                                      No phone models yet. Add them from a product's own
-                                      "Compatible Phone Models" section, or import a sheet.
+                                      No phone models yet. Use{" "}
+                                      <button
+                                        type="button"
+                                        onClick={() => openNewModelForm(product)}
+                                        className="font-semibold text-primary hover:underline"
+                                      >
+                                        New model
+                                      </button>{" "}
+                                      to add the first one, or import a sheet.
                                     </p>
                                   ) : visibleModels.length === 0 ? (
                                     <p className="p-3 text-xs text-muted-foreground">
-                                      No model matches this search.
+                                      No model matches this search.{" "}
+                                      <button
+                                        type="button"
+                                        onClick={() => openNewModelForm(product)}
+                                        className="font-semibold text-primary hover:underline"
+                                      >
+                                        Add &quot;{modelSearch.trim() || "a new model"}&quot; to the system
+                                      </button>
                                     </p>
                                   ) : (
                                     <ul className="divide-y divide-border">

@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
 import {
+  addModelsToBrandCatalogue,
   COMPAT_TABLE_MISSING,
   MODEL_SELECT,
   isMissingRelation,
@@ -166,6 +167,9 @@ export const createPhoneModelHandler = asyncHandler(async (req: Request, res: Re
     .maybeSingle()
 
   if (existing) {
+    // Already a phone model, but the product form's Model dropdown can still be
+    // missing it - rows created before this mirroring never reached that list.
+    await addModelsToBrandCatalogue(supabase, brandId, [existing.name])
     return res.json({ model: shapeModel(existing), created: false })
   }
 
@@ -181,6 +185,9 @@ export const createPhoneModelHandler = asyncHandler(async (req: Request, res: Re
     }
     return res.status(500).json({ error: error.message })
   }
+
+  // Same phone, second list: make it selectable as a product's own model too.
+  await addModelsToBrandCatalogue(supabase, brandId, [name])
 
   return res.status(201).json({ model: shapeModel(data), created: true })
 })
@@ -251,6 +258,8 @@ export const bulkCreatePhoneModelsHandler = asyncHandler(async (req: Request, re
       console.warn('[Phone Models] Bulk insert warning:', error.message)
     }
   }
+
+  await addModelsToBrandCatalogue(supabase, brandId, cleaned)
 
   const { data } = await supabase
     .from('phone_models')

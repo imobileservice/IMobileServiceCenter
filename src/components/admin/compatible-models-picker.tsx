@@ -26,6 +26,11 @@ interface CompatibleModelsPickerProps {
   brand?: string
   /** Model names known for the brand, offered as a one-click bulk import. */
   brandModelSuggestions?: string[]
+  /**
+   * Fired for every model this picker adds to the catalogue, so the form's own
+   * "Model" dropdown offers it immediately instead of only after a reopen.
+   */
+  onModelsCreated?: (brand: string, names: string[]) => void
   disabled?: boolean
 }
 
@@ -34,6 +39,7 @@ export default function CompatibleModelsPicker({
   onChange,
   brand,
   brandModelSuggestions = [],
+  onModelsCreated,
   disabled = false,
 }: CompatibleModelsPickerProps) {
   const [allModels, setAllModels] = useState<PhoneModel[]>([])
@@ -139,6 +145,7 @@ export default function CompatibleModelsPicker({
         return Array.from(byId.values())
       })
       setBrandFilter(brand)
+      onModelsCreated?.(brand, models.map((m) => m.name))
       toast.success(`${brand}: ${models.length} models available to tick`)
     } catch (error: any) {
       if (String(error?.message || "").includes("Phone model tables not found")) {
@@ -176,7 +183,8 @@ export default function CompatibleModelsPicker({
       setNewModelName("")
       setNewModelCode("")
       setShowAddModel(false)
-      toast.success(`${model.label} added`)
+      onModelsCreated?.(brand, [model.name])
+      toast.success(`${model.label} added to the phone model list`)
     } catch (error: any) {
       if (String(error?.message || "").includes("Phone model tables not found")) {
         setTableMissing(true)

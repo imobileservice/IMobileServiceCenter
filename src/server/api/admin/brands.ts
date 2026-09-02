@@ -195,13 +195,38 @@ export const getBrandModelsHandler = asyncHandler(async (req: Request, res: Resp
 
   const models = await searchModelsWithAI(brandName)
 
-  // Cache a successful lookup so the next admin does not wait on the AI again
+  // Cache a successful lookup so the next admin does not wait on the AI again.
+  //
+  // MERGE, never replace. Admins add models by hand through the compatibility
+  // screens, and those are the ones the AI is least likely to know about
+  // (a local-market Redmi variant, say) - a refresh that overwrote the column
+  // would delete exactly the entries someone bothered to type in.
   if (supabase && models.length > 0) {
+    const { data: existing } = await supabase
+      .from('brands')
+      .select('models')
+      .ilike('name', brandName)
+      .maybeSingle()
+
+    const kept: string[] = Array.isArray(existing?.models)
+      ? (existing!.models as unknown[]).map(String)
+      : []
+    const seen = new Set(kept.map((m) => m.trim().toLowerCase()))
+    const merged = [...kept]
+    for (const model of models) {
+      const key = model.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      merged.push(model)
+    }
+
     const { error } = await supabase
       .from('brands')
-      .update({ models, updated_at: new Date().toISOString() })
+      .update({ models: merged, updated_at: new Date().toISOString() })
       .ilike('name', brandName)
     if (error) console.warn('[Brand Models] Could not cache models:', error.message)
+
+    return res.json({ models: merged, source: 'ai' })
   }
 
   return res.json({ models, source: models.length > 0 ? 'ai' : 'none' })

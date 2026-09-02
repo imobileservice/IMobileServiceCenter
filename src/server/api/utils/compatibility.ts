@@ -416,3 +416,66 @@ export async function setProductCompatibility(
 
   return { ok: true, added: toAdd.length, removed: toRemove.length }
 }
+
+/**
+ * Mirror phone model names into `brands.models`.
+ *
+ * Two lists show the same phones in the admin panel: `phone_models` (what the
+ * compatibility pickers tick) and `brands.models` (what the product form's
+ * "Model" dropdown offers). A model added in one was invisible in the other,
+ * so an admin who had just linked a display to "Redmi 14C" still could not
+ * pick "Redmi 14C" as a product's own model.
+ *
+ * Every path that creates a phone model calls this, so the dropdown grows by
+ * itself. Names already present are left alone (matched case-insensitively),
+ * which makes it safe to call with the full list rather than only the new rows.
+ *
+ * Never throws: the brands table is a convenience list, and failing to extend
+ * it must not fail the model that was just created.
+ */
+export async function addModelsToBrandCatalogue(
+  supabase: SupabaseClient,
+  brandId: string,
+  names: string[]
+): Promise<void> {
+  const wanted = names.map((n) => String(n || '').trim()).filter(Boolean)
+  if (!brandId || wanted.length === 0) return
+
+  try {
+    const { data, error } = await supabase
+      .from('brands')
+      .select('models')
+      .eq('id', brandId)
+      .maybeSingle()
+
+    if (error || !data) return
+
+    const current: string[] = Array.isArray(data.models) ? data.models.map(String) : []
+    const seen = new Set(current.map((m) => m.trim().toLowerCase()))
+
+    const additions: string[] = []
+    for (const name of wanted) {
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      additions.push(name)
+    }
+
+    if (additions.length === 0) return
+
+    // Newest first matches how the AI lookup fills this column, so a model just
+    // typed in sits at the top of the dropdown instead of the bottom.
+    const merged = [...additions, ...current]
+
+    const { error: updateError } = await supabase
+      .from('brands')
+      .update({ models: merged, updated_at: new Date().toISOString() })
+      .eq('id', brandId)
+
+    if (updateError) {
+      console.warn('[Compatibility] Could not extend brand model list:', updateError.message)
+    }
+  } catch (e: any) {
+    console.warn('[Compatibility] Brand model mirror threw:', e?.message)
+  }
+}
