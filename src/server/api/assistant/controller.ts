@@ -255,7 +255,9 @@ export async function assistantListProductsHandler(req: Request, res: Response) 
     const supabase = getServiceClient()
     const search = String(req.query.search || '').trim()
     const categoryId = String(req.query.category_id || '').trim()
-    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500)
+    // The products screen loads the whole catalogue, the way the admin one does.
+    // 1000 is PostgREST's own default row cap on Supabase.
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 1000)
 
     let query = supabase
       .from('products')
@@ -274,15 +276,19 @@ export async function assistantListProductsHandler(req: Request, res: Response) 
     const { data, error } = await query
     if (error) throw error
 
+    // In batches: every id is ~37 characters of query string, and a single
+    // `in` over the whole catalogue outgrows the gateway's URL limit.
     const ids = (data || []).map((p: any) => p.id)
-    const { data: stock } = ids.length
-      ? await supabase
-          .from('inv_stock')
-          .select('product_id, quantity, qty_meegoda, qty_padukka, qty_padukka_new, low_stock_threshold')
-          .in('product_id', ids)
-      : { data: [] as any[] }
+    const stock: any[] = []
+    for (let start = 0; start < ids.length; start += 150) {
+      const { data: batch } = await supabase
+        .from('inv_stock')
+        .select('product_id, quantity, qty_meegoda, qty_padukka, qty_padukka_new, low_stock_threshold')
+        .in('product_id', ids.slice(start, start + 150))
+      if (batch) stock.push(...batch)
+    }
 
-    const stockByProduct = new Map((stock || []).map((row: any) => [row.product_id, row]))
+    const stockByProduct = new Map(stock.map((row: any) => [row.product_id, row]))
 
     return res.json({
       data: (data || []).map((product: any) => {
