@@ -46,6 +46,8 @@ const ROUTES = [
   '/', '/shop', '/about', '/cart', '/contact', '/signin',
   '/product/123', '/invoice/123', '/auth/callback',
   '/admin', '/admin/login', '/admin/products', '/cashier/pos',
+  // The one emailed as the confirmation link - it is always opened cold.
+  '/assistant', '/assistant/verify-email',
 ];
 
 (async () => {

@@ -31,5 +31,7 @@
 /admin/* / 200
 /cashier / 200
 /cashier/* / 200
+/assistant / 200
+/assistant/* / 200
 /supplier / 200
 /supplier/* / 200
