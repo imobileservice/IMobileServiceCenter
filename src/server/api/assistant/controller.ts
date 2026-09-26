@@ -841,6 +841,7 @@ const SECURITY_EVENTS = new Set([
   'screenshot.capture_api',
   'screen.hidden',
   'devtools.suspected',
+  'save.blocked',
   'copy.blocked',
   'contextmenu.blocked',
 ])

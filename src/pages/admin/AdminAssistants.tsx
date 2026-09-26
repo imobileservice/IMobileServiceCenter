@@ -1145,6 +1145,8 @@ function humanAction(action: string) {
     "screenshot.clipboard": "Screenshot copied to clipboard",
     "copy.blocked": "Copy blocked",
     "contextmenu.blocked": "Right-click blocked",
+    "save.blocked": "Tried to save the page",
+    "devtools.suspected": "Tried to open developer tools",
     "screen.hidden": "Left the page",
     "assistant.created": "Account created",
     "assistant.updated": "Account updated",

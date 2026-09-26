@@ -260,8 +260,9 @@ export async function revokeAllSessions(
  * on the assistant's very next click, not when their token expires.
  */
 export async function resolvePanelActor(req: Request): Promise<PanelActor | null> {
-  const token = readSessionToken(req)
-  if (!token) return null
+  const presented = readSessionTokenWithSource(req)
+  if (!presented) return null
+  const { token } = presented
 
   let client: SupabaseClient
   try {
@@ -283,6 +284,15 @@ export async function resolvePanelActor(req: Request): Promise<PanelActor | null
   if (new Date(session.expires_at).getTime() <= now) return null
 
   const actorType = session.actor_type as ActorType
+
+  // An assistant is never authorised by the cookie alone. It is there for an
+  // administrator's plain navigations (a PDF in a new tab); for an assistant it
+  // would do one thing - let them open /api/assistant/products in the address
+  // bar and save the whole catalogue as a file, past every screen guard. Their
+  // own screens always send the x-panel-session header, so nothing they use
+  // relies on it, and a tab without the header token is sent to sign in.
+  if (actorType === 'assistant' && presented.source === 'cookie') return null
+
   const lastSeen = new Date(session.last_seen_at).getTime()
   if (Number.isFinite(lastSeen) && now - lastSeen > IDLE_TTL_MS[actorType]) {
     await client

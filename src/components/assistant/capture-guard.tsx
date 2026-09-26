@@ -6,117 +6,125 @@ import { getApiUrl } from "@/lib/utils/api"
 import { toast } from "sonner"
 
 /**
- * Screen-capture deterrent for the assistant admin screens.
+ * Screen-capture and data-sharing guard for the assistant admin screens.
  *
  * Read this before relying on it.
  *
- * A web page cannot prevent a screenshot. The operating system takes the
- * picture; the browser is never asked, and on Windows, macOS, Android and iOS
- * alike a phone pointed at the monitor works regardless. Any claim to the
- * contrary is false, and building on that claim is worse than building on
- * nothing, because it stops people from applying the controls that do work.
+ * A web page cannot make a screenshot impossible. The operating system takes
+ * the picture, and a phone pointed at the monitor needs no software at all.
+ * What a page CAN do is win the race against most capture tools and make every
+ * capture that still gets through traceable to a person. This does both:
  *
- * What this component actually does, in descending order of usefulness:
+ *   1. THE SHIELD. The moment a capture key is pressed - PrintScreen, the
+ *      Windows key (Win+Shift+S, Win+PrtScn, Win+G, Win+Alt+R all start with
+ *      it) - or the window loses focus, the whole page is hidden behind a
+ *      notice. It is a class on <html>, not React state, so it goes up in the
+ *      same frame as the key event: the capture tools take longer than that to
+ *      start, which is exactly how an earlier version's warning toast ended up
+ *      INSIDE a screenshot - there was time to react, and it was not used.
+ *   2. THE WATERMARK. The assistant's name, email and the current time tiled
+ *      across every screen, above every dialog. Whatever beats the shield - a
+ *      phone photo, a capture tool on a timer - identifies who took it.
+ *   3. THE LOG. Every attempt is reported to /api/assistant/security-event and
+ *      shows in the administrator's Activity tab with the assistant's email,
+ *      the page, the time and their IP.
+ *   4. The rest: printing shows a notice, copy/cut/drag/right-click are off,
+ *      Ctrl+S / Ctrl+U and the developer-tools shortcuts are refused, the
+ *      clipboard is emptied after PrintScreen, and screen sharing started from
+ *      this page is refused.
  *
- *   1. Attributes and logs the attempt. PrintScreen, the clipboard, Ctrl+P and
- *      getDisplayMedia() all report to /api/assistant/security-event, which
- *      writes to the assistant's activity log with their email, the page, the
- *      time and their IP. The administrator sees it. This is the part that
- *      changes behaviour, and it is the reason the rest is here at all.
- *   2. Watermarks the screen with the assistant's email and the current time,
- *      so a photograph of the monitor identifies who was sitting at it.
- *   3. Blanks the content when the tab loses focus, so a capture tool started
- *      from another window finds nothing on screen.
- *   4. Empties the clipboard after PrintScreen, which defeats the plain
- *      "PrtScn then paste into Paint" route on Windows - but only while the
- *      page has focus and only when the browser grants clipboard access.
- *   5. Makes the page print as a notice rather than as data, and blocks copy,
- *      cut and the context menu.
- *
- * None of 3-5 stops a determined person. All of 1-2 make it traceable, which
- * is the control that actually holds. If the data genuinely must not leave the
- * building, that is an endpoint-management problem, not a CSS one.
+ * What still gets through: a phone camera, a capture tool on a delay timer
+ * while the person clicks back into the page, and a screen recording that was
+ * already running before the page opened. For those, the watermark is the
+ * control. Stopping them outright takes a managed device or a native app, not
+ * a web page.
  */
 
+const SHIELD_CLASS = "capture-shield"
+
+/** Keys that are a capture on their own. F13 is PrintScreen on some keyboards. */
 const CAPTURE_KEYS = new Set(["PrintScreen", "F13"])
 
-export default function CaptureGuard({ email }: { email: string }) {
+/** The Windows / Command key. Every Windows capture shortcut starts with it. */
+const OS_KEYS = new Set(["Meta", "OS"])
+
+/**
+ * Capture shortcuts that ride on the Windows / Command key, matched by physical
+ * key because Shift changes e.key ("3" arrives as "#"). The shield is already
+ * up by the time these arrive; this decides only what gets logged.
+ *   Win+Shift+S snip · Win+G Game Bar · Win+Alt+R record
+ *   Cmd+Shift+3/4/5/6 macOS screenshots
+ */
+const isOsCaptureShortcut = (e: KeyboardEvent) =>
+  e.metaKey &&
+  ((e.shiftKey && ["KeyS", "Digit3", "Digit4", "Digit5", "Digit6"].includes(e.code)) ||
+    (!e.shiftKey && !e.altKey && e.code === "KeyG") ||
+    (e.altKey && e.code === "KeyR"))
+
+/** How long the shield stays up after a capture key, even if focus never leaves. */
+const SHIELD_HOLD_MS = 2500
+
+/** Delay before lowering on focus, so a tool that hands focus straight back gets nothing. */
+const RESUME_DELAY_MS = 300
+
+export default function CaptureGuard({ email, name }: { email: string; name?: string | null }) {
   const location = useLocation()
-  const lastReport = useRef<Record<string, number>>({})
-  const [obscured, setObscured] = useState(false)
+  const pathRef = useRef(location.pathname)
+  pathRef.current = location.pathname
 
-  // Hide the content whenever this window is not the focused one. A capture
-  // tool has to be clicked, and clicking it takes focus away from here - so by
-  // the time the snip is drawn there is a cover over the data. It is a real
-  // obstacle to the Snipping Tool and to nothing else.
   useEffect(() => {
-    const hide = () => setObscured(true)
-    const show = () => setObscured(false)
+    const root = document.documentElement
+    const lastReport: Record<string, number> = {}
+    let holdUntil = 0
+    let osKeyDown = false
+    let lowerTimer: number | undefined
 
-    window.addEventListener("blur", hide)
-    window.addEventListener("focus", show)
-    return () => {
-      window.removeEventListener("blur", hide)
-      window.removeEventListener("focus", show)
+    /* --- the shield ------------------------------------------------ */
+
+    const raise = (holdMs = 0) => {
+      root.classList.add(SHIELD_CLASS)
+      holdUntil = Math.max(holdUntil, Date.now() + holdMs)
+      scheduleLower(holdMs || RESUME_DELAY_MS)
     }
-  }, [])
 
-  useEffect(() => {
+    const scheduleLower = (delayMs: number) => {
+      window.clearTimeout(lowerTimer)
+      lowerTimer = window.setTimeout(lowerIfSafe, delayMs)
+    }
+
+    // Only when this window has focus again, is visible, the Windows key is
+    // up, and any capture-key hold has run out. Otherwise it stays hidden and
+    // the next focus/keyup tries again.
+    const lowerIfSafe = () => {
+      if (!document.hasFocus() || document.visibilityState !== "visible" || osKeyDown) return
+      const wait = holdUntil - Date.now()
+      if (wait > 0) return scheduleLower(wait)
+      root.classList.remove(SHIELD_CLASS)
+    }
+
+    /* --- reporting ------------------------------------------------- */
+
     /** One report per event type per 10s, so a held-down key is not a flood. */
     const report = (event: string) => {
       const now = Date.now()
-      if (now - (lastReport.current[event] || 0) < 10_000) return
-      lastReport.current[event] = now
+      if (now - (lastReport[event] || 0) < 10_000) return
+      lastReport[event] = now
 
       void fetch(getApiUrl("/api/assistant/security-event"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event, path: location.pathname }),
+        body: JSON.stringify({ event, path: pathRef.current }),
       }).catch(() => {
         /* the log is best-effort; never interrupt the person's work */
       })
     }
 
-    const warn = (message: string) => toast.warning(message, { duration: 4000 })
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      // Windows PrintScreen fires keyup, not keydown, in most browsers - both
-      // are handled and the report is de-duplicated above.
-      if (CAPTURE_KEYS.has(e.key)) {
-        clearClipboard()
-        report("screenshot.keypress")
-        warn("Screenshots are not permitted here. This attempt has been logged.")
-        return
-      }
-
-      // Ctrl/Cmd+P, and the Windows snipping shortcut Win+Shift+S (which the
-      // browser sees only as Shift+S with the meta key on some layouts).
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
-        e.preventDefault()
-        report("screenshot.print")
-        warn("Printing is disabled on this screen. This attempt has been logged.")
-        return
-      }
-
-      if (e.shiftKey && e.metaKey && e.key.toLowerCase() === "s") {
-        report("screenshot.keypress")
-        warn("Screen capture is not permitted here. This attempt has been logged.")
-      }
-    }
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (CAPTURE_KEYS.has(e.key)) {
-        clearClipboard()
-        report("screenshot.keypress")
-        warn("Screenshots are not permitted here. This attempt has been logged.")
-      }
-    }
+    const warn = (message: string) => toast.warning(message, { id: "capture-guard", duration: 4000 })
 
     /**
-     * Overwrite whatever PrintScreen just put on the clipboard.
-     *
-     * Only works while the document has focus and the browser allows it, which
-     * is precisely the PrtScn-then-paste case - and nothing else.
+     * Overwrite whatever PrintScreen just put on the clipboard. Only works while
+     * the document has focus and the browser allows it - the PrtScn-then-paste
+     * case, and nothing else.
      */
     const clearClipboard = () => {
       try {
@@ -128,39 +136,120 @@ export default function CaptureGuard({ email }: { email: string }) {
       }
     }
 
+    const captureAttempt = () => {
+      raise(SHIELD_HOLD_MS)
+      clearClipboard()
+      report("screenshot.keypress")
+      warn("Screenshots are not permitted here. This attempt has been logged.")
+    }
+
+    /* --- keyboard -------------------------------------------------- */
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase()
+
+      if (OS_KEYS.has(e.key)) {
+        // Up before the rest of the shortcut arrives. Pressing the Windows key
+        // for anything else costs a blink, which is the price of this working.
+        osKeyDown = true
+        raise()
+        return
+      }
+
+      if (CAPTURE_KEYS.has(e.key) || isOsCaptureShortcut(e)) {
+        captureAttempt()
+        return
+      }
+
+      if ((e.ctrlKey || e.metaKey) && key === "p") {
+        e.preventDefault()
+        report("screenshot.print")
+        warn("Printing is disabled on this screen. This attempt has been logged.")
+        return
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (key === "s" || key === "u")) {
+        e.preventDefault()
+        report("save.blocked")
+        warn("Saving this page is disabled. This attempt has been logged.")
+        return
+      }
+
+      const devtools =
+        e.key === "F12" ||
+        (e.ctrlKey && e.shiftKey && ["i", "j", "c"].includes(key)) ||
+        (e.metaKey && e.altKey && ["i", "j", "c"].includes(key))
+      if (devtools) {
+        e.preventDefault()
+        report("devtools.suspected")
+        warn("Developer tools are disabled on this screen. This attempt has been logged.")
+      }
+    }
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (OS_KEYS.has(e.key)) {
+        osKeyDown = false
+        scheduleLower(RESUME_DELAY_MS)
+        return
+      }
+      // Windows delivers PrintScreen as keyup only in most browsers.
+      if (CAPTURE_KEYS.has(e.key)) captureAttempt()
+    }
+
+    /* --- focus and visibility ------------------------------------- */
+
+    const onBlur = () => raise()
+    const onFocus = () => {
+      // A Windows-key release can happen while another window has focus, so
+      // the flag is reset here rather than trusted.
+      osKeyDown = false
+      scheduleLower(RESUME_DELAY_MS)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        raise()
+        report("screen.hidden")
+      } else {
+        scheduleLower(RESUME_DELAY_MS)
+      }
+    }
+
+    /* --- copying, dragging, printing, sharing ---------------------- */
+
     const onCopy = (e: ClipboardEvent) => {
       e.preventDefault()
       report("copy.blocked")
     }
-
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault()
       report("contextmenu.blocked")
     }
-
+    const onDragStart = (e: DragEvent) => e.preventDefault()
     const onBeforePrint = () => report("screenshot.print")
 
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") report("screen.hidden")
-    }
+    // Up from the first frame if the page opened without focus.
+    if (!document.hasFocus()) raise()
 
-    document.addEventListener("keydown", onKeyDown, true)
-    document.addEventListener("keyup", onKeyUp, true)
+    window.addEventListener("keydown", onKeyDown, true)
+    window.addEventListener("keyup", onKeyUp, true)
+    window.addEventListener("blur", onBlur)
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisibility)
     document.addEventListener("copy", onCopy)
     document.addEventListener("cut", onCopy)
     document.addEventListener("contextmenu", onContextMenu)
-    document.addEventListener("visibilitychange", onVisibility)
+    document.addEventListener("dragstart", onDragStart)
     window.addEventListener("beforeprint", onBeforePrint)
 
     /**
      * Screen-share and tab-capture started from this page. A capture started
-     * from the OS or another tab never reaches this, which is most of them -
-     * this catches the browser-initiated case only.
+     * from the OS or another tab never reaches this - the shield and the
+     * watermark are what cover those.
      */
     const media = navigator.mediaDevices as any
     const originalGetDisplayMedia = media?.getDisplayMedia?.bind(media)
     if (originalGetDisplayMedia) {
-      media.getDisplayMedia = async (...args: any[]) => {
+      media.getDisplayMedia = async () => {
         report("screenshot.capture_api")
         warn("Screen sharing is not permitted here. This attempt has been logged.")
         throw new DOMException("Screen capture is disabled on this page", "NotAllowedError")
@@ -168,23 +257,27 @@ export default function CaptureGuard({ email }: { email: string }) {
     }
 
     return () => {
-      document.removeEventListener("keydown", onKeyDown, true)
-      document.removeEventListener("keyup", onKeyUp, true)
+      window.clearTimeout(lowerTimer)
+      root.classList.remove(SHIELD_CLASS)
+      window.removeEventListener("keydown", onKeyDown, true)
+      window.removeEventListener("keyup", onKeyUp, true)
+      window.removeEventListener("blur", onBlur)
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisibility)
       document.removeEventListener("copy", onCopy)
       document.removeEventListener("cut", onCopy)
       document.removeEventListener("contextmenu", onContextMenu)
-      document.removeEventListener("visibilitychange", onVisibility)
+      document.removeEventListener("dragstart", onDragStart)
       window.removeEventListener("beforeprint", onBeforePrint)
       if (originalGetDisplayMedia) media.getDisplayMedia = originalGetDisplayMedia
     }
-  }, [location.pathname])
+  }, [])
 
   return (
     <>
       {/*
-        Blank the page while it is not the focused window, and replace the
-        printed page with a notice. Both are pure CSS so there is no frame where
-        the content is visible before React catches up.
+        Pure CSS, so nothing waits on React: the shield hides every element on
+        the page - dialogs and portals included - and shows only the cover.
       */}
       <style>{`
         @media print {
@@ -197,9 +290,15 @@ export default function CaptureGuard({ email }: { email: string }) {
             font-size: 18px; font-family: system-ui, sans-serif; text-align: center; padding: 40px;
           }
         }
+        html.${SHIELD_CLASS} body * { visibility: hidden !important; }
+        html.${SHIELD_CLASS} .capture-cover,
+        html.${SHIELD_CLASS} .capture-cover * { visibility: visible !important; }
+        .capture-cover { display: none; }
+        html.${SHIELD_CLASS} .capture-cover { display: flex; }
         .assistant-shell {
           -webkit-user-select: none;
           user-select: none;
+          -webkit-touch-callout: none;
         }
         /* Typing must still work, so inputs opt back in. */
         .assistant-shell input,
@@ -211,53 +310,65 @@ export default function CaptureGuard({ email }: { email: string }) {
         .assistant-shell img { -webkit-user-drag: none; user-drag: none; pointer-events: none; }
       `}</style>
 
-      <Watermark email={email} />
+      <Watermark email={email} name={name} />
 
-      {obscured && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background/98 backdrop-blur-2xl">
-          <div className="max-w-sm px-8 text-center">
-            <p className="text-sm font-semibold text-foreground">Hidden while this window is not in focus</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Click anywhere to bring the page back. Signed in as {email}.
-            </p>
-          </div>
+      <div className="capture-cover fixed inset-0 z-[100] items-center justify-center bg-background">
+        <div className="max-w-sm px-8 text-center">
+          <p className="text-sm font-semibold text-foreground">Content hidden</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            This page hides itself when it is not in focus or a screen capture starts. Click here to
+            continue. Signed in as {email}.
+          </p>
         </div>
-      )}
+      </div>
     </>
   )
 }
 
 /**
- * A tiled, non-interactive overlay carrying the assistant's email and the
- * current time. Anything captured - by any means, including a phone - carries
- * the identity of whoever was signed in when it was taken.
+ * The assistant's name, email and the current time, tiled across the screen
+ * above every dialog. Anything captured - by any means, including a phone -
+ * carries the identity of whoever was signed in when it was taken.
+ *
+ * The fill is an explicit mid-grey, not currentColor: inside an SVG used as a
+ * CSS background, currentColor does not inherit and falls back to black -
+ * which, blended onto this dark theme, made the old watermark invisible.
+ * Mid-grey at this opacity shows on the dark theme and the light one alike.
  */
-function Watermark({ email }: { email: string }) {
-  const stamp = new Date().toLocaleString()
-  const text = `${email} · ${stamp}`
+function Watermark({ email, name }: { email: string; name?: string | null }) {
+  const [now, setNow] = useState(() => new Date())
+
+  // The time on a leaked capture should say when it was taken, not when the
+  // page was opened.
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const when = now.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
+
+  // One short line each, anchored low in the tile: rotated text climbs as it
+  // runs right, and a single long line climbed straight out of the top of the
+  // tile and was clipped mid-email.
+  const lines = [name && name !== email ? name : null, email, `${when} · IMobile · Confidential`]
+    .filter(Boolean)
+    .map((line, index) => `<text x="30" y="${200 + index * 20}">${escapeXml(String(line))}</text>`)
+    .join("")
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300">
+    <g font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#8b909a"
+       transform="rotate(-22 30 210)">${lines}</g>
+  </svg>`
 
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-[60] overflow-hidden select-none"
-      style={{ mixBlendMode: "multiply" }}
-    >
-      <div
-        className="absolute inset-0 opacity-[0.055] dark:opacity-[0.09]"
-        style={{
-          backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(
-            `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="240">
-               <text x="0" y="60" transform="rotate(-24 0 60)"
-                     font-family="system-ui, sans-serif" font-size="17" fill="currentColor">${escapeXml(text)}</text>
-               <text x="120" y="190" transform="rotate(-24 120 190)"
-                     font-family="system-ui, sans-serif" font-size="17" fill="currentColor">${escapeXml(text)}</text>
-             </svg>`
-          )}")`,
-          backgroundRepeat: "repeat",
-          color: "currentColor",
-        }}
-      />
-    </div>
+      className="pointer-events-none fixed inset-0 z-[90] select-none opacity-[0.22]"
+      style={{
+        backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`,
+        backgroundRepeat: "repeat",
+      }}
+    />
   )
 }
 
