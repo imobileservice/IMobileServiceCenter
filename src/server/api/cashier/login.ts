@@ -5,7 +5,28 @@ import { verifyPassword } from '../utils/password'
 
 const POS_ROLES = new Set(['cashier', 'admin'])
 const DEFAULT_SHOP = 'Meegoda'
-const TILL_SESSION_HOURS = 6
+
+/*
+ * Sri Lanka is UTC+05:30 all year round - no daylight saving - so a fixed
+ * offset is exact. It is spelled out rather than taken from the server's clock
+ * because the API may well be hosted in UTC, where "midnight" is 5:30 in the
+ * morning at the shop.
+ */
+const SHOP_UTC_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
+
+/**
+ * When a till session opened at `nowMs` ends: the next 00:00 at the shop.
+ *
+ * A till stays signed in on its device for the rest of the trading day and
+ * everyone signs in afresh each morning, whether they logged in at 8 am or
+ * 11 pm.
+ */
+function nextShopMidnight(nowMs: number): Date {
+    // Shift into shop wall-clock time and read it back with the UTC getters.
+    const shopNow = new Date(nowMs + SHOP_UTC_OFFSET_MS)
+    const shopMidnight = Date.UTC(shopNow.getUTCFullYear(), shopNow.getUTCMonth(), shopNow.getUTCDate() + 1)
+    return new Date(shopMidnight - SHOP_UTC_OFFSET_MS)
+}
 
 function getSupabaseConfig() {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -107,7 +128,8 @@ async function logPosAuthEvent(adminClient: any, req: Request, event: {
 /**
  * POST /api/cashier/login
  * Direct POS login without email OTP. Validates cashier/admin credentials,
- * validates the till code, then opens a till session for auditability.
+ * validates the till code, then opens a till session for auditability. The
+ * session runs until the next midnight at the shop - see nextShopMidnight.
  */
 export async function loginCashierHandler(req: Request, res: Response) {
     const attemptedEmail = req.body?.email ? normalizeEmail(String(req.body.email)) : undefined
@@ -273,7 +295,7 @@ export async function loginCashierHandler(req: Request, res: Response) {
         const sessionTokenHash = hashSecret(sessionToken)
         const now = Date.now()
         const openedAt = new Date(now).toISOString()
-        const expiresAt = new Date(now + TILL_SESSION_HOURS * 60 * 60 * 1000).toISOString()
+        const expiresAt = nextShopMidnight(now).toISOString()
 
         await adminClient
             .from('pos_till_sessions')

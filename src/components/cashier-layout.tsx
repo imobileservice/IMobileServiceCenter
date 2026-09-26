@@ -6,8 +6,10 @@ import { LogOut, Calculator, ClipboardList, LayoutDashboard, Package, Receipt, S
 import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
 import { getApiUrl } from "@/lib/utils/api"
+import { toast } from "sonner"
 
 const SESSION_CHECK_INTERVAL_MS = 30 * 1000
+const MAX_TIMEOUT_MS = 2 ** 31 - 1
 
 interface CashierLayoutProps {
   children: ReactNode
@@ -26,30 +28,56 @@ const NAV_ITEMS = [
 export default function CashierLayout({ children }: CashierLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { cashier, tillSession, isAuthenticated, logout, isTillSessionExpired } = useCashierStore()
+  const { cashier, tillSession, isAuthenticated, logout } = useCashierStore()
 
+  const expiresAt = tillSession?.expires_at
+
+  /*
+   * The till stays signed in on this device until its session runs out, which
+   * the server sets to the next midnight at the shop. Three things watch for
+   * that moment: a timer aimed at it, a slow poll in case the timer drifts, and
+   * a check whenever the screen comes back - a till left on overnight sleeps,
+   * and a sleeping machine's timers only catch up after it wakes.
+   */
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/cashier/login")
       return
     }
 
-    if (isTillSessionExpired()) {
-      logout()
+    const endIfExpired = () => {
+      const state = useCashierStore.getState()
+      // Already signed out by another of the checks below.
+      if (!state.isAuthenticated || !state.isTillSessionExpired()) return false
+
+      state.logout()
+      toast.info("Till session has ended for the day. Please log in again.")
       navigate("/cashier/login")
-      return
+      return true
     }
 
-    const intervalId = window.setInterval(() => {
-      const state = useCashierStore.getState()
-      if (state.isTillSessionExpired()) {
-        state.logout()
-        navigate("/cashier/login")
-      }
-    }, SESSION_CHECK_INTERVAL_MS)
+    if (endIfExpired()) return
 
-    return () => window.clearInterval(intervalId)
-  }, [isAuthenticated, isTillSessionExpired, logout, navigate])
+    const msLeft = new Date(expiresAt ?? 0).getTime() - Date.now()
+    // setTimeout fires at once for anything past ~24.8 days; a session never
+    // runs that long, but the poll covers it if one somehow does.
+    const timeoutId = Number.isFinite(msLeft) && msLeft < MAX_TIMEOUT_MS
+      ? window.setTimeout(endIfExpired, Math.max(0, msLeft) + 1000)
+      : undefined
+    const intervalId = window.setInterval(endIfExpired, SESSION_CHECK_INTERVAL_MS)
+    const onResume = () => {
+      if (document.visibilityState === "visible") endIfExpired()
+    }
+    document.addEventListener("visibilitychange", onResume)
+    window.addEventListener("focus", onResume)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+      document.removeEventListener("visibilitychange", onResume)
+      window.removeEventListener("focus", onResume)
+    }
+  }, [isAuthenticated, expiresAt, navigate])
 
   const handleLogout = async () => {
     if (tillSession?.id && tillSession?.token) {

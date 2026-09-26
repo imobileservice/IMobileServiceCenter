@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
 import { Coins, Hash, Lock, Mail, Store } from "lucide-react"
@@ -20,6 +20,17 @@ export default function CashierLoginPage() {
   const [openingFloat, setOpeningFloat] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  // This device may still hold today's till session - the till stays signed in
+  // until midnight. Go straight back to the till rather than asking again, and
+  // drop a session that has already run out so it is not offered next time.
+  useEffect(() => {
+    const state = useCashierStore.getState()
+    if (!state.isAuthenticated) return
+
+    if (state.isTillSessionExpired()) state.logout()
+    else navigate("/cashier/pos", { replace: true })
+  }, [navigate])
 
   const getDeviceFingerprint = () => {
     if (typeof window === "undefined") return "server"
@@ -120,6 +131,10 @@ export default function CashierLoginPage() {
             <Button type="submit" className="w-full h-12 text-md font-bold" disabled={isLoading}>
               {isLoading ? "Opening Till..." : "Open Till Session"}
             </Button>
+
+            <p className="text-center text-xs text-muted-foreground">
+              This device stays signed in until 12:00 midnight.
+            </p>
           </form>
         </div>
       </motion.div>
