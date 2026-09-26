@@ -81,7 +81,7 @@ export default function AssistantLayout({
 
   return (
     <div className="assistant-shell min-h-screen bg-background">
-      <CaptureGuard email={user.email} name={user.name} />
+      <CaptureGuard email={user.email} />
       <AssistantSidebar />
 
       <main className="min-h-screen transition-all duration-300 lg:pl-64">

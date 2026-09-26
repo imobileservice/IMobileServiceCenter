@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import { useLocation } from "react-router-dom"
 import { getApiUrl } from "@/lib/utils/api"
 import { toast } from "sonner"
@@ -12,8 +12,8 @@ import { toast } from "sonner"
  *
  * A web page cannot make a screenshot impossible. The operating system takes
  * the picture, and a phone pointed at the monitor needs no software at all.
- * What a page CAN do is win the race against most capture tools and make every
- * capture that still gets through traceable to a person. This does both:
+ * What a page CAN do is win the race against most capture tools and record who
+ * tried. This does both:
  *
  *   1. THE SHIELD. The moment a capture key is pressed - PrintScreen, the
  *      Windows key (Win+Shift+S, Win+PrtScn, Win+G, Win+Alt+R all start with
@@ -22,22 +22,20 @@ import { toast } from "sonner"
  *      same frame as the key event: the capture tools take longer than that to
  *      start, which is exactly how an earlier version's warning toast ended up
  *      INSIDE a screenshot - there was time to react, and it was not used.
- *   2. THE WATERMARK. The assistant's name, email and the current time tiled
- *      across every screen, above every dialog. Whatever beats the shield - a
- *      phone photo, a capture tool on a timer - identifies who took it.
- *   3. THE LOG. Every attempt is reported to /api/assistant/security-event and
+ *   2. THE LOG. Every attempt is reported to /api/assistant/security-event and
  *      shows in the administrator's Activity tab with the assistant's email,
  *      the page, the time and their IP.
- *   4. The rest: printing shows a notice, copy/cut/drag/right-click are off,
+ *   3. The rest: printing shows a notice, copy/cut/drag/right-click are off,
  *      Ctrl+S / Ctrl+U and the developer-tools shortcuts are refused, the
  *      clipboard is emptied after PrintScreen, and screen sharing started from
  *      this page is refused.
  *
  * What still gets through: a phone camera, a capture tool on a delay timer
  * while the person clicks back into the page, and a screen recording that was
- * already running before the page opened. For those, the watermark is the
- * control. Stopping them outright takes a managed device or a native app, not
- * a web page.
+ * already running before the page opened. There was a tiled name/email
+ * watermark for those; the owner removed it on 2026-09-26 as too distracting.
+ * Stopping them outright takes a managed device or a native app, not a web
+ * page.
  */
 
 const SHIELD_CLASS = "capture-shield"
@@ -67,7 +65,7 @@ const SHIELD_HOLD_MS = 2500
 /** Delay before lowering on focus, so a tool that hands focus straight back gets nothing. */
 const RESUME_DELAY_MS = 300
 
-export default function CaptureGuard({ email, name }: { email: string; name?: string | null }) {
+export default function CaptureGuard({ email }: { email: string }) {
   const location = useLocation()
   const pathRef = useRef(location.pathname)
   pathRef.current = location.pathname
@@ -243,8 +241,8 @@ export default function CaptureGuard({ email, name }: { email: string; name?: st
 
     /**
      * Screen-share and tab-capture started from this page. A capture started
-     * from the OS or another tab never reaches this - the shield and the
-     * watermark are what cover those.
+     * from the OS or another tab never reaches this - the shield is what
+     * covers those.
      */
     const media = navigator.mediaDevices as any
     const originalGetDisplayMedia = media?.getDisplayMedia?.bind(media)
@@ -310,8 +308,6 @@ export default function CaptureGuard({ email, name }: { email: string; name?: st
         .assistant-shell img { -webkit-user-drag: none; user-drag: none; pointer-events: none; }
       `}</style>
 
-      <Watermark email={email} name={name} />
-
       <div className="capture-cover fixed inset-0 z-[100] items-center justify-center bg-background">
         <div className="max-w-sm px-8 text-center">
           <p className="text-sm font-semibold text-foreground">Content hidden</p>
@@ -323,60 +319,4 @@ export default function CaptureGuard({ email, name }: { email: string; name?: st
       </div>
     </>
   )
-}
-
-/**
- * The assistant's name, email and the current time, tiled across the screen
- * above every dialog. Anything captured - by any means, including a phone -
- * carries the identity of whoever was signed in when it was taken.
- *
- * The fill is an explicit mid-grey, not currentColor: inside an SVG used as a
- * CSS background, currentColor does not inherit and falls back to black -
- * which, blended onto this dark theme, made the old watermark invisible.
- * Mid-grey at this opacity shows on the dark theme and the light one alike.
- */
-function Watermark({ email, name }: { email: string; name?: string | null }) {
-  const [now, setNow] = useState(() => new Date())
-
-  // The time on a leaked capture should say when it was taken, not when the
-  // page was opened.
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(id)
-  }, [])
-
-  const when = now.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
-
-  // One short line each, anchored low in the tile: rotated text climbs as it
-  // runs right, and a single long line climbed straight out of the top of the
-  // tile and was clipped mid-email.
-  const lines = [name && name !== email ? name : null, email, `${when} · IMobile · Confidential`]
-    .filter(Boolean)
-    .map((line, index) => `<text x="30" y="${200 + index * 20}">${escapeXml(String(line))}</text>`)
-    .join("")
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300">
-    <g font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="15" font-weight="600" fill="#8b909a"
-       transform="rotate(-22 30 210)">${lines}</g>
-  </svg>`
-
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-[90] select-none opacity-[0.22]"
-      style={{
-        backgroundImage: `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`,
-        backgroundRepeat: "repeat",
-      }}
-    />
-  )
-}
-
-function escapeXml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;")
 }
