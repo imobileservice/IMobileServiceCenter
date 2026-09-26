@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import AssistantLayout from "@/components/assistant/assistant-layout"
-// Printing is client-side only. The modal's one server call - compatible phone
-// models, under /api/admin - is refused for an assistant and it prints the
-// plain label instead, which is the everyday case anyway.
+// The administrator's own dialogs. Adding a product is the same process for an
+// assistant - brand, compatible phone models, images, barcode - and the
+// /api/admin routes those dialogs call are opened to assistants one by one in
+// ASSISTANT_SHARED_ROUTES (server/api/utils/panel-auth.ts).
+import ProductModal from "@/components/admin/product-modal"
 import BarcodeLabelModal, { type LabelProduct } from "@/components/admin/barcode-label-modal"
 import { assistantService } from "@/lib/services/assistant.service"
 import { useAssistantStore } from "@/lib/assistant-store"
@@ -63,25 +65,6 @@ type FormState = {
   qty_padukka_new: string
 }
 
-const EMPTY_FORM: FormState = {
-  name: "",
-  category_id: "",
-  brand: "",
-  sku: "",
-  sell_price: "",
-  cost_price: "",
-  buy_price: "",
-  discount_price: "",
-  condition: "new",
-  qty_label: "",
-  description: "",
-  image: "",
-  is_featured: false,
-  qty_meegoda: "0",
-  qty_padukka: "0",
-  qty_padukka_new: "0",
-}
-
 /** The same bands as the admin Products screen, so both screens count alike. */
 const VERY_LOW_STOCK_BELOW = 4
 const LOW_STOCK_MAX = 5
@@ -131,7 +114,7 @@ export default function AssistantProductsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [mode, setMode] = useState<"closed" | "create" | "edit">("closed")
+  const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<ProductRow | null>(null)
   const [deleting, setDeleting] = useState<ProductRow | null>(null)
   const [restocking, setRestocking] = useState<ProductRow | null>(null)
@@ -159,6 +142,10 @@ export default function AssistantProductsPage() {
 
   useEffect(() => {
     load()
+    // The Add Product dialog announces a save this way, as on the admin screen.
+    const onProductUpdated = () => load(true)
+    window.addEventListener("productUpdated", onProductUpdated)
+    return () => window.removeEventListener("productUpdated", onProductUpdated)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -249,13 +236,7 @@ export default function AssistantProductsPage() {
               </Button>
             )}
             {can("products.create") && (
-              <Button
-                onClick={() => {
-                  setEditing(null)
-                  setMode("create")
-                }}
-                className="gap-2"
-              >
+              <Button onClick={() => setAdding(true)} className="gap-2">
                 <Plus className="h-4 w-4" />
                 Add product
               </Button>
@@ -415,10 +396,7 @@ export default function AssistantProductsPage() {
                           <ActionButton
                             allowed={can("products.edit_request")}
                             title="Request an edit"
-                            onClick={() => {
-                              setEditing(product)
-                              setMode("edit")
-                            }}
+                            onClick={() => setEditing(product)}
                           >
                             <Pencil className="h-4 w-4" />
                           </ActionButton>
@@ -448,21 +426,35 @@ export default function AssistantProductsPage() {
         )}
       </div>
 
-      {mode !== "closed" && (
-        <ProductForm
-          mode={mode}
+      {/* Adding: the administrator's dialog, unchanged. */}
+      <ProductModal
+        isOpen={adding}
+        onClose={() => setAdding(false)}
+        editingProductId={null}
+        onProductSaved={(saved) =>
+          // A new product goes straight to its label, as it does for the admin.
+          setPrinting([
+            {
+              id: saved.id || saved.barcode,
+              name: saved.name,
+              barcode: saved.barcode,
+              price: saved.price,
+              brand: saved.brand,
+              model: saved.model,
+            },
+          ])
+        }
+      />
+
+      {/* Editing: a request to the administrator, never a direct change. */}
+      {editing && (
+        <EditRequestForm
           product={editing}
           categories={categories}
-          onClose={() => {
-            setMode("closed")
-            setEditing(null)
-          }}
-          onSaved={(created) => {
-            setMode("closed")
+          onClose={() => setEditing(null)}
+          onSent={() => {
             setEditing(null)
             load(true)
-            // A new product goes straight to its label, as it does for the admin.
-            if (created?.barcode) setPrinting([toLabel({ ...created, image: null, images: [], stock_row: null })])
           }}
         />
       )}
@@ -544,42 +536,40 @@ function ActionButton({
 
 /* ------------------------------------------------------------------ */
 
-function ProductForm({
-  mode,
+/**
+ * An assistant's proposed change to an existing product. Submitting it changes
+ * nothing - it lands in the administrator's approval queue. Adding a product
+ * uses the administrator's own dialog instead (ProductModal, above).
+ */
+function EditRequestForm({
   product,
   categories,
   onClose,
-  onSaved,
+  onSent,
 }: {
-  mode: "create" | "edit"
-  product: ProductRow | null
+  product: ProductRow
   categories: any[]
   onClose: () => void
-  /** Handed the new product after a create; nothing after an edit request. */
-  onSaved: (created?: any) => void
+  onSent: () => void
 }) {
-  const [form, setForm] = useState<FormState>(() =>
-    product
-      ? {
-          name: product.name || "",
-          category_id: product.category_id || "",
-          brand: product.brand || "",
-          sku: product.sku || "",
-          sell_price: String(product.sell_price ?? product.price ?? ""),
-          cost_price: String(product.cost_price ?? ""),
-          buy_price: String(product.buy_price ?? ""),
-          discount_price: String(product.discount_price ?? ""),
-          condition: (product.condition as "new" | "used") || "new",
-          qty_label: product.qty_label || "",
-          description: product.description || "",
-          image: product.image || "",
-          is_featured: Boolean(product.is_featured),
-          qty_meegoda: String(product.stock_row?.qty_meegoda ?? 0),
-          qty_padukka: String(product.stock_row?.qty_padukka ?? 0),
-          qty_padukka_new: String(product.stock_row?.qty_padukka_new ?? 0),
-        }
-      : EMPTY_FORM
-  )
+  const [form, setForm] = useState<FormState>(() => ({
+    name: product.name || "",
+    category_id: product.category_id || "",
+    brand: product.brand || "",
+    sku: product.sku || "",
+    sell_price: String(product.sell_price ?? product.price ?? ""),
+    cost_price: String(product.cost_price ?? ""),
+    buy_price: String(product.buy_price ?? ""),
+    discount_price: String(product.discount_price ?? ""),
+    condition: (product.condition as "new" | "used") || "new",
+    qty_label: product.qty_label || "",
+    description: product.description || "",
+    image: product.image || "",
+    is_featured: Boolean(product.is_featured),
+    qty_meegoda: String(product.stock_row?.qty_meegoda ?? 0),
+    qty_padukka: String(product.stock_row?.qty_padukka ?? 0),
+    qty_padukka_new: String(product.stock_row?.qty_padukka_new ?? 0),
+  }))
   const [note, setNote] = useState("")
   const [saving, setSaving] = useState(false)
 
@@ -631,15 +621,9 @@ function ProductForm({
 
     setSaving(true)
     try {
-      if (mode === "create") {
-        const created = await assistantService.createProduct(buildPayload())
-        toast.success("Product added")
-        onSaved(created)
-      } else if (product) {
-        const response = await assistantService.requestProductEdit(product.id, buildPayload(), note)
-        toast.success(response.message || "Sent to the administrator for approval")
-        onSaved()
-      }
+      const response = await assistantService.requestProductEdit(product.id, buildPayload(), note)
+      toast.success(response.message || "Sent to the administrator for approval")
+      onSent()
     } catch (error: any) {
       toast.error(error?.message || "Could not save")
     } finally {
@@ -648,16 +632,11 @@ function ProductForm({
   }
 
   return (
-    <Modal
-      title={mode === "create" ? "Add product" : `Request an edit: ${product?.name}`}
-      onClose={onClose}
-    >
-      {mode === "edit" && (
-        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
-          Nothing changes when you send this. The administrator sees what you have proposed and the
-          current values side by side, and the change is applied only if they approve it.
-        </div>
-      )}
+    <Modal title={`Request an edit: ${product.name}`} onClose={onClose}>
+      <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+        Nothing changes when you send this. The administrator sees what you have proposed and the
+        current values side by side, and the change is applied only if they approve it.
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <Field label="Product name" required>
@@ -799,28 +778,22 @@ function ProductForm({
           Show on the featured list
         </label>
 
-        {mode === "edit" && (
-          <Field label="Why is this change needed? (optional)">
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              placeholder="The administrator sees this next to your request."
-              className="w-full rounded-md border border-input bg-background p-3 text-sm"
-            />
-          </Field>
-        )}
+        <Field label="Why is this change needed? (optional)">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="The administrator sees this next to your request."
+            className="w-full rounded-md border border-input bg-background p-3 text-sm"
+          />
+        </Field>
 
         <div className="flex gap-3 border-t border-border pt-4">
           <Button type="button" variant="outline" onClick={onClose} className="flex-1">
             Cancel
           </Button>
           <Button type="submit" disabled={saving} className="flex-1">
-            {saving
-              ? "Working..."
-              : mode === "create"
-                ? "Add product"
-                : "Send for approval"}
+            {saving ? "Sending..." : "Send for approval"}
           </Button>
         </div>
       </form>

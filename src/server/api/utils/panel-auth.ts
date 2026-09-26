@@ -160,8 +160,9 @@ export function requireAssistant(permission?: string) {
 /**
  * Gate for the legacy /api/admin router.
  *
- * Every route under /api/admin is administrator-only, with two exceptions that
- * cannot carry a session by their nature:
+ * Every route under /api/admin is administrator-only, apart from the handful an
+ * assistant shares for adding products (ASSISTANT_SHARED_ROUTES, below) and two
+ * exceptions that cannot carry a session by their nature:
  *
  *   /login/*                  - this is how a session is obtained.
  *   /orders/:id/delivery-bill - opened with window.open() from the cashier
@@ -176,10 +177,112 @@ const EXEMPT_PATTERNS: RegExp[] = [
   /^\/orders\/[^/]+\/delivery-bill$/,
 ]
 
+interface SharedRoute {
+  method: string
+  pattern: RegExp
+  permission: string
+  /** Writes are recorded in the assistant's activity log under this action. */
+  audit?: { action: string; resource: string }
+}
+
+/**
+ * The /api/admin routes an assistant admin shares with the administrator.
+ *
+ * An assistant adds products through the administrator's own Add Product
+ * dialog, so they get the same process - brand lookup, compatible phone
+ * models, barcode, images - rather than a lesser copy of it. That dialog talks
+ * to the routes below, and this is the complete list of them. Nothing here
+ * edits or deletes: an assistant's changes to existing records still go
+ * through the approval queue under /api/assistant, never through this router.
+ */
+const ASSISTANT_SHARED_ROUTES: SharedRoute[] = [
+  // What the Add Product dialog reads
+  { method: 'GET', pattern: /^\/categories$/, permission: 'products.create' },
+  { method: 'GET', pattern: /^\/brands$/, permission: 'products.create' },
+  { method: 'GET', pattern: /^\/brands\/[^/]+\/models$/, permission: 'products.create' },
+  { method: 'GET', pattern: /^\/phone-models$/, permission: 'products.create' },
+  { method: 'POST', pattern: /^\/product-search$/, permission: 'products.create' },
+
+  // Compatible models of existing products - read-only; the label printer uses it
+  { method: 'GET', pattern: /^\/products\/[^/]+\/compatibility$/, permission: 'products.view' },
+  { method: 'POST', pattern: /^\/products\/compatibility\/bulk$/, permission: 'products.view' },
+
+  // Creating: the product, a brand it introduces, and phone models it fits
+  {
+    method: 'POST',
+    pattern: /^\/products$/,
+    permission: 'products.create',
+    audit: { action: 'product.create', resource: 'product' },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/brands$/,
+    permission: 'products.create',
+    audit: { action: 'brand.create', resource: 'brand' },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/phone-models(\/bulk)?$/,
+    permission: 'products.create',
+    audit: { action: 'phone_model.create', resource: 'phone_model' },
+  },
+]
+
+/**
+ * Record an assistant's write through a shared route once it has been answered,
+ * with the id of whatever it created. The administrator's handlers know nothing
+ * about assistants, so the attribution is added here rather than in each one.
+ */
+function auditSharedWrite(req: Request, res: Response, audit: NonNullable<SharedRoute['audit']>) {
+  const actor = req.actor
+  if (!actor || actor.type !== 'assistant') return
+
+  let body: any
+  const originalJson = res.json.bind(res)
+  res.json = (payload: any) => {
+    body = payload
+    return originalJson(payload)
+  }
+
+  res.on('finish', () => {
+    const ok = res.statusCode < 400
+    const created = body?.data ?? body?.brand ?? body?.model ?? null
+    const names = Array.isArray(req.body?.names) ? req.body.names.slice(0, 50) : undefined
+
+    void recordAudit({
+      assistantId: actor.id,
+      actorEmail: actor.email,
+      action: audit.action,
+      resource: audit.resource,
+      resourceId: ok && created && !Array.isArray(created) ? created.id ?? null : null,
+      success: ok,
+      detail: ok
+        ? {
+            name: created?.name ?? req.body?.name,
+            names,
+            // Brands and models answer an existing match with created:false.
+            already_existed: body?.created === false || undefined,
+          }
+        : { error: body?.error, name: req.body?.name, names },
+      req,
+    })
+  })
+}
+
 export async function guardAdminApi(req: Request, res: Response, next: NextFunction) {
   const path = req.path || ''
 
   if (EXEMPT_PATTERNS.some((pattern) => pattern.test(path))) return next()
+
+  const shared = ASSISTANT_SHARED_ROUTES.find((route) => route.method === req.method && route.pattern.test(path))
+  if (shared) {
+    // requireAssistant lets an administrator straight through, so these routes
+    // behave for the owner exactly as before.
+    return requireAssistant(shared.permission)(req, res, () => {
+      if (shared.audit) auditSharedWrite(req, res, shared.audit)
+      next()
+    })
+  }
 
   if (String(process.env.ADMIN_API_OPEN).trim().toLowerCase() === 'true') {
     console.warn(

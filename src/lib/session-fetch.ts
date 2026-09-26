@@ -9,7 +9,8 @@
  *
  * What gets attached, and to what:
  *
- *   /api/admin/*      x-panel-session: the administrator's token
+ *   /api/admin/*      x-panel-session: the administrator's token, or the
+ *                     assistant's for the routes they share
  *   /api/assistant/*  x-panel-session: the assistant's token
  *   /api/inventory/*  x-panel-session (admin or assistant, whichever is signed
  *                     in) and x-till-session for a POS session
@@ -125,14 +126,16 @@ export function installSessionFetch() {
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined))
 
     // The panel token: whichever of the two matches the surface being called.
-    // On /api/inventory either will do - the server accepts both - so the
-    // administrator's is preferred when a browser somehow holds both.
+    // On /api/admin an assistant's token is sent when there is no
+    // administrator's: the assistant uses the admin Add Product dialog, and the
+    // server lets it through only on the routes that dialog needs
+    // (ASSISTANT_SHARED_ROUTES in server/api/utils/panel-auth.ts) - everywhere
+    // else it is refused as not an administrator. On /api/inventory either
+    // will do. The administrator's is preferred when a browser holds both.
     const panelToken =
       kind === 'assistant'
         ? assistantSessionToken.get()
-        : kind === 'admin'
-          ? adminSessionToken.get()
-          : adminSessionToken.get() || assistantSessionToken.get()
+        : adminSessionToken.get() || assistantSessionToken.get()
 
     if (panelToken && !headers.has(PANEL_SESSION_HEADER)) {
       headers.set(PANEL_SESSION_HEADER, panelToken)

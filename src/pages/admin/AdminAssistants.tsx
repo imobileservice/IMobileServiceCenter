@@ -1130,6 +1130,8 @@ function humanAction(action: string) {
     "password.changed": "Changed their password",
     "password.change_failed": "Failed password change",
     "product.create": "Added a product",
+    "brand.create": "Added a brand",
+    "phone_model.create": "Added phone models",
     "category.create": "Added a category",
     "stock.adjust": "Adjusted stock",
     "product.update_requested": "Requested a product edit",
