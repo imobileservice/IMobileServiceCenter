@@ -377,6 +377,11 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
         })
     } catch (e: any) {
         console.error('Login Verify Error:', e)
+        // An error carrying a status was raised on purpose with a message meant
+        // for the operator - createPanelSession's "run the 20260910 migration"
+        // is the one that matters. Flattening it to a bare 500 is what turned a
+        // missing table into an unexplained "Internal Server Error" at sign-in.
+        if (e?.status) return res.status(e.status).json({ error: e.message })
         return res.status(500).json({ error: 'Internal Server Error' })
     }
 }
