@@ -39,6 +39,23 @@ import {
   bulkProductCompatibilityHandler,
 } from './phone-models'
 import { importCompatibilityHandler } from './compatibility-import'
+import { guardAdminApi } from '../utils/panel-auth'
+import { adminLogoutHandler, adminSessionHandler } from './session'
+import {
+    approveAssistantRequestHandler,
+    assistantActivityHandler,
+    createAssistantHandler,
+    deleteAssistantHandler,
+    getAssistantHandler,
+    listAssistantRequestsHandler,
+    listAssistantsHandler,
+    rejectAssistantRequestHandler,
+    resendAssistantVerificationHandler,
+    resetAssistantPasswordHandler,
+    revokeAssistantSessionsHandler,
+    setAssistantStatusHandler,
+    updateAssistantHandler,
+} from './assistants'
 
 
 const router = Router()
@@ -54,6 +71,17 @@ router.use((req, res, next) => {
 router.post('/login/init', initAdminLoginHandler)
 router.post('/login/resend', resendAdminOtpHandler)
 router.post('/login/verify', verifyAdminLoginHandler)
+
+// Everything below this line requires an administrator session.
+//
+// The routes above are the only way to obtain one, so they sit in front of the
+// gate; /orders/:id/delivery-bill is also let through, because the cashier
+// terminal opens it with window.open() and a new tab cannot carry a header.
+// See guardAdminApi for the exact exemption list and the emergency override.
+router.use(guardAdminApi)
+
+router.get('/session', adminSessionHandler)
+router.post('/logout', adminLogoutHandler)
 
 // Diagnostic SMTP test (Admin only)
 import { testEmailHandler } from './test-email'
@@ -150,5 +178,24 @@ router.delete('/cashiers/:id', deleteCashierHandler)
 router.get('/tills', getTillsHandler)
 router.post('/tills', createTillHandler)
 router.put('/tills/:id', updateTillHandler)
+
+// Assistant admin accounts - creating them, setting what they may do, and
+// reading everything they have done. See admin/assistants.ts.
+router.get('/assistants', listAssistantsHandler)
+router.post('/assistants', createAssistantHandler)
+router.get('/assistants/:id', getAssistantHandler)
+router.put('/assistants/:id', updateAssistantHandler)
+router.delete('/assistants/:id', deleteAssistantHandler)
+router.post('/assistants/:id/status', setAssistantStatusHandler)
+router.post('/assistants/:id/password', resetAssistantPasswordHandler)
+router.post('/assistants/:id/resend-verification', resendAssistantVerificationHandler)
+router.post('/assistants/:id/revoke-sessions', revokeAssistantSessionsHandler)
+
+// The approval queue: an assistant's edits and deletions wait here.
+router.get('/assistant-requests', listAssistantRequestsHandler)
+router.post('/assistant-requests/:id/approve', approveAssistantRequestHandler)
+router.post('/assistant-requests/:id/reject', rejectAssistantRequestHandler)
+
+router.get('/assistant-activity', assistantActivityHandler)
 
 export default router

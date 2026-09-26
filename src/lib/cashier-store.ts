@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import { tillSessionToken } from "./session-fetch"
 
 interface CashierUser {
   id: string
@@ -40,6 +41,11 @@ export const useCashierStore = create<CashierState>()(
       tillSession: null,
       isAuthenticated: false,
       login: (userData: CashierUser, tillSession: TillSession) => {
+        // Mirrored into sessionStorage so session-fetch.ts can put it on every
+        // /api/inventory call. That is what lets INVENTORY_API_STRICT be turned
+        // on without the POS losing access - see utils/inventory-guard.ts.
+        tillSessionToken.set(tillSession?.token || null)
+
         set({
           cashier: {
             id: userData.id,
@@ -53,6 +59,7 @@ export const useCashierStore = create<CashierState>()(
         })
       },
       logout: () => {
+        tillSessionToken.set(null)
         set({
           cashier: null,
           tillSession: null,
@@ -69,6 +76,13 @@ export const useCashierStore = create<CashierState>()(
     }),
     {
       name: "cashier-storage",
+      // The store itself is persisted to localStorage, but the till token is
+      // mirrored into sessionStorage, which a reload clears. Put it back as the
+      // store rehydrates, or the first request after a refresh would go out
+      // without it.
+      onRehydrateStorage: () => (state) => {
+        if (state?.tillSession?.token) tillSessionToken.set(state.tillSession.token)
+      },
     }
   )
 )

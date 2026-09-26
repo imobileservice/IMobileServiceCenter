@@ -128,7 +128,9 @@ export default function AdminLoginPage() {
         throw new Error(data.error || "Verification failed")
       }
 
-      await login(email, otp, data.admin)
+      // data.token is the server-side session; without it every /api/admin call
+      // after this point is refused by guardAdminApi.
+      await login(email, otp, data.admin, data.token)
       toast.success("Login successful!")
       navigate("/admin/dashboard")
     } catch (err) {

@@ -18,7 +18,8 @@
     "check:labels:controls": "node scripts/label-check/negative-controls.cjs",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "e2e": "echo \"Error: no e2e test specified\" && exit 1"
+    "e2e": "echo \"Error: no e2e test specified\" && exit 1",
+    "verify:assistant": "tsx scripts/verify-assistant-admin.ts"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "1.4.0",

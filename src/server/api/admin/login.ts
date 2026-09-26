@@ -7,6 +7,7 @@ import { buildAdminOtpEmail } from './otp-email'
 // Shared so a whitespace-padded NODE_ENV cannot quietly turn this into the
 // development path, which returns the one-time code to the caller.
 import { isProduction } from '../../env'
+import { createPanelSession, revokeAllSessions } from '../utils/panel-session'
 
 const OTP_TTL_MINUTES = 10
 const OTP_TTL_MS = OTP_TTL_MINUTES * 60 * 1000
@@ -339,10 +340,32 @@ export async function verifyAdminLoginHandler(req: Request, res: Response) {
 
         await adminClient.from('admin_otps').update({ used: true }).eq('id', otpData.id)
 
+        // The panel used to end here, with "who is signed in" living only in a
+        // zustand store in the browser and every /api/admin route trusting
+        // whoever called it. It now issues a real server-side session: the token
+        // below is what guardAdminApi checks on every subsequent request, and it
+        // is the only thing that separates an administrator from an assistant
+        // admin at the API.
+        //
+        // Signing in ends any session already open on this account, so a token
+        // left behind on a shared machine stops working the moment the same
+        // person signs in somewhere else.
+        await revokeAllSessions(adminClient, 'admin', admin.id, 'new_login')
+        const session = await createPanelSession({
+            client: adminClient,
+            req,
+            res,
+            actorType: 'admin',
+            actorId: admin.id,
+            actorEmail: admin.email,
+        })
+
         console.log(`[Verify] ✅ Login successful for ${normalizedEmail}`)
 
         return res.json({
             success: true,
+            token: session.token,
+            expiresAt: session.expiresAt,
             admin: {
                 id: admin.id,
                 email: admin.email,

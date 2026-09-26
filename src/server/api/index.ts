@@ -13,6 +13,8 @@ import inventoryRouter from './inventory'
 import { testEnvHandler } from './test-env'
 import cashierRouter from './cashier'
 import supplierRouter from './supplier'
+import assistantRouter from './assistant'
+import { guardInventoryApi } from './utils/inventory-guard'
 
 const router = Router()
 
@@ -35,6 +37,7 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
 router.use('/auth', authRouter)
 router.use('/products', productsRouter)
 router.use('/admin', adminRouter)
+router.use('/assistant', assistantRouter)
 router.use('/cashier', cashierRouter)
 router.use('/supplier', supplierRouter)
 router.use('/orders', ordersRouter)
@@ -44,7 +47,7 @@ router.use('/user', userRouter)
 router.use('/cart', cartRouter)
 router.use('/hero-slides', heroSlidesRouter)
 router.use('/email', emailRouter)
-router.use('/inventory', inventoryRouter)
+router.use('/inventory', guardInventoryApi, inventoryRouter)
 router.get('/test-env', asyncHandler(testEnvHandler))
 
 export default router

@@ -21,11 +21,12 @@ interface ConditionalLayoutProps {
 export default function ConditionalLayout({ children }: ConditionalLayoutProps) {
   const location = useLocation()
 
-  // For admin, cashier and supplier pages, only render the children. Those
-  // portals are self-contained screens with their own header - the public
+  // For admin, assistant, cashier and supplier pages, only render the children.
+  // Those portals are self-contained screens with their own header - the public
   // navbar, footer and floating buttons only get in the way there.
   if (
     location.pathname.startsWith('/admin') ||
+    location.pathname.startsWith('/assistant') ||
     location.pathname.startsWith('/cashier') ||
     location.pathname.startsWith('/supplier')
   ) {

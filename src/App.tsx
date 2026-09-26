@@ -33,6 +33,7 @@ const AdminHeroSlides = lazyWithRetry(() => import('./pages/admin/AdminHeroSlide
 const AdminLogin = lazyWithRetry(() => import('./pages/admin/AdminLogin'))
 const AdminGuide = lazyWithRetry(() => import('./pages/admin/Guide'))
 const AdminCashiers = lazyWithRetry(() => import('./pages/admin/AdminCashiers'))
+const AdminAssistants = lazyWithRetry(() => import('./pages/admin/AdminAssistants'))
 const AdminInventory = lazyWithRetry(() => import('./pages/admin/inventory/InventoryPage'))
 const AdminSales = lazyWithRetry(() => import('./pages/admin/inventory/SalesPage'))
 const AdminSuppliers = lazyWithRetry(() => import('./pages/admin/suppliers/SuppliersPage'))
@@ -43,6 +44,15 @@ const CashierDashboard = lazyWithRetry(() => import('./pages/cashier/CashierDash
 const CashierInventory = lazyWithRetry(() => import('./pages/cashier/CashierInventory'))
 const CashierOrderHistory = lazyWithRetry(() => import('./pages/cashier/CashierOrderHistory'))
 const CashierSupplierOrders = lazyWithRetry(() => import('./pages/cashier/CashierSupplierOrders'))
+// Assistant admin panel - a deliberately small subset of the admin screens.
+const AssistantLogin = lazyWithRetry(() => import('./pages/assistant/AssistantLogin'))
+const AssistantVerifyEmail = lazyWithRetry(() => import('./pages/assistant/AssistantVerifyEmail'))
+const AssistantChangePassword = lazyWithRetry(() => import('./pages/assistant/AssistantChangePassword'))
+const AssistantDashboard = lazyWithRetry(() => import('./pages/assistant/AssistantDashboard'))
+const AssistantProducts = lazyWithRetry(() => import('./pages/assistant/AssistantProducts'))
+const AssistantCategories = lazyWithRetry(() => import('./pages/assistant/AssistantCategories'))
+const AssistantInventory = lazyWithRetry(() => import('./pages/assistant/AssistantInventory'))
+const AssistantRequests = lazyWithRetry(() => import('./pages/assistant/AssistantRequests'))
 const SupplierLogin = lazyWithRetry(() => import('./pages/supplier/SupplierLogin'))
 const SupplierPortal = lazyWithRetry(() => import('./pages/supplier/SupplierPortal'))
 
@@ -89,6 +99,18 @@ export default function App() {
         <Route path="/admin/sales" element={<AdminSales />} />
         <Route path="/admin/suppliers" element={<AdminSuppliers />} />
         <Route path="/admin/cashiers" element={<AdminCashiers />} />
+        <Route path="/admin/assistants" element={<AdminAssistants />} />
+
+        {/* Assistant admin panel. Every screen is guarded by AssistantLayout,
+            which re-checks the session with the server on each mount. */}
+        <Route path="/assistant/login" element={<AssistantLogin />} />
+        <Route path="/assistant/verify-email" element={<AssistantVerifyEmail />} />
+        <Route path="/assistant/change-password" element={<AssistantChangePassword />} />
+        <Route path="/assistant" element={<AssistantDashboard />} />
+        <Route path="/assistant/products" element={<AssistantProducts />} />
+        <Route path="/assistant/categories" element={<AssistantCategories />} />
+        <Route path="/assistant/inventory" element={<AssistantInventory />} />
+        <Route path="/assistant/requests" element={<AssistantRequests />} />
         <Route path="/cashier/login" element={<CashierLogin />} />
         <Route path="/cashier" element={<CashierPOS />} />
         <Route path="/cashier/pos" element={<CashierPOS />} />

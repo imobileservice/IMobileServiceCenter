@@ -1,47 +1,11 @@
 import { Request, Response, NextFunction } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { generateDeliveryBillPDF } from '../utils/invoice-generator'
-import { isMissingRelation, setProductCompatibility } from '../utils/compatibility'
-
-/**
- * Pull `compatible_model_ids` out of a product payload.
- *
- * Compatibility is stored in product_compatibility, not on the products row, so
- * the ids must be removed before the insert/update - exactly how images and the
- * per-shop qty_* fields are handled. Returns undefined when the caller did not
- * send the field, which means "leave existing compatibility alone".
- */
-function extractCompatibleModelIds(payload: any): string[] | undefined {
-  if (!('compatible_model_ids' in payload)) return undefined
-
-  const raw = payload.compatible_model_ids
-  delete payload.compatible_model_ids
-
-  if (!Array.isArray(raw)) return []
-  return Array.from(new Set(raw.map((id: any) => String(id)).filter(Boolean)))
-}
-
-/**
- * Save the compatible model set for a product. Never touches stock - it only
- * writes join rows, so one Display A with ten models still has one inv_stock
- * row. A failure is logged and swallowed: the product itself already saved.
- */
-async function saveCompatibility(
-  supabase: any,
-  productId: string,
-  modelIds: string[] | undefined
-) {
-  if (modelIds === undefined || !productId) return
-
-  const result = await setProductCompatibility(supabase, productId, modelIds)
-  if (!result.ok) {
-    console.error('[Admin CRUD] Failed to save phone compatibility:', result.error)
-  } else if (result.added || result.removed) {
-    console.log(
-      `[Admin CRUD] Compatibility for ${productId}: +${result.added} / -${result.removed} models`
-    )
-  }
-}
+import {
+  createProductRecord,
+  updateProductRecord,
+  deleteProductRecord,
+} from '../utils/product-write'
 
 // Async error wrapper
 const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) => {
@@ -59,331 +23,68 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
 }
 
 /**
- * POST /api/admin/products
- * Create a new product (admin only)
+ * A service-role client, or a 503 already sent to the caller.
+ *
+ * Returns null after answering the request, so call sites read as
+ * `const supabase = getServiceClient(res); if (!supabase) return`.
  */
-export const createProductHandler = asyncHandler(async (req: Request, res: Response) => {
+function getServiceClient(res: Response) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(503).json({ error: 'Supabase not configured' })
+    res.status(503).json({ error: 'Supabase not configured' })
+    return null
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  return createClient(supabaseUrl, supabaseServiceKey, {
     auth: { persistSession: false, autoRefreshToken: false }
   })
+}
 
-  // Convert category slug to category_id if category is provided
-  let productData: any = { ...req.body }
-  const imageUrls = productData.images || (productData.image ? [productData.image] : [])
+/**
+ * POST /api/admin/products
+ * Create a new product (administrator only).
+ *
+ * The work itself lives in utils/product-write, so that an assistant admin
+ * creating a product, and the approval step that applies an assistant's edit,
+ * travel exactly the same code path as this one - barcode generation, category
+ * slug resolution, inv_stock initialisation and all.
+ */
+export const createProductHandler = asyncHandler(async (req: Request, res: Response) => {
+  const supabase = getServiceClient(res)
+  if (!supabase) return
 
-  // Extract shop-specific stock quantities
-  const qty_meegoda = Number(productData.qty_meegoda) || 0
-  const qty_padukka = Number(productData.qty_padukka) || 0
-  const qty_padukka_new = Number(productData.qty_padukka_new) || 0
-  const totalStock = Number(productData.stock) || 0
+  const result = await createProductRecord(supabase, req.body || {})
+  if (!result.ok) return res.status(result.status || 500).json({ error: result.error })
 
-  // Remove non-product table fields
-  delete productData.image
-  delete productData.images
-  delete productData.qty_meegoda
-  delete productData.qty_padukka
-  delete productData.qty_padukka_new
-
-  // Compatible phone models live in their own join table
-  const compatibleModelIds = extractCompatibleModelIds(productData)
-
-  console.log(`[Admin] Creating product with stock: ${totalStock}, qty_meegoda: ${qty_meegoda}, qty_padukka: ${qty_padukka}, qty_padukka_new: ${qty_padukka_new}`)
-
-  if (productData.category && !productData.category_id) {
-    // Get category_id from slug
-    const { data: categoryData, error: categoryError } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('slug', productData.category)
-      .single()
-
-    if (categoryError || !categoryData) {
-      return res.status(400).json({
-        error: `Category not found: ${productData.category}`
-      })
-    }
-
-    productData.category_id = categoryData.id
-    // Remove the category slug field as it's not a column in the products table
-    delete productData.category
-  }
-
-  // Auto-generate a sequential 6-digit barcode (000001, 000002, ...)
-  if (!productData.barcode) {
-    // Find the highest existing numeric barcode and add 1
-    const { data: barcodeRows } = await supabase
-      .from('products')
-      .select('barcode')
-      .not('barcode', 'is', null)
-      .order('barcode', { ascending: false })
-      .limit(100)
-
-    let nextNumber = 1
-    if (barcodeRows && barcodeRows.length > 0) {
-      // Filter only purely numeric barcodes and find the max
-      const numericBarcodes = barcodeRows
-        .map((r: any) => parseInt(r.barcode, 10))
-        .filter((n: number) => !isNaN(n))
-      if (numericBarcodes.length > 0) {
-        nextNumber = Math.max(...numericBarcodes) + 1
-      }
-    }
-    // Zero-pad to 6 digits: 000001, 000002 ... 999999
-    productData.barcode = String(nextNumber).padStart(6, '0')
-    console.log(`[Admin] Auto-generated barcode: ${productData.barcode}`)
-  }
-
-  // Insert product (without image fields)
-  let { data, error } = await supabase
-    .from('products')
-    .insert(productData)
-    .select()
-    .single()
-
-  // `sku` only exists once add_phone_model_compatibility.sql has been applied.
-  // Retry without it so product creation keeps working on an un-migrated DB.
-  if (error && isMissingRelation(error) && productData.sku !== undefined) {
-    console.warn('[Admin CRUD] products.sku missing - retrying without SKU. Run add_phone_model_compatibility.sql')
-    const { sku, ...withoutSku } = productData
-    const retry = await supabase.from('products').insert(withoutSku).select().single()
-    data = retry.data
-    error = retry.error
-  }
-
-  if (error) {
-    console.error('Error creating product:', error)
-    return res.status(500).json({ error: error.message })
-  }
-
-  // One product row, many compatible models. Written after the product exists
-  // so the join rows have a valid product_id.
-  await saveCompatibility(supabase, data?.id, compatibleModelIds)
-
-  // Initialize stock in inv_stock so it appears in Inventory
-  // The DB trigger trg_update_total_quantity will auto-compute quantity from shop qtys
-  if (data?.id) {
-    console.log(`[Admin] Inserting inv_stock for product ${data.id}: meegoda=${qty_meegoda}, padukka=${qty_padukka}, padukka_new=${qty_padukka_new}`)
-    const { error: stockError } = await supabase
-      .from('inv_stock')
-      .upsert({
-        product_id: data.id,
-        quantity: totalStock,
-        qty_meegoda: qty_meegoda,
-        qty_padukka: qty_padukka,
-        qty_padukka_new: qty_padukka_new,
-        low_stock_threshold: 5
-      }, { onConflict: 'product_id' })
-
-    if (stockError) {
-      console.error('Error initializing inv_stock:', stockError)
-      // Non-fatal, keep going
-    } else {
-      console.log(`[Admin] inv_stock created successfully for product ${data.id}`)
-    }
-  }
-
-  // Insert images into product_images table
-  if (imageUrls.length > 0 && data?.id) {
-    const imageInserts = imageUrls.map((url: string, index: number) => ({
-      product_id: data.id,
-      url: url,
-      display_order: index,
-      is_primary: index === 0,
-      alt_text: `${productData.name} image ${index + 1}`,
-    }))
-
-    const { error: imagesError } = await supabase
-      .from('product_images')
-      .insert(imageInserts)
-
-    if (imagesError) {
-      console.error('Error inserting product images:', imagesError)
-      // Don't fail the request, just log the error
-    }
-  }
-
-  return res.json({ data })
+  return res.json({ data: result.data })
 })
 
 /**
  * PUT /api/admin/products/:id
- * Update a product (admin only)
+ * Update a product (administrator only).
  */
 export const updateProductHandler = asyncHandler(async (req: Request, res: Response) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const supabase = getServiceClient(res)
+  if (!supabase) return
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(503).json({ error: 'Supabase not configured' })
-  }
+  const result = await updateProductRecord(supabase, req.params.id, req.body || {})
+  if (!result.ok) return res.status(result.status || 500).json({ error: result.error })
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  })
-
-  const { id } = req.params
-
-  // Convert category slug to category_id if category is provided
-  let updateData: any = { ...req.body }
-  const imageUrls = updateData.images || (updateData.image ? [updateData.image] : undefined)
-
-  // Extract shop-specific stock quantities
-  const qty_meegoda = updateData.qty_meegoda
-  const qty_padukka = updateData.qty_padukka
-  const qty_padukka_new = updateData.qty_padukka_new
-
-  // Remove old image fields and stock fields (they're stored in other tables)
-  delete updateData.image
-  delete updateData.images
-  delete updateData.qty_meegoda
-  delete updateData.qty_padukka
-  delete updateData.qty_padukka_new
-
-  // Compatible phone models live in their own join table
-  const compatibleModelIds = extractCompatibleModelIds(updateData)
-
-  if (updateData.category && !updateData.category_id) {
-    // Get category_id from slug
-    const { data: categoryData, error: categoryError } = await supabase
-      .from('categories')
-      .select('id')
-      .eq('slug', updateData.category)
-      .single()
-
-    if (categoryError || !categoryData) {
-      return res.status(400).json({
-        error: `Category not found: ${updateData.category}`
-      })
-    }
-
-    updateData.category_id = categoryData.id
-    // Remove the category slug field as it's not a column in the products table
-    delete updateData.category
-  }
-
-  // Update product (without image fields)
-  let { data, error } = await supabase
-    .from('products')
-    .update(updateData)
-    .eq('id', id)
-    .select()
-    .single()
-
-  // Same un-migrated-DB guard as create: drop SKU rather than fail the save.
-  if (error && isMissingRelation(error) && updateData.sku !== undefined) {
-    console.warn('[Admin CRUD] products.sku missing - retrying without SKU. Run add_phone_model_compatibility.sql')
-    const { sku, ...withoutSku } = updateData
-    const retry = await supabase.from('products').update(withoutSku).eq('id', id).select().single()
-    data = retry.data
-    error = retry.error
-  }
-
-  if (error) {
-    console.error('Error updating product:', error)
-    return res.status(500).json({ error: error.message })
-  }
-
-  // Replaces the compatible model set (adds new, removes unticked). Stock is
-  // untouched by design.
-  await saveCompatibility(supabase, id, compatibleModelIds)
-
-  // Sync inventory stock if stock was updated
-  if (updateData.stock !== undefined || qty_meegoda !== undefined || qty_padukka !== undefined || qty_padukka_new !== undefined) {
-    console.log(`[Admin CRUD] Syncing manual stock update for product ${id}: stock=${updateData.stock}, meegoda=${qty_meegoda}, padukka=${qty_padukka}, padukka_new=${qty_padukka_new}`)
-    
-    const stockUpsertData: any = {
-      product_id: data.id,
-      updated_at: new Date().toISOString()
-    }
-    if (updateData.stock !== undefined) stockUpsertData.quantity = Number(updateData.stock) || 0
-    if (qty_meegoda !== undefined) stockUpsertData.qty_meegoda = Number(qty_meegoda)
-    if (qty_padukka !== undefined) stockUpsertData.qty_padukka = Number(qty_padukka)
-    if (qty_padukka_new !== undefined) stockUpsertData.qty_padukka_new = Number(qty_padukka_new)
-
-    // Use upsert to handle both existing and non-existing inv_stock records
-    const { error: invStockError } = await supabase
-      .from('inv_stock')
-      .upsert({
-        ...stockUpsertData,
-        low_stock_threshold: 5
-      }, { onConflict: 'product_id' })
-
-    if (invStockError) {
-      console.error('[Admin CRUD] Error syncing inv_stock:', invStockError)
-    } else {
-      console.log(`[Admin CRUD] inv_stock synced successfully for product ${id}`)
-    }
-  }
-
-  // Update images in product_images table if provided
-  if (imageUrls !== undefined && data?.id) {
-    // Delete existing images
-    await supabase
-      .from('product_images')
-      .delete()
-      .eq('product_id', id)
-
-    // Insert new images
-    if (imageUrls.length > 0) {
-      const imageInserts = imageUrls.map((url: string, index: number) => ({
-        product_id: id,
-        url: url,
-        display_order: index,
-        is_primary: index === 0,
-        alt_text: `${updateData.name || data.name} image ${index + 1}`,
-      }))
-
-      const { error: imagesError } = await supabase
-        .from('product_images')
-        .insert(imageInserts)
-
-      if (imagesError) {
-        console.error('Error updating product images:', imagesError)
-        // Don't fail the request, just log the error
-      }
-    }
-  }
-
-  return res.json({ data })
+  return res.json({ data: result.data })
 })
 
 /**
  * DELETE /api/admin/products/:id
- * Delete a product (admin only)
+ * Delete a product (administrator only).
  */
 export const deleteProductHandler = asyncHandler(async (req: Request, res: Response) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const supabase = getServiceClient(res)
+  if (!supabase) return
 
-  if (!supabaseUrl || !supabaseServiceKey) {
-    return res.status(503).json({ error: 'Supabase not configured' })
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  })
-
-  const { id } = req.params
-
-  const { error } = await supabase
-    .from('products')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    console.error('Error deleting product:', error)
-    if (error.code === '23503') {
-      return res.status(409).json({ error: 'Cannot delete product because it exists in past sales/receipts. Please update its stock to 0 instead to discontinue it.' })
-    }
-    return res.status(500).json({ error: error.message })
-  }
+  const result = await deleteProductRecord(supabase, req.params.id)
+  if (!result.ok) return res.status(result.status || 500).json({ error: result.error })
 
   return res.json({ success: true })
 })
