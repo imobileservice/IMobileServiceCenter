@@ -81,8 +81,19 @@ export const useCashierStore = create<CashierState>()(
       // store rehydrates, or the first request after a refresh would go out
       // without it.
       onRehydrateStorage: () => (state) => {
-        if (state?.tillSession?.token) tillSessionToken.set(state.tillSession.token)
+        tillSessionToken.set(state?.tillSession?.token || null)
       },
     }
   )
 )
+
+// A login or logout in another tab replaces or closes this till's session on
+// the server. Pick the change up here too, or this tab keeps selling on a
+// session the server has already closed and every sale is refused.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === useCashierStore.persist.getOptions().name) {
+      void useCashierStore.persist.rehydrate()
+    }
+  })
+}

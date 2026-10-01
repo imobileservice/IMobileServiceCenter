@@ -377,6 +377,18 @@ export default function CashierPOS() {
   const discount = 0 // Basic version
   const total = subtotal - discount
 
+  // The server closes a till's session when the same till code is signed in
+  // again elsewhere, or when it runs out. This device cannot sell on it any
+  // more, so send the cashier back to the login rather than leave them stuck.
+  const endTillSessionIfRejected = (err: any) => {
+    if (err?.status !== 401 || !/till session/i.test(err?.message || "")) return false
+
+    useCashierStore.getState().logout()
+    toast.error("This till session was closed. Please log in again to continue.")
+    navigate("/cashier/login")
+    return true
+  }
+
   const handleCheckout = async () => {
     if (cart.length === 0) return
     setIsProcessing(true)
@@ -429,7 +441,7 @@ export default function CashierPOS() {
       setWalkInPhone("")
       toast.success("Transaction completed successfully!")
     } catch (err: any) {
-      toast.error(err.message || "Failed to process sale")
+      if (!endTillSessionIfRejected(err)) toast.error(err.message || "Failed to process sale")
     } finally {
       setIsProcessing(false)
     }
@@ -465,7 +477,7 @@ export default function CashierPOS() {
       const res = await inventorySalesService.getByInvoiceNumber(scannedSale.invoice_number)
       setScannedSale(res.data)
     } catch (err: any) {
-      toast.error(err.message || "Failed to process return")
+      if (!endTillSessionIfRejected(err)) toast.error(err.message || "Failed to process return")
     } finally {
       setIsReturning(false)
     }
