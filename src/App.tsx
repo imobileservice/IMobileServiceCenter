@@ -1,8 +1,9 @@
 import React from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Suspense } from 'react'
 import { lazyWithRetry } from './lib/chunk-recovery'
 import SupplierGuard from '@/components/supplier-guard'
+import { SUPPLIER_SHOP_ENABLED } from './config/features'
 
 // Lazy load pages for code splitting
 const Home = lazyWithRetry(() => import('./pages/Home'))
@@ -97,7 +98,7 @@ export default function App() {
         <Route path="/admin/guide" element={<AdminGuide />} />
         <Route path="/admin/inventory" element={<AdminInventory />} />
         <Route path="/admin/sales" element={<AdminSales />} />
-        <Route path="/admin/suppliers" element={<AdminSuppliers />} />
+        <Route path="/admin/suppliers" element={SUPPLIER_SHOP_ENABLED ? <AdminSuppliers /> : <Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/cashiers" element={<AdminCashiers />} />
         <Route path="/admin/assistants" element={<AdminAssistants />} />
 
@@ -118,16 +119,17 @@ export default function App() {
         <Route path="/cashier/dashboard" element={<CashierDashboard />} />
         <Route path="/cashier/inventory" element={<CashierInventory />} />
         <Route path="/cashier/orders" element={<CashierOrderHistory />} />
-        <Route path="/cashier/supplier-orders" element={<CashierSupplierOrders />} />
-        <Route path="/supplier/login" element={<SupplierLogin />} />
+        <Route path="/cashier/supplier-orders" element={SUPPLIER_SHOP_ENABLED ? <CashierSupplierOrders /> : <Navigate to="/cashier/pos" replace />} />
+        <Route path="/supplier/login" element={SUPPLIER_SHOP_ENABLED ? <SupplierLogin /> : <Navigate to="/" replace />} />
         <Route
           path="/supplier"
           element={
-            <SupplierGuard>
+            SUPPLIER_SHOP_ENABLED ? <SupplierGuard>
               <SupplierPortal />
-            </SupplierGuard>
+            </SupplierGuard> : <Navigate to="/" replace />
           }
         />
+        {!SUPPLIER_SHOP_ENABLED && <Route path="/supplier/*" element={<Navigate to="/" replace />} />}
       </Routes>
     </Suspense>
   )

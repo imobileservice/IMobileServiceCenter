@@ -6,6 +6,7 @@ import { motion } from "framer-motion"
 import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen, Database, Barcode, Store, UserCog } from "lucide-react"
 import { useAdminStore } from "@/lib/admin-store"
 import { Button } from "@/components/ui/button"
+import { SUPPLIER_SHOP_ENABLED } from "@/config/features"
 
 const MENU_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
@@ -57,7 +58,7 @@ export default function AdminSidebar() {
         </div>
 
         <nav className="px-4 space-y-1.5 flex-1">
-          {MENU_ITEMS.map((item) => {
+          {MENU_ITEMS.filter((item) => SUPPLIER_SHOP_ENABLED || item.href !== "/admin/suppliers").map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (

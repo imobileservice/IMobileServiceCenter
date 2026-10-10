@@ -32,6 +32,7 @@ import {
 import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
+import { SUPPLIER_SHOP_ENABLED } from "@/config/features"
 
 type ReportPeriod = "daily" | "weekly" | "monthly"
 
@@ -890,12 +891,12 @@ export default function AdminDashboard() {
 
         // Kept out of the Promise.all above so a database still waiting on
         // 20260809_supplier_shop_orders.sql only hides this one panel.
-        const shopOrdersResult = await shopOrdersService
+        const shopOrdersResult = SUPPLIER_SHOP_ENABLED ? await shopOrdersService
           .getAll({ limit: 100 })
           .catch(err => {
             console.warn("Failed to fetch shop orders:", err)
             return { data: [], totals: null as ShopOrderTotals | null }
-          })
+          }) : { data: [], totals: null }
 
         setShopOrders(shopOrdersResult.data || [])
         setShopOrderTotals(shopOrdersResult.totals || null)
@@ -1493,7 +1494,7 @@ export default function AdminDashboard() {
         </motion.div>
 
         {/* Orders the shops we supply placed for themselves */}
-        <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
+        {SUPPLIER_SHOP_ENABLED && <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
             <div className="flex items-center gap-3">
               <div className="bg-blue-500 p-2 rounded-lg text-white">
@@ -1558,7 +1559,7 @@ export default function AdminDashboard() {
               </table>
             </div>
           )}
-        </motion.div>
+        </motion.div>}
 
         <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
           <div className="flex items-center justify-between gap-4 mb-6">

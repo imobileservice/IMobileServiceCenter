@@ -7,6 +7,7 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
 import { getApiUrl } from "@/lib/utils/api"
 import { toast } from "sonner"
+import { SUPPLIER_SHOP_ENABLED } from "@/config/features"
 
 const SESSION_CHECK_INTERVAL_MS = 30 * 1000
 const MAX_TIMEOUT_MS = 2 ** 31 - 1
@@ -23,7 +24,7 @@ const NAV_ITEMS = [
   { path: "/cashier/website", label: "Website Terminal", shortLabel: "Website", Icon: ClipboardList },
   { path: "/cashier/dashboard", label: "Daily Summary", shortLabel: "Summary", Icon: LayoutDashboard },
   { path: "/cashier/inventory", label: "Inventory Look-up", shortLabel: "Inventory", Icon: Package },
-]
+].filter((item) => SUPPLIER_SHOP_ENABLED || item.path !== "/cashier/supplier-orders")
 
 export default function CashierLayout({ children }: CashierLayoutProps) {
   const navigate = useNavigate()

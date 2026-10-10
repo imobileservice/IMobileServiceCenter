@@ -15,6 +15,7 @@ import cashierRouter from './cashier'
 import supplierRouter from './supplier'
 import assistantRouter from './assistant'
 import { guardInventoryApi } from './utils/inventory-guard'
+import { SUPPLIER_SHOP_ENABLED } from '../../config/features'
 
 const router = Router()
 
@@ -34,6 +35,13 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
 }
 
 // Mount route handlers
+// Block the entire shop section, including existing sessions and direct requests.
+if (!SUPPLIER_SHOP_ENABLED) {
+  router.use(['/supplier', '/inventory/suppliers', '/inventory/supplier-orders'], (_req, res) => {
+    res.status(503).json({ error: 'Supplier shop section is currently disabled' })
+  })
+}
+
 router.use('/auth', authRouter)
 router.use('/products', productsRouter)
 router.use('/admin', adminRouter)
