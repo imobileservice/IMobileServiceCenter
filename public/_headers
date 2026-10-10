@@ -5,71 +5,99 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /about
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /shop
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /product/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /cart
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /checkout
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /invoice/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /contact
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /profile
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /signin
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /signup
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /verify-email
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /auth/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 # A bare path and its splat are separate rules and fail independently - the same
 # reason public/_redirects lists "/admin" and "/admin/*" as two entries. Without
@@ -82,53 +110,56 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /admin/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /cashier
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /cashier/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /supplier
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /supplier/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
-# Asset filenames are content-hashed, so correctness never depends on a long
-# max-age here - only edge/browser hit-rate does.
-#
-# The max-age is deliberately SHORT, and deliberately not "immutable".
-# This host answers a request for a MISSING /assets/* file with the SPA
-# fallback page (HTTP 200 + text/html), and that response inherits this rule.
-# A browser can therefore cache the fallback HTML *as* the JS/CSS file and
-# white-screen with "Failed to load module script: ... MIME type of text/html".
-# We cannot vary this rule by response content-type, so the window in which a
-# poisoned entry can survive is capped instead: one hour, not one year.
-#
-# Do not raise this back to 31536000 (and do not add "immutable") unless
-# missing /assets/* requests are returning a real 404 first - verify with
-# `npm run check:deploy`.
+# Always request app files again on a normal browser reload. This also prevents
+# a failed/HTML asset response from remaining usable in browser or CDN caches.
 /assets/*
-  Cache-Control: public, max-age=3600, must-revalidate
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
 
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /build-version.json
   Cache-Control: no-cache, no-store, must-revalidate
@@ -138,14 +169,22 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /assistant/*
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /problem
   Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"
 
 /test-supabase
   Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+  Clear-Site-Data: "cache"

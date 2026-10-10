@@ -43,9 +43,11 @@ const ok = (name, pass, detail) => results.push({ name, pass, detail });
  * to / rather than the app shell, so a redirect here is a failure, not a pass.
  */
 const ROUTES = [
-  '/', '/shop', '/about', '/cart', '/contact', '/signin', '/problem', '/test-supabase',
+  '/', '/shop', '/about', '/cart', '/checkout', '/contact', '/profile',
+  '/signin', '/signup', '/verify-email', '/problem', '/test-supabase',
   '/product/123', '/invoice/123', '/auth/callback',
-  '/admin', '/admin/login', '/admin/products', '/cashier/pos',
+  '/admin', '/admin/login', '/admin/products', '/cashier', '/cashier/pos',
+  '/supplier', '/supplier/login',
   // The one emailed as the confirmation link - it is always opened cold.
   '/assistant', '/assistant/verify-email',
 ];
@@ -81,8 +83,14 @@ const ROUTES = [
 
     const routeCc = r.headers['cache-control'] || '';
     ok(`route ${route} is not cached`,
-      /no-store|no-cache/.test(routeCc),
+      /no-store/.test(routeCc),
       `cache-control: ${routeCc || '(none)'}`);
+    ok(`route ${route} clears only downloaded files`,
+      r.headers['clear-site-data'] === '"cache"',
+      `clear-site-data: ${r.headers['clear-site-data'] || '(none)'}`);
+    ok(`route ${route} bypasses CDN caching`,
+      /no-store/.test(r.headers['cdn-cache-control'] || ''),
+      `cdn-cache-control: ${r.headers['cdn-cache-control'] || '(none)'}`);
   }
 
   const distinctBuilds = new Set(shellRefs.values());
@@ -124,6 +132,27 @@ const ROUTES = [
     ok('referenced entry bundle serves JavaScript',
       entry.status === 200 && /javascript|ecmascript/i.test(ct),
       `${ref} -> ${entry.status} ${ct}`);
+    ok('entry bundle cannot remain in browser cache',
+      /no-store/.test(entry.headers['cache-control'] || ''),
+      `cache-control: ${entry.headers['cache-control'] || '(none)'}`);
+
+    // Exercise lazy imports and CSS too; the entry alone can work while those
+    // keep serving stale browser-cache copies after an ordinary reload.
+    const samples = [
+      release?.assets?.find(asset => /^\/assets\/.+\.js$/.test(asset) && asset !== ref),
+      release?.assets?.find(asset => /^\/assets\/.+\.css$/.test(asset)),
+    ];
+    for (const asset of samples) {
+      if (!asset) { ok('lazy script and stylesheet are listed', false, 'missing release asset'); continue; }
+      const response = await get(`${BASE}${asset}`);
+      const type = response.headers['content-type'] || '';
+      ok(`${asset} is fresh and usable`,
+        response.status === 200 && (asset.endsWith('.css') ? /text\/css/i : /javascript|ecmascript/i).test(type) &&
+          /no-store/.test(response.headers['cache-control'] || '') &&
+          /no-store/.test(response.headers['cdn-cache-control'] || '') &&
+          !response.headers['clear-site-data'],
+        `${response.status} ${type}, cache-control: ${response.headers['cache-control'] || '(none)'}`);
+    }
   }
 
   // 3. THE BIG ONE: a missing asset must not masquerade as a cacheable module

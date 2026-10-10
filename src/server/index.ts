@@ -143,12 +143,15 @@ if (process.env.NODE_ENV === 'production') {
 
   app.use(express.static(distPath, {
     setHeaders: (res, filePath) => {
-      // Build output is content-hashed and per-build unique, so it is safe to
-      // cache; the app shell never is, or clients pin themselves to an old build.
+      // Normal reloads must fetch current files, including lazy imports. Clear
+      // only downloaded files on HTML responses; preserve cookies and storage.
       if (filePath.endsWith('index.html') || filePath.endsWith('build-version.json')) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+        res.setHeader('CDN-Cache-Control', 'no-store')
+        if (filePath.endsWith('index.html')) res.setHeader('Clear-Site-Data', '"cache"')
       } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate')
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+        res.setHeader('CDN-Cache-Control', 'no-store')
       }
     },
   }))
@@ -176,6 +179,8 @@ if (process.env.NODE_ENV === 'production') {
 
     // Real client route: serve the app shell, uncacheable.
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.setHeader('CDN-Cache-Control', 'no-store')
+    res.setHeader('Clear-Site-Data', '"cache"')
     res.sendFile(path.join(distPath, 'index.html'))
   })
 }
