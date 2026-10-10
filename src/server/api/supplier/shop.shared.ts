@@ -97,26 +97,18 @@ export const getPrimaryImage = (product: any) =>
   null
 
 /**
- * Units on hand for one product row.
+ * Meegoda units available to supplier shops for one product row.
  *
- * The POS decrements branch quantities, so sum those rather than trusting a
- * potentially stale total. Supabase can embed inv_stock as an object or array.
- * Without a stock row we cannot confirm availability; products.stock is only
- * a saved copy and must never make an untracked product look available.
+ * Padukka and Padukka New stock stays in the admin inventory and must not
+ * contribute to supplier availability. Supabase can embed inv_stock as an
+ * object or array. Missing Meegoda stock cannot fall back to either saved
+ * total, since those totals may include stock from the other branches.
  */
 export const resolveQuantity = (product: any) => {
   const stockRow = Array.isArray(product?.inv_stock) ? product.inv_stock[0] : product?.inv_stock
   if (!stockRow) return 0
 
-  const branches = ['qty_meegoda', 'qty_padukka', 'qty_padukka_new']
-  if (branches.some((field) => Object.prototype.hasOwnProperty.call(stockRow, field))) {
-    const quantities = branches.map((field) => Number(stockRow[field] ?? 0))
-    if (quantities.some((quantity) => !Number.isFinite(quantity) || quantity < 0)) return 0
-    return quantities.reduce((total, quantity) => total + quantity, 0)
-  }
-
-  // Compatibility for an inventory row from before branch stock was added.
-  const quantity = Number(stockRow.quantity ?? 0)
+  const quantity = Number(stockRow.qty_meegoda ?? 0)
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 0
 }
 
@@ -155,5 +147,5 @@ export const toCatalogItem = (product: any) => ({
 export const PRODUCT_SELECT = `
   id, name, barcode, brand, category_id, specs, price, buy_price,
   product_images (url, is_primary),
-  inv_stock (quantity, qty_meegoda, qty_padukka, qty_padukka_new)
+  inv_stock (qty_meegoda)
 `
