@@ -15,6 +15,7 @@ import { fetchAllowedCategoryIds, PRODUCT_SELECT, toCatalogItem } from './shop.s
  * nothing instead of leaking it.
  */
 export async function supplierCatalogHandler(req: SupplierRequest, res: Response) {
+  res.setHeader('Cache-Control', 'no-store')
   try {
     const supabase = getSupabaseAdmin()
 

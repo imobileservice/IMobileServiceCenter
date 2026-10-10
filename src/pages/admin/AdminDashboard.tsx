@@ -32,7 +32,7 @@ import {
 import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
-import { SUPPLIER_SHOP_ENABLED } from "@/config/features"
+import { useSupplierShopAccess } from "@/components/supplier-shop-access"
 
 type ReportPeriod = "daily" | "weekly" | "monthly"
 
@@ -792,6 +792,7 @@ function ShopOrderTile({ label, value, tone = "text-foreground" }: { label: stri
 }
 
 export default function AdminDashboard() {
+  const { allowed: canAccessSupplierShop } = useSupplierShopAccess()
   const [activePeriod, setActivePeriod] = useState<ReportPeriod>("daily")
   const [orders, setOrders] = useState<any[]>([])
   const [posSales, setPosSales] = useState<any[]>([])
@@ -889,18 +890,6 @@ export default function AdminDashboard() {
           }),
         ])
 
-        // Kept out of the Promise.all above so a database still waiting on
-        // 20260809_supplier_shop_orders.sql only hides this one panel.
-        const shopOrdersResult = SUPPLIER_SHOP_ENABLED ? await shopOrdersService
-          .getAll({ limit: 100 })
-          .catch(err => {
-            console.warn("Failed to fetch shop orders:", err)
-            return { data: [], totals: null as ShopOrderTotals | null }
-          }) : { data: [], totals: null }
-
-        setShopOrders(shopOrdersResult.data || [])
-        setShopOrderTotals(shopOrdersResult.totals || null)
-
         const posSalesData = posSalesResult.data || []
         const productsData = productsResult.data || []
         const shopCustomers = shopCustomersResult.data || []
@@ -983,6 +972,33 @@ export default function AdminDashboard() {
       window.removeEventListener("storage", handleStorage)
     }
   }, [])
+
+  useEffect(() => {
+    if (!canAccessSupplierShop) {
+      setShopOrders([])
+      setShopOrderTotals(null)
+      return
+    }
+    let active = true
+    const refresh = async () => {
+      try {
+        const result = await shopOrdersService.getAll({ limit: 100 })
+        if (!active) return
+        setShopOrders(result.data || [])
+        setShopOrderTotals(result.totals || null)
+      } catch {
+        if (!active) return
+        setShopOrders([])
+        setShopOrderTotals(null)
+      }
+    }
+    void refresh()
+    const interval = window.setInterval(refresh, 30_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [canAccessSupplierShop])
 
   const analytics = useMemo(
     () => buildReportAnalytics(activePeriod, orders, posSales, products),
@@ -1494,7 +1510,7 @@ export default function AdminDashboard() {
         </motion.div>
 
         {/* Orders the shops we supply placed for themselves */}
-        {SUPPLIER_SHOP_ENABLED && <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
+        {canAccessSupplierShop && <motion.div variants={itemVariants} initial="hidden" animate="visible" className="bg-card border border-border rounded-lg p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
             <div className="flex items-center gap-3">
               <div className="bg-blue-500 p-2 rounded-lg text-white">

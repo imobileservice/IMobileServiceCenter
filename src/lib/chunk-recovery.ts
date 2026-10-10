@@ -1,345 +1,43 @@
 import { lazy, type ComponentType } from 'react'
 
-const CHUNK_RECOVERY_KEY = 'imobile:chunk-recovery'
-const CHUNK_REFRESH_PARAM = 'imobile_build_refresh'
-const CHUNK_RELOAD_TTL_MS = 2 * 60 * 1000
-const CHUNK_RELOAD_MAX_ATTEMPTS = 3
+declare global {
+  interface Window {
+    __imobileUpdate?: { check: (recover?: boolean, manual?: boolean) => Promise<boolean> }
+  }
+}
 
-const CHUNK_ERROR_PATTERNS = [
-  'Failed to fetch dynamically imported module',
-  'Importing a module script failed',
-  'Expected a JavaScript-or-Wasm module script',
-  'Strict MIME type checking',
-  'error loading dynamically imported module',
-  'ChunkLoadError',
-  'Loading chunk',
-  'Unable to preload CSS',
-]
-
-const ASSET_URL_PATTERN = /(?:https?:\/\/[^\s)'"<>]+)?\/assets\/[^\s)'"<>]+\.(?:js|mjs|css)(?:\?[^\s)'"<>]*)?/i
-
-// Browser extensions load their own ES modules and fail with the *exact* same
-// wording we look for ("Failed to fetch dynamically imported module: ..."),
-// and they often ship their files under an /assets/ path too, so
-// ASSET_URL_PATTERN matches them as well. Treating an extension's failure as
-// ours triggers a pointless location.replace() reload loop that renders the
-// page white. Anything carrying an extension scheme is never our bundle.
 const EXTENSION_URL_PATTERN = /(?:chrome|chrome-untrusted|moz|safari-web|safari|ms-browser|extension):\/\//i
-
-let recoveryScheduled = false
-let reloadTimerId: number | undefined
-let recoveryListenersInstalled = false
-
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return `${error.name}: ${error.message}\n${error.stack || ''}`
-  }
-
-  if (typeof error === 'string') {
-    return error
-  }
-
-  try {
-    return JSON.stringify(error)
-  } catch {
-    return String(error)
-  }
-}
-
-function getChunkErrorId(error: unknown) {
-  const message = getErrorMessage(error)
-  const assetMatch = message.match(ASSET_URL_PATTERN)
-  return assetMatch?.[0] || message.slice(0, 180)
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
-function getStoredRecoveryState(now: number) {
-  try {
-    const parsed = JSON.parse(window.sessionStorage.getItem(CHUNK_RECOVERY_KEY) || 'null') as {
-      firstAttemptAt?: number
-      attempts?: number
-      lastErrorId?: string
-    } | null
-
-    if (
-      parsed &&
-      typeof parsed.firstAttemptAt === 'number' &&
-      typeof parsed.attempts === 'number' &&
-      now - parsed.firstAttemptAt < CHUNK_RELOAD_TTL_MS
-    ) {
-      return parsed
-    }
-  } catch {
-    // Ignore malformed storage; a fresh recovery window is safer.
-  }
-
-  return { firstAttemptAt: now, attempts: 0, lastErrorId: undefined }
-}
-
-function getFailedResourceUrl(target: EventTarget | null) {
-  if (target instanceof HTMLScriptElement) return target.src
-  if (target instanceof HTMLLinkElement) return target.href
-  return ''
-}
-
-function isAssetUrl(value: string) {
-  // An extension asset is not one of ours (see EXTENSION_URL_PATTERN).
-  if (EXTENSION_URL_PATTERN.test(value)) return false
-  return ASSET_URL_PATTERN.test(value)
-}
-
-function cleanRecoveryQueryParam() {
-  if (typeof window === 'undefined') return
-
-  try {
-    const url = new URL(window.location.href)
-    if (!url.searchParams.has(CHUNK_REFRESH_PARAM)) return
-
-    url.searchParams.delete(CHUNK_REFRESH_PARAM)
-    window.history.replaceState(
-      window.history.state,
-      document.title,
-      `${url.pathname}${url.search}${url.hash}`
-    )
-  } catch {
-    // Keeping the cache-busting query in the URL is harmless if cleanup fails.
-  }
-}
-
-function getFreshBuildUrl() {
-  const nextUrl = new URL(window.location.href)
-  nextUrl.searchParams.set(CHUNK_REFRESH_PARAM, String(Date.now()))
-  return nextUrl.toString()
-}
-
-function clearChunkRecoveryState() {
-  recoveryScheduled = false
-
-  if (reloadTimerId !== undefined) {
-    window.clearTimeout(reloadTimerId)
-    reloadTimerId = undefined
-  }
-
-  try {
-    window.sessionStorage.removeItem(CHUNK_RECOVERY_KEY)
-  } catch {
-    // Storage can be unavailable in private or restricted browsing modes.
-  }
-}
+const CHUNK_ERROR_PATTERN = /Failed to fetch dynamically imported module|Importing a module script failed|Expected a JavaScript-or-Wasm module script|Strict MIME type checking|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS/i
 
 export function isChunkLoadError(error: unknown) {
-  const message = getErrorMessage(error)
-
-  // Never claim an extension's module failure as our own (see EXTENSION_URL_PATTERN).
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
   if (EXTENSION_URL_PATTERN.test(message)) return false
-
-  const hasKnownPattern = CHUNK_ERROR_PATTERNS.some((pattern) => message.includes(pattern))
-  const hasAssetUrl = isAssetUrl(message)
-  const hasLoadFailureWords = /failed|fetch|load|loading|module|mime|html|404/i.test(message)
-
-  return hasKnownPattern || (hasAssetUrl && hasLoadFailureWords)
+  return CHUNK_ERROR_PATTERN.test(message) ||
+    (/\/assets\/[^\s]+\.(?:js|mjs|css)/i.test(message) && /failed|fetch|load|module|mime|404/i.test(message))
 }
 
-export function markChunkReloadAttempt(error: unknown) {
-  if (typeof window === 'undefined') return false
-  if (recoveryScheduled) return true
-
-  const now = Date.now()
-  const errorId = getChunkErrorId(error)
-
-  try {
-    let state = getStoredRecoveryState(now)
-
-    if ((state.attempts || 0) >= CHUNK_RELOAD_MAX_ATTEMPTS && state.lastErrorId !== errorId) {
-      state = { firstAttemptAt: now, attempts: 0, lastErrorId: undefined }
-    }
-
-    if ((state.attempts || 0) >= CHUNK_RELOAD_MAX_ATTEMPTS) {
-      return false
-    }
-
-    window.sessionStorage.setItem(
-      CHUNK_RECOVERY_KEY,
-      JSON.stringify({
-        firstAttemptAt: state.firstAttemptAt || now,
-        attempts: (state.attempts || 0) + 1,
-        lastErrorId: errorId,
-      })
-    )
-    recoveryScheduled = true
-    return true
-  } catch {
-    recoveryScheduled = true
-    return true
-  }
-}
-
-/**
- * Overwrites poisoned HTTP cache entries before we reload.
- *
- * A missing /assets/* file is answered by the SPA fallback with HTTP 200 +
- * text/html under a long max-age, so the browser can cache that HTML *as* a
- * chunk. Reloading the page alone never fixes it: the chunk URLs are unchanged,
- * so the browser serves the same poisoned entries and we just burn the retry
- * budget and sit on the loading spinner forever.
- *
- * `cache: 'reload'` bypasses the cache AND replaces the stored entry, so the
- * reload that follows sees real JavaScript. We repair the failed URL plus every
- * asset the document references, since a single fallback window normally
- * poisons several of them at once.
- */
-async function repairPoisonedAssets(error: unknown) {
-  const urls = new Set<string>()
-
-  const failed = getErrorMessage(error).match(ASSET_URL_PATTERN)
-  if (failed && isAssetUrl(failed[0])) urls.add(failed[0])
-
-  document.querySelectorAll<HTMLScriptElement>('script[src]').forEach((el) => {
-    if (isAssetUrl(el.src)) urls.add(el.src)
-  })
-  document.querySelectorAll<HTMLLinkElement>('link[href]').forEach((el) => {
-    if (isAssetUrl(el.href)) urls.add(el.href)
-  })
-
-  // `cache: 'reload'` only bypasses THIS browser's cache. When the bad copy is in
-  // the CDN edge cache the repair fetch is served the same poisoned bytes, the
-  // reload hits the same URLs, and recovery burns all three attempts for nothing.
-  // A unique query string is a different edge cache key, so it reaches origin.
-  const bust = (url: string) => `${url}${url.includes('?') ? '&' : '?'}imobile_cb=${Date.now()}`
-
-  // Both fetches are required, and the order matters.
-  //
-  // The HTTP cache is keyed on the FULL url, query string included, so fetching
-  // only the busted url replaces the entry for `chunk.js?imobile_cb=...` and
-  // leaves the poisoned entry for the bare `chunk.js` exactly where it was. The
-  // reload then re-imports the bare url, gets the same HTML back, and we sit on
-  // the loading spinner until the retry budget runs out - which is how a poisoned
-  // client stayed broken across every reload.
-  //
-  // So: bust first to pull clean bytes through the edge for this path, then fetch
-  // the bare url with `cache: 'reload'` to overwrite the entry the app will
-  // actually use.
-  await Promise.all(
-    Array.from(urls).map(async (url) => {
-      try {
-        await fetch(bust(url), { cache: 'reload', credentials: 'same-origin' })
-      } catch {
-        // Ignore; the bare refetch below is the one that has to land.
-      }
-
-      try {
-        await fetch(url, { cache: 'reload', credentials: 'same-origin' })
-      } catch {
-        // A still-missing asset stays broken; the reload below reports it normally.
-      }
-    })
-  )
-}
-
-export function reloadForChunkError(error?: unknown) {
-  if (typeof window === 'undefined') return
-  if (reloadTimerId !== undefined) return
-
-  reloadTimerId = window.setTimeout(() => {
-    repairPoisonedAssets(error).finally(() => {
-      window.location.replace(getFreshBuildUrl())
-    })
-  }, 100)
+export async function recoverFromChunkError(error: unknown) {
+  if (!isChunkLoadError(error) || typeof window === 'undefined') return false
+  return window.__imobileUpdate?.check(true) ?? false
 }
 
 export function forceChunkRecoveryReload() {
   if (typeof window === 'undefined') return
-
-  clearChunkRecoveryState()
-  repairPoisonedAssets(undefined).finally(() => {
-    window.location.replace(getFreshBuildUrl())
-  })
+  // Only a deliberate button click can bypass the automatic reload budget.
+  void (window.__imobileUpdate?.check(true, true) ?? Promise.resolve(false))
+    .then((reloaded) => { if (!reloaded) window.location.reload() })
 }
 
-export function requestChunkRecovery(error: unknown) {
-  if (!isChunkLoadError(error) || !markChunkReloadAttempt(error)) {
-    return false
-  }
-
-  reloadForChunkError(error)
-  return true
-}
-
-export function installChunkRecovery() {
-  if (typeof window === 'undefined' || recoveryListenersInstalled) return
-
-  recoveryListenersInstalled = true
-  cleanRecoveryQueryParam()
-
-  window.addEventListener('vite:preloadError', (event) => {
-    const preloadEvent = event as Event & { payload?: unknown }
-    // Schedule a reload, but deliberately do NOT call preventDefault().
-    //
-    // Vite's __vitePreload only rethrows when the event was not cancelled:
-    //   window.dispatchEvent(e); if (!e.defaultPrevented) throw err
-    // Cancelling it makes the failed dynamic import resolve to `undefined`
-    // instead of rejecting, so React.lazy then reads `.default` off undefined
-    // and dies with "Cannot read properties of undefined (reading 'default')"
-    // before our reload can happen. Letting the error through lets
-    // lazyWithRetry() retry and then suspend cleanly while the reload lands.
-    requestChunkRecovery(preloadEvent.payload || preloadEvent)
-  })
-
-  window.addEventListener('unhandledrejection', (event) => {
-    if (requestChunkRecovery(event.reason)) {
-      event.preventDefault()
-    }
-  })
-
-  window.addEventListener(
-    'error',
-    (event) => {
-      const targetUrl = getFailedResourceUrl(event.target)
-      const reason =
-        event instanceof ErrorEvent
-          ? event.error || event.message || targetUrl
-          : targetUrl
-
-      if ((targetUrl && isAssetUrl(targetUrl)) || isChunkLoadError(reason)) {
-        const recoveryReason =
-          targetUrl && isAssetUrl(targetUrl)
-            ? `Failed to load module asset: ${targetUrl}`
-            : reason
-        if (requestChunkRecovery(recoveryReason)) {
-          event.preventDefault()
-        }
-      }
-    },
-    true
-  )
-}
-
-export function lazyWithRetry<T extends ComponentType<any>>(
-  factory: () => Promise<{ default: T }>
-) {
+export function lazyWithRetry<T extends ComponentType<any>>(factory: () => Promise<{ default: T }>) {
   return lazy(async () => {
     try {
       return await factory()
-    } catch (firstError) {
-      if (!isChunkLoadError(firstError)) {
-        throw firstError
+    } catch (error) {
+      if (await recoverFromChunkError(error)) {
+        // The release is ready and the browser is navigating exactly once.
+        return await new Promise<{ default: T }>(() => {})
       }
-
-      try {
-        await delay(600)
-        return await factory()
-      } catch (secondError) {
-        if (requestChunkRecovery(secondError)) {
-          return await new Promise<{ default: T }>(() => {
-            // Keep React suspended while the browser loads the current build.
-          })
-        }
-
-        throw secondError
-      }
+      throw error
     }
   })
 }

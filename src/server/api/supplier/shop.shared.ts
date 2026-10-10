@@ -99,17 +99,25 @@ export const getPrimaryImage = (product: any) =>
 /**
  * Units on hand for one product row.
  *
- * inv_stock is the authority - it is what the POS decrements - but Supabase
- * hands an embedded one-to-one back as either an object or a single-element
- * array depending on how it resolved the relationship, and products.stock is
- * the only figure available for a product that has never had a stock row.
+ * The POS decrements branch quantities, so sum those rather than trusting a
+ * potentially stale total. Supabase can embed inv_stock as an object or array.
+ * Without a stock row we cannot confirm availability; products.stock is only
+ * a saved copy and must never make an untracked product look available.
  */
 export const resolveQuantity = (product: any) => {
   const stockRow = Array.isArray(product?.inv_stock) ? product.inv_stock[0] : product?.inv_stock
-  if (stockRow && stockRow.quantity !== undefined && stockRow.quantity !== null) {
-    return Number(stockRow.quantity) || 0
+  if (!stockRow) return 0
+
+  const branches = ['qty_meegoda', 'qty_padukka', 'qty_padukka_new']
+  if (branches.some((field) => Object.prototype.hasOwnProperty.call(stockRow, field))) {
+    const quantities = branches.map((field) => Number(stockRow[field] ?? 0))
+    if (quantities.some((quantity) => !Number.isFinite(quantity) || quantity < 0)) return 0
+    return quantities.reduce((total, quantity) => total + quantity, 0)
   }
-  return Number(product?.stock || 0)
+
+  // Compatibility for an inventory row from before branch stock was added.
+  const quantity = Number(stockRow.quantity ?? 0)
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0
 }
 
 /**
@@ -145,7 +153,7 @@ export const toCatalogItem = (product: any) => ({
 })
 
 export const PRODUCT_SELECT = `
-  id, name, barcode, brand, category_id, specs, stock, price, buy_price,
+  id, name, barcode, brand, category_id, specs, price, buy_price,
   product_images (url, is_primary),
-  inv_stock (quantity)
+  inv_stock (quantity, qty_meegoda, qty_padukka, qty_padukka_new)
 `

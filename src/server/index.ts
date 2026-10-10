@@ -132,7 +132,10 @@ app.get('/health', (req, res) => {
 })
 
 // API routes
-app.use('/api', apiRouter)
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store')
+  next()
+}, apiRouter)
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -142,7 +145,7 @@ if (process.env.NODE_ENV === 'production') {
     setHeaders: (res, filePath) => {
       // Build output is content-hashed and per-build unique, so it is safe to
       // cache; the app shell never is, or clients pin themselves to an old build.
-      if (filePath.endsWith('index.html')) {
+      if (filePath.endsWith('index.html') || filePath.endsWith('build-version.json')) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
       } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
         res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate')
@@ -166,6 +169,7 @@ if (process.env.NODE_ENV === 'production') {
     }
 
     if (ASSET_REQUEST.test(req.path)) {
+      res.setHeader('Cache-Control', 'no-store')
       res.status(404).type('text/plain').send('Not found')
       return
     }

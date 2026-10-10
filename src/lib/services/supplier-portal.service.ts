@@ -132,7 +132,7 @@ export const supplierPortalService = {
     if (params?.category_id) qs.set("category_id", params.category_id)
     if (params?.in_stock_only) qs.set("in_stock_only", "true")
     const query = qs.toString() ? `?${qs.toString()}` : ""
-    return request(`/catalog${query}`)
+    return request(`/catalog${query}`, { cache: "no-store" })
   },
 
   async getOrders(): Promise<{ data: MyOrder[]; migration_required: boolean }> {

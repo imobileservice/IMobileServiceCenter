@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { randomUUID } from 'node:crypto'
+import { buildVersionPlugin } from './scripts/build-version-plugin'
 
 /*
  * Every deploy gets its own asset filenames.
@@ -16,11 +18,11 @@ import path from 'path'
  * missing /assets/* (see src/server/index.ts) stops the poisoning at the source;
  * this is the belt to that pair of braces.
  */
-const BUILD_ID = Date.now().toString(36)
+const BUILD_ID = `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), buildVersionPlugin(BUILD_ID)],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

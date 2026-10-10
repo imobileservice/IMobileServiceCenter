@@ -129,3 +129,23 @@
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
+
+/build-version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/assistant
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/assistant/*
+  Cache-Control: no-cache, no-store, must-revalidate
+  Pragma: no-cache
+  Expires: 0
+
+/problem
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/test-supabase
+  Cache-Control: no-cache, no-store, must-revalidate

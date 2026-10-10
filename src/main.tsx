@@ -8,13 +8,11 @@ import App from './App'
 import ConditionalLayout from '@/components/conditional-layout'
 import { AuthProvider } from '@/components/auth-provider'
 import { ErrorBoundary } from './ErrorBoundary'
-import { installChunkRecovery } from './lib/chunk-recovery'
 import { installSessionFetch } from './lib/session-fetch'
+import { SupplierShopAccessProvider } from '@/components/supplier-shop-access'
 // Import global styles
 import '@/globals.css'
 import './index.css' // Additional styles if needed
-
-installChunkRecovery()
 
 // Wraps window.fetch so every call to this app's own API carries the signed-in
 // session. Must run before any component can fire a request.
@@ -35,7 +33,9 @@ root.render(
           <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
             <AuthProvider>
               <ConditionalLayout>
-                <App />
+                <SupplierShopAccessProvider>
+                  <App />
+                </SupplierShopAccessProvider>
               </ConditionalLayout>
             </AuthProvider>
             <Toaster position="top-center" richColors />

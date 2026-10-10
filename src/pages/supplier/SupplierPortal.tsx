@@ -93,6 +93,7 @@ export default function SupplierPortalPage() {
   const [inStockOnly, setInStockOnly] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [migrationRequired, setMigrationRequired] = useState(false)
+  const catalogRequestId = useRef(0)
 
   // Brand is filtered here rather than on the server: the catalogue a shop can
   // see arrives in one call, so narrowing it is instant and costs no round trip.
@@ -128,32 +129,55 @@ export default function SupplierPortalPage() {
       })
   }, [isAuthenticated])
 
-  const loadCatalog = useCallback(async () => {
-    setIsLoading(true)
+  const loadCatalog = useCallback(async (background = false) => {
+    const requestId = ++catalogRequestId.current
+    if (!background) setIsLoading(true)
     try {
       const result = await supplierPortalService.getCatalog({
         search: search.trim() || undefined,
         category_id: categoryId || undefined,
         in_stock_only: inStockOnly || undefined,
       })
+      if (requestId !== catalogRequestId.current) return
       setItems(result.data || [])
       setCategories(result.categories || [])
       setMigrationRequired(Boolean(result.migration_required))
     } catch (err: any) {
+      if (requestId !== catalogRequestId.current) return
+      // Failed refreshes must not leave old "In stock" badges on screen.
+      setItems([])
       // A dropped session already cleared the store; the effect above bounces to
       // the login screen, so there is nothing useful to show here.
       if (!useSupplierStore.getState().isAuthenticated) return
-      toast.error(err.message || "Could not load the product list")
+      if (!background) toast.error(err.message || "Could not load the product list")
     } finally {
-      setIsLoading(false)
+      if (requestId === catalogRequestId.current) setIsLoading(false)
     }
   }, [search, categoryId, inStockOnly])
 
   useEffect(() => {
     if (!isAuthenticated) return
-    const timer = setTimeout(loadCatalog, search ? 300 : 0)
-    return () => clearTimeout(timer)
+    const timer = setTimeout(() => loadCatalog(), search ? 300 : 0)
+    return () => {
+      clearTimeout(timer)
+      ++catalogRequestId.current
+    }
   }, [isAuthenticated, loadCatalog, search])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadCatalog(true)
+    }
+    const interval = window.setInterval(refresh, 30_000)
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [isAuthenticated, loadCatalog])
 
   const loadOrders = useCallback(async () => {
     setOrdersLoading(true)
@@ -270,6 +294,7 @@ export default function SupplierPortalPage() {
       loadCatalog()
     } catch (err: any) {
       toast.error(err.message || "Could not place your order")
+      void loadCatalog(true)
     } finally {
       setIsPlacing(false)
     }
@@ -389,7 +414,7 @@ export default function SupplierPortalPage() {
                 <FilterChip active={inStockOnly} onClick={() => setInStockOnly((prev) => !prev)}>
                   In stock only
                 </FilterChip>
-                <Button variant="ghost" size="sm" onClick={loadCatalog} disabled={isLoading} className="gap-2">
+                <Button variant="ghost" size="sm" onClick={() => loadCatalog()} disabled={isLoading} className="gap-2">
                   <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
                   Refresh
                 </Button>

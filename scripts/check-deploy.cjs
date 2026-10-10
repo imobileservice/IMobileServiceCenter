@@ -43,7 +43,7 @@ const ok = (name, pass, detail) => results.push({ name, pass, detail });
  * to / rather than the app shell, so a redirect here is a failure, not a pass.
  */
 const ROUTES = [
-  '/', '/shop', '/about', '/cart', '/contact', '/signin',
+  '/', '/shop', '/about', '/cart', '/contact', '/signin', '/problem', '/test-supabase',
   '/product/123', '/invoice/123', '/auth/callback',
   '/admin', '/admin/login', '/admin/products', '/cashier/pos',
   // The one emailed as the confirmation link - it is always opened cold.
@@ -98,6 +98,21 @@ const ROUTES = [
   ok('index.html is not cached',
     /no-store|no-cache/.test(cc),
     `status ${index.status}, cache-control: ${cc || '(none)'}`);
+
+  // Release metadata must match the HTML and bypass both browser and CDN caches.
+  const version = await get(`${BASE}/build-version.json?imobile_cb=${Date.now()}`);
+  let release;
+  try { release = JSON.parse(version.body); } catch { /* reported below */ }
+  const buildId = (index.body.match(/<meta\s+name="imobile-build"\s+content="([^"]+)"/) || [])[1];
+  ok('release metadata matches the app shell',
+    version.status === 200 && Boolean(buildId) && release?.id === buildId && Array.isArray(release.assets) && release.assets.length > 0,
+    `HTML ${buildId || '(missing)'}, metadata ${release?.id || '(missing)'}`);
+  ok('release metadata is not cached',
+    /no-store/.test(version.headers['cache-control'] || ''),
+    `cache-control: ${version.headers['cache-control'] || '(none)'}`);
+  ok('update bootstrap runs before the entry module',
+    index.body.includes('window.__imobileUpdate') && index.body.indexOf('window.__imobileUpdate') < index.body.indexOf('<script type="module"'),
+    'one shared update/recovery coordinator');
 
   // 2. the bundle the live HTML references must actually exist and be JS
   const ref = (index.body.match(/src="(\/assets\/[^"]+\.js)"/) || [])[1];

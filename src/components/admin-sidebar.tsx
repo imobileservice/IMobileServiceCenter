@@ -6,7 +6,7 @@ import { motion } from "framer-motion"
 import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, Menu, X, FolderTree, Settings, Image, Filter as FilterIcon, BookOpen, Database, Barcode, Store, UserCog } from "lucide-react"
 import { useAdminStore } from "@/lib/admin-store"
 import { Button } from "@/components/ui/button"
-import { SUPPLIER_SHOP_ENABLED } from "@/config/features"
+import { useSupplierShopAccess } from "@/components/supplier-shop-access"
 
 const MENU_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
@@ -26,10 +26,12 @@ const MENU_ITEMS = [
 ]
 
 export default function AdminSidebar() {
+  const { allowed: canAccessSupplierShop } = useSupplierShopAccess()
   const location = useLocation()
   const pathname = location.pathname
   const logout = useAdminStore((state) => state.logout)
   const [isOpen, setIsOpen] = useState(false)
+  const visibleMenuItems = MENU_ITEMS.filter((item) => canAccessSupplierShop || item.href !== "/admin/suppliers")
 
   const handleLogout = () => {
     logout()
@@ -58,7 +60,7 @@ export default function AdminSidebar() {
         </div>
 
         <nav className="px-4 space-y-1.5 flex-1">
-          {MENU_ITEMS.filter((item) => SUPPLIER_SHOP_ENABLED || item.href !== "/admin/suppliers").map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (
@@ -109,7 +111,7 @@ export default function AdminSidebar() {
         </div>
 
         <nav className="px-4 space-y-1.5 flex-1 overflow-y-auto pt-4">
-          {MENU_ITEMS.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (

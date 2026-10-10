@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import { lazyWithRetry } from './lib/chunk-recovery'
 import SupplierGuard from '@/components/supplier-guard'
 import { SUPPLIER_SHOP_ENABLED } from './config/features'
+import { useSupplierShopAccess } from '@/components/supplier-shop-access'
 
 // Lazy load pages for code splitting
 const Home = lazyWithRetry(() => import('./pages/Home'))
@@ -65,6 +66,7 @@ const PageLoading = () => (
 )
 
 export default function App() {
+  const supplierShopAccess = useSupplierShopAccess()
   return (
     <Suspense fallback={<PageLoading />}>
       <Routes>
@@ -98,7 +100,7 @@ export default function App() {
         <Route path="/admin/guide" element={<AdminGuide />} />
         <Route path="/admin/inventory" element={<AdminInventory />} />
         <Route path="/admin/sales" element={<AdminSales />} />
-        <Route path="/admin/suppliers" element={SUPPLIER_SHOP_ENABLED ? <AdminSuppliers /> : <Navigate to="/admin/dashboard" replace />} />
+        <Route path="/admin/suppliers" element={supplierShopAccess.checking ? <PageLoading /> : supplierShopAccess.allowed ? <AdminSuppliers /> : <Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/cashiers" element={<AdminCashiers />} />
         <Route path="/admin/assistants" element={<AdminAssistants />} />
 
