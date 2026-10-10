@@ -15,7 +15,7 @@ function load(file, dependencies = {}) {
   assert.equal((result.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error).length, 0, file)
   const exports = {}
   vm.runInNewContext(result.outputText, {
-    exports, console, process: { env: { ADMIN_API_OPEN: 'true', INVENTORY_API_STRICT: 'false' } },
+    exports, console, URLSearchParams, process: { env: { ADMIN_API_OPEN: 'true', INVENTORY_API_STRICT: 'false' } },
     require(name) {
       if (name in dependencies) return dependencies[name]
       throw Error(`Unexpected import: ${name} in ${file}`)
@@ -96,6 +96,7 @@ async function main() {
     'lucide-react': new Proxy({}, { get: (_, name) => `Icon:${String(name)}` }),
     '@/lib/admin-store': { useAdminStore: selector => selector({ logout() {} }) },
     '@/components/ui/button': { Button: 'Button' },
+    '@/config/admin-product-views': load('src/config/admin-product-views.ts'),
   })
   function shopLinks(node) {
     if (Array.isArray(node)) return node.reduce((count, child) => count + shopLinks(child), 0)

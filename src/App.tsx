@@ -89,6 +89,11 @@ export default function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
         <Route path="/admin/products" element={<AdminProducts />} />
+        <Route path="/admin/products/meegoda" element={<AdminProducts />} />
+        <Route path="/admin/products/padukka" element={<AdminProducts />} />
+        <Route path="/admin/products/padukka-new" element={<AdminProducts />} />
+        <Route path="/admin/products/very-low-stock" element={<AdminProducts />} />
+        <Route path="/admin/products/low-stock" element={<AdminProducts />} />
         <Route path="/admin/categories" element={<AdminCategories />} />
         <Route path="/admin/orders" element={<AdminOrders />} />
         <Route path="/admin/customers" element={<AdminCustomers />} />

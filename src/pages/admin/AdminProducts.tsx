@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useLocation, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X, Check, Loader2, FileSpreadsheet } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -17,24 +18,27 @@ import { printLabelCopies } from "@/lib/labels/print-labels"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { inventoryStockService } from "@/lib/services/inventory.service"
+import { ADMIN_PRODUCT_VIEWS, PRODUCT_BRANCHES, type ProductBranch } from "@/config/admin-product-views"
 
-type Branch = 'all' | 'meegoda' | 'padukka' | 'padukka_new'
 type BranchStock = {
   product_id: string
   qty_meegoda?: number | null
   qty_padukka?: number | null
   qty_padukka_new?: number | null
 }
-const branches: { id: Branch; label: string }[] = [
-  { id: 'all', label: 'All branches' },
-  { id: 'meegoda', label: 'Meegoda' },
-  { id: 'padukka', label: 'Padukka' },
-  { id: 'padukka_new', label: 'Padukka New' },
-]
 
 type Product = Database['public']['Tables']['products']['Row']
 
 export default function ProductsPage() {
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = ADMIN_PRODUCT_VIEWS.find(item => item.href === location.pathname) || ADMIN_PRODUCT_VIEWS[0]
+  const stockFilter = view.stockFilter
+  const requestedBranch = searchParams.get('branch')
+  const selectedBranch: ProductBranch = stockFilter === 'all'
+    ? view.branch
+    : PRODUCT_BRANCHES.find(branch => branch.id === requestedBranch)?.id || 'all'
+  const pageTitle = stockFilter !== 'all' || selectedBranch === 'all' ? view.label : `${view.label} Products`
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -43,12 +47,10 @@ export default function ProductsPage() {
   const [printingProducts, setPrintingProducts] = useState<any[] | null>(null)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
-  const [selectedBranch, setSelectedBranch] = useState<Branch>('all')
   const [branchStocks, setBranchStocks] = useState<Record<string, BranchStock> | null>(null)
   const [branchStockLoading, setBranchStockLoading] = useState(true)
   const [branchStockError, setBranchStockError] = useState(false)
   const fetchSequence = useRef(0)
-  const [stockFilter, setStockFilter] = useState<'all' | 'very_low' | 'low'>('all')
   const [showCompatibilityImport, setShowCompatibilityImport] = useState(false)
 
   const [restockProduct, setRestockProduct] = useState<any>(null)
@@ -110,9 +112,14 @@ export default function ProductsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    setEditingQtyLabelId(null)
+    setQtyLabelDraft('')
+  }, [location.pathname, selectedBranch])
+
   const categories = ["All", ...Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort()]
 
-  const branchLabel = branches.find(branch => branch.id === selectedBranch)!.label
+  const branchLabel = PRODUCT_BRANCHES.find(branch => branch.id === selectedBranch)!.label
   const getStock = (product: Product): number | null => {
     if (selectedBranch !== 'all' && !branchStocks) return null
     const value = selectedBranch === 'all'
@@ -133,20 +140,7 @@ export default function ProductsPage() {
     if (stock === null) return false
     return stockFilter === 'very_low' ? stock < 4 : stock >= 4 && stock <= 5
   })
-  const veryLowStockCount = matchingProducts.filter(product => {
-    const stock = getStock(product)
-    return stock !== null && stock < 4
-  }).length
-  const lowStockCount = matchingProducts.filter(product => {
-    const stock = getStock(product)
-    return stock !== null && stock >= 4 && stock <= 5
-  }).length
   const allVisibleSelected = filteredProducts.length > 0 && filteredProducts.every(product => selectedProductIds.includes(product.id))
-  const stockViews = [
-    { id: 'all' as const, label: 'All Products', count: matchingProducts.length },
-    { id: 'very_low' as const, label: 'Very Low Stock', count: veryLowStockCount },
-    { id: 'low' as const, label: 'Low Stock', count: lowStockCount },
-  ]
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return
@@ -474,13 +468,15 @@ export default function ProductsPage() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 pt-16 lg:pt-0">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Products</h1>
-            <p className="text-muted-foreground mt-1">Manage your product inventory and stock levels</p>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">{pageTitle}</h1>
+            <p className="text-muted-foreground mt-1">{stockFilter === 'all'
+              ? selectedBranch === 'all' ? 'Manage your product inventory and stock levels' : `Manage ${branchLabel} product inventory and stock levels`
+              : stockFilter === 'very_low' ? 'Products with fewer than 4 units in stock' : 'Products with 4–5 units in stock'}</p>
           </div>
           <div className="flex items-center gap-3 self-start sm:self-auto">
             {selectedProductIds.length > 0 && (
@@ -499,22 +495,7 @@ export default function ProductsPage() {
 
       {/* Category Tabs & Filters */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Stock branch">
-          {branches.map(branch => (
-            <Button
-              key={branch.id}
-              variant={selectedBranch === branch.id ? 'default' : 'outline'}
-              aria-pressed={selectedBranch === branch.id}
-              disabled={branch.id !== 'all' && !branchStocks}
-              onClick={() => { setSelectedBranch(branch.id); cancelEditQtyLabel() }}
-              className="rounded-full px-4"
-              size="sm"
-            >
-              {branch.label}
-            </Button>
-          ))}
-          {branchStockLoading && <span className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading branch stock...</span>}
-        </div>
+        {branchStockLoading && <span className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading branch stock...</span>}
         {branchStockError && (
           <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
             Branch stock is unavailable. Please retry to view accurate branch quantities.
@@ -551,6 +532,24 @@ export default function ProductsPage() {
            </div>
            
            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+             {stockFilter !== 'all' && (
+               <label className="flex items-center gap-2 text-sm w-full sm:w-auto">
+                 <span className="text-muted-foreground">Branch</span>
+                 <select
+                   aria-label="Stock branch"
+                   value={selectedBranch}
+                   onChange={event => setSearchParams(previous => {
+                     const next = new URLSearchParams(previous)
+                     if (event.target.value === 'all') next.delete('branch')
+                     else next.set('branch', event.target.value)
+                     return next
+                   })}
+                   className="h-10 flex-1 rounded-md border border-border bg-background px-3 text-sm sm:flex-none"
+                 >
+                   {PRODUCT_BRANCHES.map(branch => <option key={branch.id} value={branch.id}>{branch.label}</option>)}
+                 </select>
+               </label>
+             )}
              <Button
                variant="outline"
                onClick={() => setShowCompatibilityImport(true)}
@@ -564,24 +563,6 @@ export default function ProductsPage() {
         </div>
       </motion.div>
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Product stock view">
-        {stockViews.map(view => (
-          <Button
-            key={view.id}
-            variant={stockFilter === view.id ? 'default' : 'outline'}
-            aria-pressed={stockFilter === view.id}
-            onClick={() => { setStockFilter(view.id); cancelEditQtyLabel() }}
-            className={`rounded-full gap-2 ${view.id === 'very_low'
-              ? stockFilter === view.id ? 'bg-red-600 text-white hover:bg-red-700' : 'text-red-500 hover:text-red-400'
-              : view.id === 'low'
-                ? stockFilter === view.id ? 'bg-orange-500 text-white hover:bg-orange-600' : 'text-orange-500 hover:text-orange-400'
-                : ''}`}
-          >
-            {view.label}<span className="text-xs opacity-75 tabular-nums">({view.id === 'all' || selectedBranch === 'all' || branchStocks ? view.count : '—'})</span>
-          </Button>
-        ))}
-      </div>
-
       {/* Products Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -593,7 +574,7 @@ export default function ProductsPage() {
         {loading ? (
           <div className="p-8 text-center text-muted-foreground">Loading products...</div>
         ) : selectedBranch !== 'all' && !branchStocks ? (
-          <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">Branch stock is unavailable. Retry the stock lookup above.</div>
+          <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">{branchStockLoading ? 'Loading branch stock...' : 'Branch stock is unavailable. Retry the stock lookup above.'}</div>
         ) : filteredProducts.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">No products found</div>
         ) : stockFilter !== 'all' ? (

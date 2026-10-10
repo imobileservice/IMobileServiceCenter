@@ -7,6 +7,7 @@ import { LayoutDashboard, Package, ShoppingCart, Users, MessageSquare, LogOut, M
 import { useAdminStore } from "@/lib/admin-store"
 import { Button } from "@/components/ui/button"
 import { useSupplierShopAccess } from "@/components/supplier-shop-access"
+import { ADMIN_PRODUCT_VIEWS, PRODUCT_BRANCHES } from "@/config/admin-product-views"
 
 const MENU_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/admin/dashboard" },
@@ -32,6 +33,36 @@ export default function AdminSidebar() {
   const logout = useAdminStore((state) => state.logout)
   const [isOpen, setIsOpen] = useState(false)
   const visibleMenuItems = MENU_ITEMS.filter((item) => canAccessSupplierShop || item.href !== "/admin/suppliers")
+  const productView = ADMIN_PRODUCT_VIEWS.find(view => view.href === pathname)
+  const requestedBranch = new URLSearchParams(location.search).get('branch')
+  const selectedBranch = productView?.stockFilter === 'all'
+    ? productView.branch
+    : PRODUCT_BRANCHES.find(branch => branch.id === requestedBranch)?.id || 'all'
+
+  const renderProductLinks = (mobile = false) => productView && (
+    <div className="ml-6 mt-1 mb-2 border-l border-border pl-3 space-y-1" role="group" aria-label="Product pages">
+      {ADMIN_PRODUCT_VIEWS.slice(1).map(view => {
+        const isActive = pathname === view.href
+        const href = view.stockFilter !== 'all' && selectedBranch !== 'all'
+          ? `${view.href}?branch=${selectedBranch}` : view.href
+        return (
+          <Link
+            key={view.href}
+            to={href}
+            onClick={mobile ? () => setIsOpen(false) : undefined}
+            aria-current={isActive ? 'page' : undefined}
+            className={`block rounded-lg px-3 py-2 text-sm transition-colors ${isActive
+              ? 'bg-primary text-primary-foreground font-medium'
+              : view.stockFilter === 'very_low' ? 'text-red-500 hover:bg-muted'
+                : view.stockFilter === 'low' ? 'text-orange-500 hover:bg-muted'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+          >
+            {view.label}
+          </Link>
+        )
+      })}
+    </div>
+  )
 
   const handleLogout = () => {
     logout()
@@ -64,27 +95,30 @@ export default function AdminSidebar() {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (
-              <Link key={item.href} to={item.href}>
-                <motion.button
-                  whileHover={{ x: 4 }}
-                  whileTap={{ scale: 0.98 }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive 
-                      ? "bg-primary text-primary-foreground shadow-md font-medium" 
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                >
-                  <Icon className={`w-5 h-5 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`} />
-                  <span className="text-sm">{item.label}</span>
-                </motion.button>
-              </Link>
+              <div key={item.href}>
+                <Link to={item.href} aria-current={isActive ? 'page' : undefined}>
+                  <motion.button
+                    whileHover={{ x: 4 }}
+                    whileTap={{ scale: 0.98 }}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-200 ${isActive
+                        ? "bg-primary text-primary-foreground shadow-md font-medium"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                  >
+                    <Icon className={`w-5 h-5 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                    <span className="text-sm">{item.label}</span>
+                  </motion.button>
+                </Link>
+                {item.href === '/admin/products' && renderProductLinks()}
+              </div>
             )
           })}
         </nav>
 
         <div className="p-4 border-t border-border bg-card/50 backdrop-blur-sm">
-          <Button 
-            onClick={handleLogout} 
-            variant="ghost" 
+          <Button
+            onClick={handleLogout}
+            variant="ghost"
             className="w-full justify-start gap-3 hover:bg-red-500/10 hover:text-red-500 transition-colors"
           >
             <LogOut className="w-4 h-4" />
@@ -115,18 +149,21 @@ export default function AdminSidebar() {
             const Icon = item.icon
             const isActive = pathname === item.href
             return (
-              <Link key={item.href} to={item.href} onClick={() => setIsOpen(false)}>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive 
-                      ? "bg-primary text-primary-foreground shadow-lg" 
-                      : "text-muted-foreground hover:bg-muted"
-                    }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </motion.button>
-              </Link>
+              <div key={item.href}>
+                <Link to={item.href} onClick={() => setIsOpen(false)} aria-current={isActive ? 'page' : undefined}>
+                  <motion.button
+                    whileTap={{ scale: 0.98 }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
+                        ? "bg-primary text-primary-foreground shadow-lg"
+                        : "text-muted-foreground hover:bg-muted"
+                      }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </motion.button>
+                </Link>
+                {item.href === '/admin/products' && renderProductLinks(true)}
+              </div>
             )
           })}
         </nav>
@@ -141,11 +178,11 @@ export default function AdminSidebar() {
 
       {/* Mobile Overlay */}
       {isOpen && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden" 
-          onClick={() => setIsOpen(false)} 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsOpen(false)}
         />
       )}
     </>
