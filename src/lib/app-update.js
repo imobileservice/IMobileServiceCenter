@@ -1,5 +1,6 @@
 // Inlined before the entry module. Entry failures, lazy imports and background
-// update checks all use the same readiness check and reload budget.
+// update checks share one metadata request and reload budget. Ordinary browser
+// reloads load the app directly, without a preflight or a full-cache purge.
 ;(function () {
   if (window.__imobileUpdate) return
   // Apply the saved theme before CSS loads to avoid a white flash on reload.
@@ -23,6 +24,10 @@
   var navigating = false
   var resourceFailed = false
   var attemptedBuild = null
+  var loaded = false
+  var departing = false
+  var nextCheckAt = Infinity
+  var activeController = null
   var patterns = /Failed to fetch dynamically imported module|Importing a module script failed|Expected a JavaScript-or-Wasm module script|Strict MIME type checking|error loading dynamically imported module|ChunkLoadError|Loading chunk|Unable to preload CSS/i
   var extensions = /(?:chrome|chrome-untrusted|moz|safari-web|safari|ms-browser|extension):\/\//i
 
@@ -39,106 +44,68 @@
     var button = document.createElement('button')
     button.textContent = 'Try again'
     button.style.cssText = 'padding:10px 18px;border:0;border-radius:8px;cursor:pointer'
-    button.addEventListener('click', function () { void check(true, true) })
+    button.addEventListener('click', function () { window.location.reload() })
     root.style.cssText = 'min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui;text-align:center;padding:24px;box-sizing:border-box'
     root.appendChild(message)
     root.appendChild(button)
   }
 
-  // Bound both the request and reading its body, including browsers without
-  // AbortController. A slow connection must never suspend recovery forever.
-  function read(url, kind, cache) {
+  // Only fetch the small release metadata, never the page being refreshed or
+  // every route's JS/CSS. Bound the body read as well as the connection.
+  function version() {
+    var url = new URL('/build-version.json', window.location.origin)
+    url.searchParams.set('imobile_cb', String(Date.now()))
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+    activeController = controller
     var timer
     var timeout = new Promise(function (_, reject) {
       timer = window.setTimeout(function () {
         if (controller) controller.abort()
         reject(new Error('Update check timed out'))
-      }, 10000)
+      }, 2000)
     })
-    var request = fetch(url, {
-      cache: cache || 'no-store', credentials: 'same-origin',
+    var request = fetch(url.toString(), {
+      cache: 'no-store', credentials: 'same-origin',
       signal: controller ? controller.signal : undefined,
     }).then(function (response) {
       if (!response.ok) throw new Error('Release is not ready')
       var type = response.headers.get('content-type') || ''
-      if (kind === 'json' && !/application\/json/i.test(type)) throw new Error('Invalid release metadata')
-      if (kind === 'html' && !/text\/html/i.test(type)) throw new Error('Invalid app shell')
-      if (kind === 'js' && !/javascript|ecmascript/i.test(type)) throw new Error('Invalid script')
-      if (kind === 'css' && !/text\/css/i.test(type)) throw new Error('Invalid stylesheet')
-      return kind === 'json' ? response.json() : kind === 'html' ? response.text() : response.arrayBuffer()
+      if (!/application\/json/i.test(type)) throw new Error('Invalid release metadata')
+      return response.json()
     })
     return Promise.race([request, timeout]).then(function (value) {
       window.clearTimeout(timer)
+      activeController = null
       return value
     }, function (error) {
       window.clearTimeout(timer)
+      activeController = null
       throw error
     })
-  }
-
-  function version() {
-    var url = new URL('/build-version.json', window.location.origin)
-    url.searchParams.set('imobile_cb', String(Date.now()))
-    return read(url.toString(), 'json')
-  }
-
-  function warmAssets(assets) {
-    var index = 0
-    var stopped = false
-    function next() {
-      if (stopped || index >= assets.length) return Promise.resolve()
-      var url = new URL(assets[index++], window.location.origin)
-      if (url.origin !== window.location.origin || !/^\/assets\/.+\.(js|mjs|css)$/.test(url.pathname)) {
-        stopped = true
-        return Promise.reject(new Error('Invalid release asset'))
-      }
-      // Refresh the exact entry used on navigation, with bounded concurrency
-      // so slow phones can warm every route without flooding their connection.
-      return read(url.toString(), /\.css$/.test(url.pathname) ? 'css' : 'js', 'reload').then(next, function (error) {
-        stopped = true
-        throw error
-      })
-    }
-    return Promise.all([next(), next(), next(), next()])
   }
 
   function check(recover, manual) {
     resourceFailed = resourceFailed || Boolean(recover)
     if (navigating) return Promise.resolve(true)
+    if (departing) return Promise.resolve(false)
     if (pending) return pending
     if (navigator.onLine === false) return Promise.resolve(false)
+    nextCheckAt = Date.now() + 30000
 
     pending = version().then(function (release) {
       if (!release || typeof release.id !== 'string' || !/^[\w-]{1,100}$/.test(release.id)) return false
+      if (departing) return false
       if (release.id === currentBuild && !resourceFailed) return false
       if (!manual && alreadyReloaded(release.id)) return false
-      if (!Array.isArray(release.assets) || !release.assets.length) return false
-
-      var nextUrl = new URL(window.location.href)
-      nextUrl.searchParams.set(PARAM, release.id)
-      return read(nextUrl.toString(), 'html', 'reload').then(function (html) {
-        var shell = new DOMParser().parseFromString(html, 'text/html')
-        var marker = shell.querySelector('meta[name="imobile-build"]')
-        if (!marker || marker.getAttribute('content') !== release.id) return false
-        var entry = shell.querySelector('script[type="module"][src]')
-        if (!entry || release.assets.indexOf(new URL(entry.getAttribute('src'), window.location.origin).pathname) < 0) return false
-
-        return warmAssets(release.assets).then(version).then(function (latest) {
-          if (!latest || latest.id !== release.id) return false
-          attemptedBuild = release.id
-          try { window.sessionStorage.setItem(KEY, release.id) } catch (_) { /* URL marker is the fallback. */ }
-          navigating = true
-          // The visitor may have changed pages while the files were warming.
-          var destination = new URL(window.location.href)
-          destination.searchParams.set(PARAM, release.id)
-          window.location.replace(destination.toString())
-          return true
-        })
-      })
+      attemptedBuild = release.id
+      try { window.sessionStorage.setItem(KEY, release.id) } catch (_) { /* URL marker is the fallback. */ }
+      navigating = true
+      var destination = new URL(window.location.href)
+      destination.searchParams.set(PARAM, release.id)
+      window.location.replace(destination.toString())
+      return true
     }).catch(function () {
-      // Offline, partial releases and invalid assets keep the current page.
-      // Retry readiness in the background instead of repeatedly reloading.
+      // Keep the working page on failed checks. Retry quietly later.
       return false
     }).then(function (reloaded) {
       pending = null
@@ -181,14 +148,27 @@
   })
 
   function refresh() {
-    if (document.visibilityState === 'visible') void check()
+    if (loaded && !departing && document.visibilityState === 'visible' && Date.now() >= nextCheckAt) void check()
   }
   window.setInterval(refresh, 30000)
   window.addEventListener('focus', refresh)
   window.addEventListener('online', refresh)
-  window.addEventListener('pageshow', refresh)
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) { departing = false; loaded = true; refresh() }
+  })
+  window.addEventListener('beforeunload', function (event) {
+    departing = true
+    if (activeController) activeController.abort()
+    // A checkout confirmation can cancel navigation; keep checks available if
+    // the visitor chooses to stay on the page.
+    window.setTimeout(function () {
+      if (event.defaultPrevented || event.returnValue) departing = false
+    }, 0)
+  })
   document.addEventListener('visibilitychange', refresh)
   window.addEventListener('load', function () {
+    loaded = true
+    nextCheckAt = Date.now() + 30000
     // Some browsers report a CSS MIME failure only as an empty stylesheet.
     document.querySelectorAll('link[rel="stylesheet"]').forEach(function (link) {
       if (!assetUrl(link.href)) return
@@ -204,6 +184,5 @@
         window.history.replaceState(window.history.state, document.title, url.pathname + url.search + url.hash)
       }
     } catch (_) {}
-    refresh()
   })
 })()

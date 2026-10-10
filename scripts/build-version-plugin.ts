@@ -17,8 +17,8 @@ export function buildVersionPlugin(id: string): Plugin {
     generateBundle(_options, bundle) {
       const assets = new Set<string>()
       for (const output of Object.values(bundle)) {
-        // Include lazy route chunks too: a complete release must be available
-        // before the browser leaves the working page.
+        // Keep the complete asset list for deployment checks. Browser update
+        // checks read the id only and never preload every route.
         if (output.type === 'chunk') assets.add(`/${output.fileName}`)
         if (output.type === 'asset' && output.fileName.endsWith('.css')) assets.add(`/${output.fileName}`)
       }

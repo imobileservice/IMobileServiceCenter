@@ -8,10 +8,10 @@ const source = fs.readFileSync(path.join(__dirname, '../src/lib/app-update.js'),
 const KEY = 'imobile:update:last-reload'
 
 function browser(options = {}) {
-  const settings = { current: 'old', latest: 'new', shell: 'new', assetType: 'valid', ...options }
+  const settings = { current: 'old', latest: 'new', shell: 'new', now: 1000, ...options }
   const storage = settings.storage || new Map()
   const calls = [], navigations = [], events = {}, timers = new Map()
-  let timerId = 0, versionReads = 0
+  let timerId = 0
   const href = settings.href || 'https://example.com/admin/suppliers?tab=shops#pending'
   const win = {
     location: { href, origin: 'https://example.com', replace: value => navigations.push(value) },
@@ -36,39 +36,20 @@ function browser(options = {}) {
   const navigator = { onLine: !settings.offline }
   const context = {
     window: win, document: doc, navigator, URL, AbortController,
-    DOMParser: class {
-      parseFromString(html) {
-        const data = JSON.parse(html)
-        return { querySelector: selector => ({ getAttribute: () => selector.startsWith('meta') ? data.id : `/assets/entry-${data.id}.js` }) }
-      }
-    },
+    Date: { now: () => settings.now },
     fetch: async (url, init) => {
       calls.push({ url, init })
       if (settings.hang) return new Promise(() => {})
       if (settings.networkError) throw Error('Offline')
       const pathname = new URL(url).pathname
-      let type, body
-      if (pathname === '/build-version.json') {
-        assert.equal(init.cache, 'no-store')
-        ++versionReads
-        const id = settings.confirmation && versionReads > 1 ? settings.confirmation : settings.latest
-        type = settings.metadataType || 'application/json'
-        body = { id, assets: settings.assets || [`/assets/entry-${id}.js`, `/assets/styles-${id}.css`] }
-      } else if (pathname.startsWith('/assets/')) {
-        if (settings.navigateWhileWarming) win.location.href = settings.navigateWhileWarming
-        assert.equal(init.cache, 'reload', 'Warm the actual browser cache entry')
-        assert.equal(new URL(url).search, '', 'Asset URLs must match the next page exactly')
-        type = settings.assetType === 'html' ? 'text/html' : pathname.endsWith('.css') ? 'text/css' : 'application/javascript'
-        body = 'asset'
-      } else {
-        assert.equal(init.cache, 'reload')
-        type = 'text/html'
-        body = JSON.stringify({ id: settings.shell })
-      }
+      assert.equal(pathname, '/build-version.json', 'Never fetch the HTML page or download every release asset')
+      assert.equal(init.cache, 'no-store')
+      if (settings.moveWhileChecking) win.location.href = settings.moveWhileChecking
+      const body = { id: settings.latest, assets: settings.assets || ['/assets/unused-route.js'] }
       return {
-        ok: !(settings.missingAsset && pathname.startsWith('/assets/')) && pathname !== settings.missingPath,
-        headers: { get: () => type }, json: async () => body,
-        text: async () => body, arrayBuffer: async () => new ArrayBuffer(1),
+        ok: !settings.metadataError,
+        headers: { get: () => settings.metadataType || 'application/json' },
+        json: async () => body,
       }
     },
   }
@@ -91,10 +72,11 @@ async function main() {
   await b.update.check(true)
   check(b.navigations.length === 1, 'Duplicate errors cannot trigger another reload')
   const savedStorage = b.storage
-  b = browser({ navigateWhileWarming: 'https://example.com/shop?search=display#results' })
+  check(b.calls.length === 1, 'Update recovery uses only one small metadata request')
+  b = browser({ moveWhileChecking: 'https://example.com/shop?search=display#results' })
   check(await b.update.check(), 'An update can finish after client navigation')
   const moved = new URL(b.navigations[0])
-  check(moved.pathname === '/shop' && moved.searchParams.get('search') === 'display' && moved.hash === '#results', 'Refresh the visitor’s current route after warming')
+  check(moved.pathname === '/shop' && moved.searchParams.get('search') === 'display' && moved.hash === '#results', 'Refresh the visitor’s current route')
 
   b = browser({ current: 'new', latest: 'new', shell: 'new', storage: savedStorage })
   check(!(await b.update.check(true)), 'The refreshed release cannot reload itself')
@@ -104,26 +86,63 @@ async function main() {
 
   b = browser({ current: 'new', latest: 'new', shell: 'new' })
   check(!(await b.update.check()) && b.calls.length === 1, 'Current release does not reload or refetch assets')
-  b = browser({ shell: 'old' })
-  check(!(await b.update.check()) && !b.navigations.length, 'Mixed HTML and metadata never reload')
-  b.settings.shell = 'new'
-  check(await b.update.check(), 'Wait for a complete deploy, then refresh once')
-
-  for (const options of [{ missingAsset: true }, { assetType: 'html' }, { networkError: true }, { metadataType: 'text/html' }]) {
+  for (const options of [{ networkError: true }, { metadataType: 'text/html' }, { metadataError: true }, { latest: '../invalid' }, { latest: '' }]) {
     b = browser(options)
-    check(!(await b.update.check(true)) && !b.navigations.length, 'Missing, poisoned or unavailable files never trigger a blind reload')
+    check(!(await b.update.check(true)) && !b.navigations.length, 'Unavailable or invalid metadata keeps the current page')
   }
-  b = browser({ assets: ['/assets/entry-new.js', '/assets/styles-new.css', '/assets/route-new.js'], missingPath: '/assets/route-new.js' })
-  check(!(await b.update.check()) && !b.navigations.length, 'A missing lazy route prevents a premature reload')
-  b = browser({ confirmation: 'newer' })
-  check(!(await b.update.check()) && !b.navigations.length, 'A deploy changing during preflight is retried without a reload')
+  b = browser({ current: 'new', latest: 'new' })
+  check(await b.update.check(true), 'An actual failed module can recover the same release once')
+  const sameReleaseStorage = b.storage
+  b = browser({ current: 'new', latest: 'new', storage: sameReleaseStorage })
+  check(!(await b.update.check(true)), 'Same-release recovery cannot loop after navigation')
+
+  // Browser Reload, load/pageshow, focus and visibility must not start a
+  // preflight while the new document and its real resources are loading.
+  b = browser({ current: 'new', latest: 'new' })
+  b.events.focus()
+  b.events.interval()
+  b.events.pageshow({ persisted: false })
+  check(!b.calls.length, 'No startup checks before page load')
+  b.events.load()
+  b.events.pageshow({ persisted: false })
+  b.events.focus()
+  b.events.visibilitychange()
+  b.events.interval()
+  check(!b.calls.length && !b.navigations.length, 'Normal reload loads directly without any update requests')
+  b.settings.now += 30000
+  b.events.focus()
+  b.events.interval()
+  await new Promise(resolve => setImmediate(resolve))
+  check(b.calls.length === 1 && !b.navigations.length, 'Background checks are delayed and shared across events')
+  b.events.focus()
+  check(b.calls.length === 1, 'Repeated focus does not poll again immediately')
+  b.events.beforeunload({ defaultPrevented: false, returnValue: '' })
+  b.settings.now += 30000
+  b.events.interval()
+  check(b.calls.length === 1 && !(await b.update.check(true)), 'Update checker never interrupts a normal browser refresh')
+
+  b = browser()
+  const leaving = b.update.check()
+  b.events.beforeunload({ defaultPrevented: false, returnValue: '' })
+  check(!(await leaving) && !b.navigations.length, 'An in-flight check cannot navigate after a manual refresh starts')
+  b = browser({ current: 'new', latest: 'new' })
+  b.events.load()
+  const cancelled = { defaultPrevented: true, returnValue: 'stay' }
+  b.events.beforeunload(cancelled)
+  b.timers.forEach(timer => { if (timer.ms === 0) timer.fn() })
+  b.settings.now += 30000
+  b.events.focus()
+  await new Promise(resolve => setImmediate(resolve))
+  check(b.calls.length === 1, 'Cancelling a checkout navigation restores background checks')
+
   b = browser({ offline: true })
   check(!(await b.update.check(true)) && !b.calls.length, 'Offline browsers keep the current page')
   b = browser({ assets: ['/assets/entry-new.js', 'https://other.example.com/assets/bad.js'] })
-  check(!(await b.update.check()) && b.calls.every(call => new URL(call.url).origin === 'https://example.com'), 'Only this origin can receive asset requests')
+  check(await b.update.check() && b.calls.length === 1 && b.calls.every(call => new URL(call.url).origin === 'https://example.com'), 'Manifest asset lists never trigger extra or cross-origin downloads')
 
   b = browser({ hang: true })
   const hanging = b.update.check(true)
+  check([...b.timers.values()].every(timer => timer.ms <= 2000), 'Metadata recovery has a short timeout')
   b.timers.forEach(timer => timer.fn())
   check(!(await hanging) && !b.navigations.length, 'Stalled requests finish without a permanent recovery spinner')
   b = browser()
@@ -135,11 +154,14 @@ async function main() {
   check(!b.calls.length, 'Extension failures never refresh the website')
 
   // Exercise actual React.lazy recovery, not just the standalone bootstrap.
+  let manualReloads = 0
   const exports = {}
   const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/lib/chunk-recovery.ts'), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText
-  vm.runInNewContext(code, { exports, window: { __imobileUpdate: { check: async () => false } }, require: () => ({ lazy: fn => fn }) })
+  vm.runInNewContext(code, { exports, window: { __imobileUpdate: { check: async () => false }, location: { reload: () => ++manualReloads } }, require: () => ({ lazy: fn => fn }) })
+  exports.forceChunkRecoveryReload()
+  check(manualReloads === 1, 'Reload Page navigates immediately without awaiting a metadata request')
   const error = new Error('Failed to fetch dynamically imported module: /assets/deleted.js')
   await assert.rejects(exports.lazyWithRetry(async () => { throw error })(), error)
   ++checks

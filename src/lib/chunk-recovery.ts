@@ -23,9 +23,9 @@ export async function recoverFromChunkError(error: unknown) {
 
 export function forceChunkRecoveryReload() {
   if (typeof window === 'undefined') return
-  // Only a deliberate button click can bypass the automatic reload budget.
-  void (window.__imobileUpdate?.check(true, true) ?? Promise.resolve(false))
-    .then((reloaded) => { if (!reloaded) window.location.reload() })
+  // A deliberate reload should navigate immediately, without waiting on the
+  // update checker or downloading the release twice.
+  window.location.reload()
 }
 
 export function lazyWithRetry<T extends ComponentType<any>>(factory: () => Promise<{ default: T }>) {

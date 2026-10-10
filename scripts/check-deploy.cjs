@@ -85,8 +85,8 @@ const ROUTES = [
     ok(`route ${route} is not cached`,
       /no-store/.test(routeCc),
       `cache-control: ${routeCc || '(none)'}`);
-    ok(`route ${route} clears only downloaded files`,
-      r.headers['clear-site-data'] === '"cache"',
+    ok(`route ${route} does not purge browser caches`,
+      !r.headers['clear-site-data'],
       `clear-site-data: ${r.headers['clear-site-data'] || '(none)'}`);
     ok(`route ${route} bypasses CDN caching`,
       /no-store/.test(r.headers['cdn-cache-control'] || ''),
@@ -132,8 +132,8 @@ const ROUTES = [
     ok('referenced entry bundle serves JavaScript',
       entry.status === 200 && /javascript|ecmascript/i.test(ct),
       `${ref} -> ${entry.status} ${ct}`);
-    ok('entry bundle cannot remain in browser cache',
-      /no-store/.test(entry.headers['cache-control'] || ''),
+    ok('entry bundle is validated before reuse',
+      /no-cache/.test(entry.headers['cache-control'] || '') && /max-age=0(?:\D|$)/.test(entry.headers['cache-control'] || ''),
       `cache-control: ${entry.headers['cache-control'] || '(none)'}`);
 
     // Exercise lazy imports and CSS too; the entry alone can work while those
@@ -148,8 +148,8 @@ const ROUTES = [
       const type = response.headers['content-type'] || '';
       ok(`${asset} is fresh and usable`,
         response.status === 200 && (asset.endsWith('.css') ? /text\/css/i : /javascript|ecmascript/i).test(type) &&
-          /no-store/.test(response.headers['cache-control'] || '') &&
-          /no-store/.test(response.headers['cdn-cache-control'] || '') &&
+          /no-cache/.test(response.headers['cache-control'] || '') &&
+          /max-age=0(?:\D|$)/.test(response.headers['cache-control'] || '') &&
           !response.headers['clear-site-data'],
         `${response.status} ${type}, cache-control: ${response.headers['cache-control'] || '(none)'}`);
     }
