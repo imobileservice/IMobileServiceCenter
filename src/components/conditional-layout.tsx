@@ -2,6 +2,9 @@ import { useLocation } from "react-router-dom"
 import { Suspense } from "react"
 import Navbar from "@/components/navbar"
 import Footer from "@/components/footer"
+// Keep essential navigation in the entry bundle so a late chunk failure cannot
+// replace the entire storefront with the global error screen.
+import BottomNavigation from "@/components/bottom-navigation"
 import { MessageCircle } from "lucide-react"
 import { motion } from "framer-motion"
 import { lazyWithRetry } from "@/lib/chunk-recovery"
@@ -11,7 +14,6 @@ const PageLoadAnimation = lazyWithRetry(() => import("@/components/page-load-ani
 const ScrollToTop = lazyWithRetry(() => import("@/components/scroll-to-top"))
 const ScrollToTopOnNavigation = lazyWithRetry(() => import("@/components/scroll-to-top-on-navigation"))
 const PerformanceMonitor = lazyWithRetry(() => import("@/components/performance-monitor"))
-const BottomNavigation = lazyWithRetry(() => import("@/components/bottom-navigation"))
 const FloatingContactButtons = lazyWithRetry(() => import("@/components/floating-contact-buttons"))
 
 interface ConditionalLayoutProps {
@@ -56,9 +58,7 @@ export default function ConditionalLayout({ children }: ConditionalLayoutProps) 
 
       {/* Bottom Navigation - Mobile Only */}
       <div className="lg:hidden">
-        <Suspense fallback={null}>
-          <BottomNavigation />
-        </Suspense>
+        <BottomNavigation />
       </div>
     </>
   )
