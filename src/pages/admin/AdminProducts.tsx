@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X, Check, Loader2, FileSpreadsheet } from "lucide-react"
+import { Plus, Edit2, Trash2, Search, Tag, PackagePlus, X, Check, Loader2, FileSpreadsheet, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -47,6 +47,8 @@ export default function ProductsPage() {
   const [printingProducts, setPrintingProducts] = useState<any[] | null>(null)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>("All")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(24)
   const [branchStocks, setBranchStocks] = useState<Record<string, BranchStock> | null>(null)
   const [branchStockLoading, setBranchStockLoading] = useState(true)
   const [branchStockError, setBranchStockError] = useState(false)
@@ -115,7 +117,11 @@ export default function ProductsPage() {
   useEffect(() => {
     setEditingQtyLabelId(null)
     setQtyLabelDraft('')
-  }, [location.pathname, selectedBranch])
+  }, [location.pathname, selectedBranch, currentPage, pageSize])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [location.pathname, selectedBranch, searchTerm, selectedCategory, pageSize])
 
   const categories = ["All", ...Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort()]
 
@@ -140,7 +146,15 @@ export default function ProductsPage() {
     if (stock === null) return false
     return stockFilter === 'very_low' ? stock < 4 : stock >= 4 && stock <= 5
   })
-  const allVisibleSelected = filteredProducts.length > 0 && filteredProducts.every(product => selectedProductIds.includes(product.id))
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize))
+  const page = Math.min(currentPage, totalPages)
+  const pageStart = (page - 1) * pageSize
+  const paginatedProducts = filteredProducts.slice(pageStart, pageStart + pageSize)
+  const allVisibleSelected = paginatedProducts.length > 0 && paginatedProducts.every(product => selectedProductIds.includes(product.id))
+
+  useEffect(() => {
+    setCurrentPage(previous => Math.min(previous, totalPages))
+  }, [totalPages])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return
@@ -206,7 +220,7 @@ export default function ProductsPage() {
   }
 
   const toggleAll = () => {
-    const visibleIds = new Set(filteredProducts.map(product => product.id))
+    const visibleIds = new Set(paginatedProducts.map(product => product.id))
     setSelectedProductIds(previous => allVisibleSelected
       ? previous.filter(id => !visibleIds.has(id))
       : Array.from(new Set([...previous, ...visibleIds])))
@@ -583,11 +597,11 @@ export default function ProductsPage() {
               <p>{branchLabel} · {stockFilter === 'very_low' ? 'Fewer than 4 units' : '4–5 units'} · {filteredProducts.length} products</p>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" className="h-4 w-4 rounded border-border" checked={allVisibleSelected} onChange={toggleAll} />
-                Select all
+                Select this page
               </label>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" data-testid="stock-card-grid">
-              {filteredProducts.map(product => (
+              {paginatedProducts.map(product => (
                 <article key={product.id} className="flex flex-col rounded-xl border border-border bg-card overflow-hidden" data-testid="stock-card">
                   <div className="flex items-start gap-3 p-4">
                     <img src={product.image || '/placeholder.svg'} alt={product.name} className="h-16 w-16 shrink-0 rounded-lg border border-border bg-muted/30 object-contain" />
@@ -623,6 +637,7 @@ export default function ProductsPage() {
                   <th className="py-4 px-4 w-12 text-center">
                     <input 
                       type="checkbox" 
+                      aria-label="Select this page"
                       className="w-4 h-4 rounded border-border"
                       checked={allVisibleSelected}
                       onChange={toggleAll}
@@ -640,7 +655,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map((product) => (
+                {paginatedProducts.map((product) => (
                 <motion.tr
                   key={product.id}
                   initial={{ opacity: 0 }}
@@ -698,6 +713,36 @@ export default function ProductsPage() {
             </div>
           )}
       </motion.div>
+
+      {!loading && (selectedBranch === 'all' || branchStocks) && filteredProducts.length > 0 && (
+        <div className="flex flex-col gap-4 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            Showing {pageStart + 1}–{Math.min(pageStart + pageSize, filteredProducts.length)} of {filteredProducts.length} products
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              Per page
+              <select
+                aria-label="Products per page"
+                value={pageSize}
+                onChange={event => setPageSize(Number(event.target.value))}
+                className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+              >
+                {[24, 48, 96].map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <nav className="flex items-center gap-2" aria-label="Product pagination">
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setCurrentPage(page - 1)} className="gap-1">
+                <ChevronLeft className="h-4 w-4" />Previous
+              </Button>
+              <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">Page {page} of {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setCurrentPage(page + 1)} className="gap-1">
+                Next<ChevronRight className="h-4 w-4" />
+              </Button>
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* Product Modal */}
       <ProductModal
