@@ -93,7 +93,8 @@ export async function requireSupplier(req: SupplierRequest, res: Response, next:
 
     if (!session) return res.status(401).json({ error: 'Not signed in' })
 
-    if (new Date(session.expires_at) < new Date()) {
+    const expiry = Date.parse(session.expires_at)
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
       await supabase.from('supplier_sessions').delete().eq('id', session.id)
       return res.status(401).json({ error: 'Your session has expired. Please sign in again.' })
     }
@@ -105,7 +106,7 @@ export async function requireSupplier(req: SupplierRequest, res: Response, next:
     // when the token happens to expire.
     if (!supplier || !supplier.portal_enabled || supplier.is_active === false) {
       await supabase.from('supplier_sessions').delete().eq('id', session.id)
-      return res.status(403).json({ error: 'This supplier account is no longer active' })
+      return res.status(403).json({ error: 'This supplier account is no longer active', code: 'SUPPLIER_ACCOUNT_DISABLED' })
     }
 
     await supabase

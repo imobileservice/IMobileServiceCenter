@@ -122,7 +122,8 @@ export const resolveQuantity = (product: any) => {
  */
 export const getInventoryPrice = (product: any) => {
   const buyPrice = Number(product?.buy_price ?? 0)
-  return buyPrice > 0 ? buyPrice : Number(product?.price || 0)
+  const price = Number.isFinite(buyPrice) && buyPrice > 0 ? buyPrice : Number(product?.price || 0)
+  return Number.isFinite(price) && price > 0 ? Math.round(price * 100) / 100 : 0
 }
 
 /**

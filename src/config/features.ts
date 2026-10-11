@@ -1,5 +1,5 @@
-// Public supplier and cashier access remains disabled.
-export const SUPPLIER_SHOP_ENABLED = false
+// Registered shops can sign in to the supplier portal; cashiers can handle orders.
+export const SUPPLIER_SHOP_ENABLED = true
 
 export const SUPPLIER_SHOP_OWNER_EMAIL = 'dexlanka@gmail.com'
 

@@ -43,7 +43,8 @@ export const useSupplierStore = create<SupplierState>()(
       isSessionExpired: () => {
         const { expiresAt } = get()
         if (!expiresAt) return true
-        return new Date(expiresAt).getTime() <= Date.now()
+        const expiry = Date.parse(expiresAt)
+        return !Number.isFinite(expiry) || expiry <= Date.now()
       },
     }),
     { name: "imobile-supplier-session" }

@@ -106,6 +106,7 @@ export default function SupplierPortalPage() {
 
   // product_id -> units wanted. Cleared once the order is placed.
   const [basket, setBasket] = useState<Record<string, number>>({})
+  const catalogCache = useRef(new Map<string, CatalogItem>())
   const [basketOpen, setBasketOpen] = useState(false)
   const [orderNote, setOrderNote] = useState("")
   const [isPlacing, setIsPlacing] = useState(false)
@@ -139,6 +140,7 @@ export default function SupplierPortalPage() {
         in_stock_only: inStockOnly || undefined,
       })
       if (requestId !== catalogRequestId.current) return
+      for (const item of result.data || []) catalogCache.current.set(item.product_id, item)
       setItems(result.data || [])
       setCategories(result.categories || [])
       setMigrationRequired(Boolean(result.migration_required))
@@ -259,7 +261,7 @@ export default function SupplierPortalPage() {
   const basketLines = useMemo(
     () =>
       Object.entries(basket).map(([productId, quantity]) => {
-        const item = items.find((entry) => entry.product_id === productId)
+        const item = catalogCache.current.get(productId)
         return {
           product_id: productId,
           quantity,
@@ -271,7 +273,7 @@ export default function SupplierPortalPage() {
   )
 
   const basketUnits = basketLines.reduce((sum, line) => sum + line.quantity, 0)
-  const basketValue = basketLines.reduce((sum, line) => sum + line.price * line.quantity, 0)
+  const basketValue = basketLines.reduce((sum, line) => sum + Math.round(line.price * 100) * line.quantity, 0) / 100
   // A product with no trade price set cannot be added up, so the figure is
   // shown as a guide rather than a bill.
   const basketFullyPriced = basketLines.every((line) => line.price > 0)
@@ -350,7 +352,7 @@ export default function SupplierPortalPage() {
                 </Button>
               </a>
             )}
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2" aria-label="Sign out">
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Sign out</span>
             </Button>

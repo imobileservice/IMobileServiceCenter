@@ -16,7 +16,7 @@ import supplierRouter from './supplier'
 import assistantRouter from './assistant'
 import { guardInventoryApi } from './utils/inventory-guard'
 import { SUPPLIER_SHOP_ENABLED } from '../../config/features'
-import { requireSupplierShopOwner } from './utils/supplier-shop-access'
+import { requireSupplierShopOwner, requireSupplierShopStaff } from './utils/supplier-shop-access'
 
 const router = Router()
 
@@ -36,7 +36,7 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
 }
 
 // Mount route handlers
-// Supplier customer access remains disabled, including existing shop sessions.
+// This switch pauses the portal without changing individual shop accounts.
 if (!SUPPLIER_SHOP_ENABLED) {
   router.use('/supplier', (_req, res) => {
     res.status(503).json({ error: 'Supplier shop section is currently disabled' })
@@ -44,7 +44,7 @@ if (!SUPPLIER_SHOP_ENABLED) {
 }
 
 // These checks run before the optional inventory guard and admin override.
-router.use(['/inventory/suppliers', '/inventory/supplier-orders'], asyncHandler(requireSupplierShopOwner))
+router.use(['/inventory/suppliers', '/inventory/supplier-orders'], asyncHandler(requireSupplierShopStaff))
 router.get('/admin/supplier-shop-access', asyncHandler(requireSupplierShopOwner), (_req, res) => {
   res.setHeader('Cache-Control', 'no-store')
   res.json({ allowed: true })

@@ -1,6 +1,6 @@
 // No database writes or credentials required. Run: npm run verify:supplier-stock
 import assert from 'node:assert/strict'
-import { PRODUCT_SELECT, resolveQuantity, toCatalogItem } from '../src/server/api/supplier/shop.shared'
+import { getInventoryPrice, PRODUCT_SELECT, resolveQuantity, toCatalogItem } from '../src/server/api/supplier/shop.shared'
 
 const cases = [
   { name: 'missing inventory cannot use stale product stock', product: { stock: 12 }, expected: 0 },
@@ -39,4 +39,14 @@ for (const { name, product, expected } of cases) {
 assert.match(PRODUCT_SELECT, /inv_stock\s*\(qty_meegoda\)/, 'Supplier queries read Meegoda stock only')
 assert.doesNotMatch(PRODUCT_SELECT, /qty_padukka|quantity|\bstock\b/, 'Other branch stock and totals are excluded')
 
-console.log(`PASS: ${cases.length} supplier stock regression cases`)
+for (const [product, expected] of [
+  [{ buy_price: '150.25', price: 200 }, 150.25],
+  [{ buy_price: 0, price: 200 }, 200],
+  [{ buy_price: -50, price: 200 }, 200],
+  [{ buy_price: Infinity, price: 200 }, 200],
+  [{ buy_price: 'invalid', price: 'invalid' }, 0],
+  [{ buy_price: 0, price: -20 }, 0],
+  [{ buy_price: 150.256 }, 150.26],
+] as const) assert.equal(getInventoryPrice(product), expected, 'Valid trade price or safe fallback')
+
+console.log(`PASS: ${cases.length} supplier stock cases and 7 trade-price calculations`)

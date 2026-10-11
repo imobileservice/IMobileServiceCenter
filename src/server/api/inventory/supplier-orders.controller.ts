@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
+import { readOrderItems } from '../supplier/order-items.shared'
+import { resolveQuantity } from '../supplier/shop.shared'
 import { isMissingSchema } from './restock.shared'
 
 /**
@@ -13,10 +15,6 @@ const router = Router()
 
 const VALID_STATUSES = ['pending', 'confirmed', 'ready', 'completed', 'cancelled'] as const
 type OrderStatus = (typeof VALID_STATUSES)[number]
-
-/** Matches the portal's own limits, so a counter order cannot be larger than one a shop could place itself. */
-const MAX_LINES = 100
-const MAX_QTY = 9999
 
 /*
  * Reads one shop for a counter order, tolerating a database without `town`.
@@ -164,25 +162,11 @@ router.post('/', async (req: Request, res: Response) => {
     if (!supplier_id || typeof supplier_id !== 'string') {
       return res.status(400).json({ error: 'Choose which shop this order is for' })
     }
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Add at least one product to the order' })
-    }
-    if (items.length > MAX_LINES) {
-      return res.status(400).json({ error: `An order can hold at most ${MAX_LINES} products` })
-    }
-
-    // The same product twice would otherwise become two lines on one slip.
-    const wanted = new Map<string, number>()
-    for (const line of items) {
-      const productId = line?.product_id
-      const quantity = Math.trunc(Number(line?.quantity))
-      if (!productId || typeof productId !== 'string') {
-        return res.status(400).json({ error: 'Every line needs a product' })
-      }
-      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > MAX_QTY) {
-        return res.status(400).json({ error: `Quantity must be between 1 and ${MAX_QTY}` })
-      }
-      wanted.set(productId, (wanted.get(productId) || 0) + quantity)
+    let wanted: Map<string, number>
+    try {
+      wanted = readOrderItems(items)
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message })
     }
 
     const supabase = getSupabaseAdmin()
@@ -197,7 +181,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const { data: products, error: productsError } = await supabase
       .from('products')
-      .select('id, name, barcode, stock, specs')
+      .select('id, name, barcode, specs, inv_stock (qty_meegoda)')
       .in('id', Array.from(wanted.keys()))
 
     if (productsError) throw productsError
@@ -217,7 +201,7 @@ router.post('/', async (req: Request, res: Response) => {
         product_name: displayName,
         barcode: product.barcode || null,
         quantity,
-        was_in_stock: Number(product.stock || 0) > 0,
+        was_in_stock: resolveQuantity(product) > 0,
       })
     }
 

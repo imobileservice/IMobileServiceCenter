@@ -31,9 +31,11 @@ const panelAuth = load('src/server/api/utils/panel-auth.ts', {
   './panel-session': { resolvePanelActor: async () => actor, readSessionTokenWithSource: () => actor ? { source, token: 'test-token' } : null },
   './assistant-audit': { recordAudit: async () => {} },
 })
-const { requireSupplierShopOwner } = load('src/server/api/utils/supplier-shop-access.ts', {
+let validTill = false
+const { requireSupplierShopOwner, requireSupplierShopStaff } = load('src/server/api/utils/supplier-shop-access.ts', {
   '../../../config/features': features,
   './panel-auth': panelAuth,
+  './inventory-guard': { hasValidTillSession: async () => validTill },
 })
 
 function response() {
@@ -61,7 +63,33 @@ async function main() {
     assert.equal(res.statusCode, expected, name)
     assert.equal(continued, expected === 200, name)
   }
-  assert.equal(features.SUPPLIER_SHOP_ENABLED, false, 'Supplier and cashier access stays disabled')
+  assert.equal(features.SUPPLIER_SHOP_ENABLED, true, 'Supplier and cashier access is enabled')
+  actor = null
+  source = 'header'
+  validTill = true
+  const cashierCases = [
+    ['GET', '/api/inventory/suppliers', {}, {}, 200],
+    ['GET', '/api/inventory/suppliers', { with_stats: 'true' }, {}, 401],
+    ['GET', '/api/inventory/supplier-orders', {}, {}, 200],
+    ['GET', '/api/inventory/supplier-orders/order-1', {}, {}, 200],
+    ['POST', '/api/inventory/supplier-orders', {}, {}, 200],
+    ['PUT', '/api/inventory/supplier-orders/order-1', {}, { status: 'ready' }, 200],
+    ['PUT', '/api/inventory/supplier-orders/order-1', {}, { status: 'cancelled' }, 401],
+    ['DELETE', '/api/inventory/supplier-orders/order-1', {}, {}, 401],
+    ['POST', '/api/inventory/suppliers', {}, {}, 401],
+    ['POST', '/api/inventory/suppliers/shop-1/portal-password', {}, {}, 401],
+  ]
+  for (const [method, originalUrl, query, body, expected] of cashierCases) {
+    const res = response()
+    let continued = false
+    await requireSupplierShopStaff({ method, originalUrl, query, body, headers: {} }, res, () => { continued = true })
+    assert.equal(res.statusCode, expected, `${method} ${originalUrl}`)
+    assert.equal(continued, expected === 200)
+  }
+  validTill = false
+  const noTill = response()
+  await requireSupplierShopStaff({ method: 'GET', originalUrl: '/api/inventory/supplier-orders', query: {}, headers: {} }, noTill, () => assert.fail('Invalid till cannot access orders'))
+  assert.equal(noTill.statusCode, 401)
 
   let access = { allowed: false, checking: false }
   const element = (type, props) => ({ type, props: props || {} })
@@ -85,7 +113,7 @@ async function main() {
     const supplierPage = routes.find(r => r && r.props.path === '/admin/suppliers')
     assert.equal(supplierPage.props.element.type === 'Navigate', !allowed)
     for (const url of ['/supplier', '/supplier/login', '/cashier/supplier-orders']) {
-      assert.equal(routes.find(r => r && r.props.path === url).props.element.type, 'Navigate', url)
+      assert.notEqual(routes.find(r => r && r.props.path === url).props.element.type, 'Navigate', url)
     }
   }
 
@@ -107,7 +135,7 @@ async function main() {
   assert.equal(shopLinks(sidebar.default()), 0, 'Both desktop and mobile hide the link from nonowners')
   access = { allowed: true, checking: false }
   assert.equal(shopLinks(sidebar.default()), 2, 'Both desktop and mobile show the link to the verified owner')
-  console.log(`PASS: ${cases.length} API access cases, owner-only page access, desktop/mobile navigation, and blocked supplier/cashier pages`)
+  console.log(`PASS: ${cases.length + cashierCases.length + 1} API access cases, owner-only management, desktop/mobile navigation, and enabled supplier/cashier pages`)
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1 })

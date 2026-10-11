@@ -32,7 +32,7 @@ export const TILL_SESSION_HEADER = 'x-till-session'
 const isStrict = () => String(process.env.INVENTORY_API_STRICT).trim().toLowerCase() === 'true'
 
 /** An open, unexpired till session matching the presented token. */
-async function hasValidTillSession(req: Request): Promise<boolean> {
+export async function hasValidTillSession(req: Request): Promise<boolean> {
   const header = req.headers[TILL_SESSION_HEADER]
   const token = Array.isArray(header) ? header[0] : header
   if (!token || typeof token !== 'string' || !token.trim()) return false

@@ -1,5 +1,6 @@
 import { Response } from 'express'
 import { getSupabaseAdmin } from '../inventory/supabase-admin'
+import { readOrderItems } from './order-items.shared'
 import { SupplierRequest } from './auth'
 import {
   fetchAllowedCategoryIds,
@@ -8,9 +9,6 @@ import {
   PRODUCT_SELECT,
   resolveQuantity,
 } from './shop.shared'
-
-const MAX_LINES = 100
-const MAX_QTY = 9999
 
 const migrationMessage = 'Ordering is not set up yet. Please contact IMobile Service Center.'
 
@@ -28,26 +26,11 @@ export async function createSupplierOrderHandler(req: SupplierRequest, res: Resp
     const supplier = req.supplier!
     const { items, note, contact_phone } = req.body || {}
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'Add at least one product to your order' })
-    }
-    if (items.length > MAX_LINES) {
-      return res.status(400).json({ error: `An order can hold at most ${MAX_LINES} products` })
-    }
-
-    // Same product twice in one payload would otherwise become two lines that
-    // each pass the stock check on their own.
-    const wanted = new Map<string, number>()
-    for (const line of items) {
-      const productId = line?.product_id
-      const quantity = Math.trunc(Number(line?.quantity))
-      if (!productId || typeof productId !== 'string') {
-        return res.status(400).json({ error: 'Every line needs a product' })
-      }
-      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > MAX_QTY) {
-        return res.status(400).json({ error: `Quantity must be between 1 and ${MAX_QTY}` })
-      }
-      wanted.set(productId, (wanted.get(productId) || 0) + quantity)
+    let wanted: Map<string, number>
+    try {
+      wanted = readOrderItems(items)
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message })
     }
 
     const supabase = getSupabaseAdmin()

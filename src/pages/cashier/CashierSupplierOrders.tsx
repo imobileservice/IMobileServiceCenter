@@ -653,7 +653,7 @@ function OrderComposer({
                         <div className="min-w-0">
                           <p className="text-sm font-semibold truncate">{product.name}</p>
                           <p className="text-[11px] text-muted-foreground truncate">
-                            {product.barcode || "No barcode"} · stock {Number(product.stock || 0)}
+                            {product.barcode || "No barcode"} · Meegoda stock {Number(product.qty_meegoda || 0)}
                           </p>
                         </div>
                         <Plus className="w-4 h-4 text-muted-foreground shrink-0" />

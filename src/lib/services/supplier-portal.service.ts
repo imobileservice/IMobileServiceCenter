@@ -81,7 +81,7 @@ const request = async (path: string, init: RequestInit = {}) => {
     // The server drops the session when the account is disabled or the token
     // expires. Clearing here sends the portal back to the login screen instead
     // of leaving it retrying with a token that will never work again.
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401 || (response.status === 403 && payload.code === 'SUPPLIER_ACCOUNT_DISABLED')) {
       useSupplierStore.getState().logout()
     }
     const error: any = new Error(payload.error || `Request failed (${response.status})`)
