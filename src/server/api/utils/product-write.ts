@@ -92,13 +92,16 @@ async function nextBarcode(supabase: SupabaseClient): Promise<string> {
     .from('products')
     .select('barcode')
     .not('barcode', 'is', null)
+    // Manufacturer EAN/UPC codes must not advance our internal six-digit series.
+    .like('barcode', '______')
     .order('barcode', { ascending: false })
     .limit(100)
 
   let next = 1
   if (rows && rows.length > 0) {
     const numeric = rows
-      .map((row: any) => parseInt(row.barcode, 10))
+      .filter((row: any) => /^\d{6}$/.test(row.barcode))
+      .map((row: any) => Number(row.barcode))
       .filter((value: number) => !Number.isNaN(value))
     if (numeric.length > 0) next = Math.max(...numeric) + 1
   }
@@ -134,6 +137,13 @@ export async function createProductRecord(
   input: Record<string, any>
 ): Promise<WriteResult> {
   const productData: any = { ...input }
+  if (productData.barcode != null && typeof productData.barcode !== 'string') {
+    return { ok: false, status: 400, error: 'Barcode must be text so leading zeros are preserved.' }
+  }
+  productData.barcode = productData.barcode?.trim() || ''
+  if (productData.barcode.length > 128 || /[\x00-\x1f\x7f]/.test(productData.barcode)) {
+    return { ok: false, status: 400, error: 'Barcode must contain at most 128 characters without control characters.' }
+  }
   const imageUrls: string[] = productData.images || (productData.image ? [productData.image] : [])
 
   const qty_meegoda = Number(productData.qty_meegoda) || 0
@@ -155,6 +165,20 @@ export async function createProductRecord(
   if (!productData.barcode) {
     productData.barcode = await nextBarcode(supabase)
     console.log(`[ProductWrite] Auto-generated barcode: ${productData.barcode}`)
+  } else {
+    const { data: existing, error: lookupError } = await supabase
+      .from('products')
+      .select('id, name')
+      .eq('barcode', productData.barcode)
+      .maybeSingle()
+    if (lookupError) return { ok: false, status: 500, error: 'Could not check this barcode. Please try again.' }
+    if (existing) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Barcode ${productData.barcode} already belongs to ${existing.name}. Open that product to update its stock.`,
+      }
+    }
   }
 
   let { data, error } = await supabase.from('products').insert(productData).select().single()
@@ -171,6 +195,10 @@ export async function createProductRecord(
 
   if (error) {
     console.error('[ProductWrite] Error creating product:', error)
+    // The unique constraint also catches two staff saving the same code at once.
+    if (error.code === '23505' && /barcode/i.test(`${error.message} ${error.details || ''}`)) {
+      return { ok: false, status: 409, error: 'This barcode is already in use. Open the existing product to update its stock, or enter a different barcode.' }
+    }
     return { ok: false, status: 500, error: error.message }
   }
 

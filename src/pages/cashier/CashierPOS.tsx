@@ -28,6 +28,7 @@ import CashierLayout from "@/components/cashier-layout"
 import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receipt"
+import PosCustomerPicker, { type PosCustomer } from "@/components/cashier/pos-customer-picker"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
@@ -84,14 +85,12 @@ export default function CashierPOS() {
     const inventoryPrice = Number(product.inventory_price ?? product.buy_price ?? 0)
     return inventoryPrice > 0 ? inventoryPrice : Number(product.price || 0)
   }
-  const [customerSearchTerm, setCustomerSearchTerm] = useState("")
-  const [customerResults, setCustomerResults] = useState<any[]>([])
   const [showNewCustomer, setShowNewCustomer] = useState(false)
   const [newCustomerName, setNewCustomerName] = useState("")
   const [newCustomerPhone, setNewCustomerPhone] = useState("")
   const [walkInName, setWalkInName] = useState("")
   const [walkInPhone, setWalkInPhone] = useState("")
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<PosCustomer | null>(null)
   const [isSavingCustomer, setIsSavingCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -227,25 +226,6 @@ export default function CashierPOS() {
   // Keeps the stock shown in the results current while sales happen on other tills.
   useAutoRefresh(() => searchProducts(searchTerm), { enabled: searchTerm.length >= 2 })
 
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(async () => {
-      const term = customerSearchTerm.trim()
-      if (term.length < 2) {
-        setCustomerResults([])
-        return
-      }
-
-      try {
-        const res = await inventoryCustomersService.getAll(term)
-        setCustomerResults(res.data || [])
-      } catch (err) {
-        console.error('Customer search failed:', err)
-      }
-    }, 300)
-
-    return () => clearTimeout(delayDebounceFn)
-  }, [customerSearchTerm])
-
   const handleCreateCustomer = async () => {
     const name = newCustomerName.trim()
     const phone = newCustomerPhone.trim()
@@ -258,11 +238,9 @@ export default function CashierPOS() {
     setIsSavingCustomer(true)
     try {
       const res = await inventoryCustomersService.create({ name, phone: phone || undefined })
-      setSelectedCustomer(res.data)
+      setSelectedCustomer({ ...res.data, source: 'customer' })
       setNewCustomerName("")
       setNewCustomerPhone("")
-      setCustomerSearchTerm("")
-      setCustomerResults([])
       setWalkInName("")
       setWalkInPhone("")
       setShowNewCustomer(false)
@@ -406,7 +384,8 @@ export default function CashierPOS() {
       const customerName = selectedCustomer?.name || walkInName.trim() || 'Walk-in Customer'
       const customerPhone = selectedCustomer?.phone || walkInPhone.trim() || undefined
       const saleData = {
-        customer_id: selectedCustomer?.id,
+        // Supplier ids belong to inv_suppliers, not the inv_customers foreign key.
+        customer_id: selectedCustomer?.source === 'customer' ? selectedCustomer.id : undefined,
         customer_name: customerName,
         customer_phone: customerPhone,
         payment_method: paymentMethod,
@@ -713,75 +692,42 @@ export default function CashierPOS() {
               <div className="rounded-xl border border-border bg-background/60 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">Permanent Customers</p>
-                    <p className="text-sm font-bold truncate">{selectedCustomer?.name || "Saved customer account"}</p>
+                    <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">Customers &amp; Shops</p>
+                    <p className="text-sm font-bold truncate">{selectedCustomer?.name || "Saved customer or shop supplier"}</p>
                   </div>
                   <Button
                     variant={showNewCustomer ? "default" : "outline"}
                     size="icon"
                     className="h-10 w-10 flex-shrink-0"
+                    aria-label="Add permanent customer"
                     onClick={() => setShowNewCustomer(prev => !prev)}
                   >
                     <UserPlus className="w-4 h-4" />
                   </Button>
                 </div>
 
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search saved customers..."
-                    className="pl-9 pr-9"
-                    value={customerSearchTerm}
-                    onChange={(e) => setCustomerSearchTerm(e.target.value)}
-                  />
-                  {customerSearchTerm && (
-                    <button
-                      onClick={() => {
-                        setCustomerSearchTerm("")
-                        setCustomerResults([])
-                      }}
-                      className="absolute right-2 top-2 p-1 hover:bg-muted rounded"
-                    >
-                      <X className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  )}
-
-                  {customerResults.length > 0 && (
-                    <div className="absolute z-50 left-0 right-0 mt-2 bg-card border border-border rounded-xl shadow-xl max-h-48 overflow-y-auto p-1">
-                      {customerResults.map(customer => (
-                        <button
-                          key={customer.id}
-                          onClick={() => {
-                            setSelectedCustomer(customer)
-                            setCustomerSearchTerm("")
-                            setCustomerResults([])
-                            setWalkInName("")
-                            setWalkInPhone("")
-                          }}
-                          className="w-full flex items-center justify-between gap-3 p-2.5 rounded-lg text-left hover:bg-muted"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold truncate">{customer.name}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{customer.phone || 'No phone number'}</p>
-                          </div>
-                          <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <PosCustomerPicker
+                  value={selectedCustomer}
+                  onSelect={customer => {
+                    setSelectedCustomer(customer)
+                    setWalkInName("")
+                    setWalkInPhone("")
+                    setShowNewCustomer(false)
+                  }}
+                />
 
                 {selectedCustomer && (
                   <div className="bg-muted/50 p-3 rounded-lg border border-primary/30 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-bold text-foreground truncate">{selectedCustomer.name}</p>
-                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5">Selected</Badge>
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1.5">{selectedCustomer.source === 'supplier' ? 'Shop' : 'Selected'}</Badge>
                       </div>
                       <p className="text-[10px] text-muted-foreground truncate">{selectedCustomer.phone || 'No phone number'}</p>
                     </div>
                     <button
                       onClick={() => setSelectedCustomer(null)}
+                      aria-label="Clear selected customer or shop"
                       className="text-red-500 p-1 hover:bg-red-50 rounded flex-shrink-0"
                     >
                       <X className="w-4 h-4" />

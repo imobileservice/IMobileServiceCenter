@@ -116,6 +116,10 @@ export default function ProductsPage() {
     setCurrentPage(1)
   }, [location.pathname, selectedBranch, searchTerm, selectedCategory, pageSize])
 
+  useEffect(() => {
+    setSelectedProductIds([])
+  }, [location.pathname, selectedBranch])
+
   const categories = ["All", ...Array.from(new Set(products.map(p => p.category))).filter(Boolean).sort()]
 
   const branchLabel = PRODUCT_BRANCHES.find(branch => branch.id === selectedBranch)!.label
@@ -135,7 +139,7 @@ export default function ProductsPage() {
   })
   const filteredProducts = matchingProducts.filter((product) => {
     const stock = getStock(product)
-    if (stockFilter === 'all') return true
+    if (stockFilter === 'all') return selectedBranch === 'all' || (stock !== null && stock > 0)
     if (stock === null) return false
     return stockFilter === 'very_low' ? stock < 4 : stock >= 4 && stock <= 5
   })

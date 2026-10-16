@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { motion } from "framer-motion"
-import { X, Plus, Trash2, Upload, Loader2, Sparkles, CheckCircle } from "lucide-react"
+import { X, Plus, Trash2, Upload, Loader2, Sparkles, CheckCircle, ScanBarcode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
@@ -91,6 +91,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     name: "",
     category: "",
     sku: "",
+    barcode: "",
     brand: "",
     price: "",
     cost_price: "",
@@ -367,6 +368,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               name: resolvedName,
               category: product.category || "",
               sku: (product as any).sku || "",
+              barcode: (product as any).barcode || "",
               brand: resolvedBrand,
               price: product.price?.toString() || "",
               cost_price: (product as any).cost_price?.toString() || "",
@@ -414,6 +416,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         name: "",
         category: "",
         sku: "",
+        barcode: "",
         brand: "",
         price: "",
         cost_price: "",
@@ -946,6 +949,12 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         compatible_model_ids: compatibleModels.map((m) => m.id),
       }
 
+      // Keep scanned codes as text so leading zeros survive. Existing products
+      // retain their barcode; leaving this blank on creation asks the API to generate one.
+      if (!editingProductId && formData.barcode.trim()) {
+        productData.barcode = formData.barcode.trim()
+      }
+
       // Set primary image
       if (formData.images.length > 0) {
         productData.image = formData.images[0]
@@ -1133,6 +1142,39 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               <h3 className="text-lg font-semibold border-b border-border pb-2">Basic Information</h3>
 
               <div>
+                <label htmlFor="product-barcode" className="flex items-center gap-2 text-sm font-semibold mb-2">
+                  <ScanBarcode className="w-4 h-4" /> Barcode
+                </label>
+                <Input
+                  id="product-barcode"
+                  type="text"
+                  name="barcode"
+                  value={formData.barcode}
+                  onChange={handleChange}
+                  placeholder="Scan an existing barcode or type it here"
+                  autoFocus={!editingProductId}
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={128}
+                  readOnly={!!editingProductId}
+                  disabled={loading}
+                  aria-describedby="product-barcode-help"
+                  className={editingProductId ? "bg-muted font-mono" : "font-mono"}
+                  onFocus={event => event.currentTarget.select()}
+                  onKeyDown={event => {
+                    // Keyboard scanners commonly finish with Enter. Capturing a
+                    // barcode must not submit an otherwise completed product form.
+                    if (event.key === 'Enter') event.preventDefault()
+                  }}
+                />
+                <p id="product-barcode-help" className="text-xs text-muted-foreground mt-1">
+                  {editingProductId
+                    ? "This product keeps its existing barcode."
+                    : "Click this field and scan with your USB or Bluetooth scanner. Leave blank to generate a barcode automatically, then complete the product details and click Add Product."}
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-sm font-semibold mb-2">Product Name *</label>
                 <Input
                   type="text"
@@ -1161,8 +1203,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                   placeholder="DSP001"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Optional shop code for this one physical item. The scannable barcode is still
-                  generated automatically.
+                  Optional shop code for this one physical item, separate from its barcode.
                 </p>
               </div>
 

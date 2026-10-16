@@ -21,6 +21,8 @@ export interface ReceiptSale {
   invoice_number?: string
   created_at?: string
   customer_name?: string | null
+  customer_phone?: string | null
+  inv_customers?: { phone?: string | null } | null
   payment_method?: string | null
   total_amount?: number
   discount_amount?: number
@@ -88,6 +90,9 @@ export default function PosReceipt({
         <p>Cashier : {cashierName || "Admin"}</p>
         <p>Till : {tillCode || sale?.till_code || "N/A"}</p>
         <p>Customer : {sale?.customer_name || "Walk-in Customer"}</p>
+        {(sale?.customer_phone || sale?.inv_customers?.phone) && (
+          <p>Customer Tel : {sale?.customer_phone || sale?.inv_customers?.phone}</p>
+        )}
         <p>Payment : {formatPaymentMethod(sale?.payment_method)}</p>
       </div>
 
