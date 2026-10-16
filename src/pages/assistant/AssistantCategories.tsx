@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Lock, FolderTree } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import AssistantLayout from "@/components/assistant/assistant-layout"
 import { assistantService } from "@/lib/services/assistant.service"
 import { useAssistantStore } from "@/lib/assistant-store"
@@ -39,22 +40,24 @@ export default function AssistantCategoriesPage() {
   const [editing, setEditing] = useState<CategoryRow | null>(null)
   const [deleting, setDeleting] = useState<CategoryRow | null>(null)
 
-  const load = async () => {
-    setLoading(true)
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       setCategories((await assistantService.categories()) as CategoryRow[])
     } catch (error: any) {
-      if (error?.code !== "PERMISSION_DENIED") {
+      if (!silent && error?.code !== "PERMISSION_DENIED") {
         toast.error(error?.message || "Could not load categories")
       }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     load()
   }, [])
+
+  useAutoRefresh(() => load(true), { intervalMs: 30000 })
 
   return (
     <AssistantLayout

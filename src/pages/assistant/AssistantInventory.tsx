@@ -5,6 +5,7 @@ import { Search, Save, AlertTriangle, Boxes } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import AssistantLayout from "@/components/assistant/assistant-layout"
 import { assistantService } from "@/lib/services/assistant.service"
 import { useAssistantStore } from "@/lib/assistant-store"
@@ -54,23 +55,26 @@ export default function AssistantInventoryPage() {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
 
-  const load = async () => {
-    setLoading(true)
+  // A silent refresh keeps the drafts so a background poll never wipes a half-typed count.
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       setRows((await assistantService.stock()) as StockRow[])
-      setDrafts({})
+      if (!silent) setDrafts({})
     } catch (error: any) {
-      if (error?.code !== "PERMISSION_DENIED") {
+      if (!silent && error?.code !== "PERMISSION_DENIED") {
         toast.error(error?.message || "Could not load stock")
       }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     load()
   }, [])
+
+  useAutoRefresh(() => load(true))
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase()

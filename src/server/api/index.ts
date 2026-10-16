@@ -17,6 +17,7 @@ import assistantRouter from './assistant'
 import { guardInventoryApi } from './utils/inventory-guard'
 import { SUPPLIER_SHOP_ENABLED } from '../../config/features'
 import { requireSupplierShopOwner, requireSupplierShopStaff } from './utils/supplier-shop-access'
+import { trackDataVersion, dataVersionHandler } from './utils/data-version'
 
 const router = Router()
 
@@ -34,6 +35,10 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
     })
   }
 }
+
+// Screens poll this to refresh within seconds of a sale or stock change on another device.
+router.use(trackDataVersion)
+router.get('/updates/version', dataVersionHandler)
 
 // Mount route handlers
 // This switch pauses the portal without changing individual shop accounts.

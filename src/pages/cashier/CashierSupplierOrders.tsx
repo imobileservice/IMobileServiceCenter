@@ -35,6 +35,7 @@ import {
   type Supplier,
 } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 const PAGE_SIZE = 12
 
@@ -103,8 +104,8 @@ export default function CashierSupplierOrders() {
   const [slipVariant, setSlipVariant] = useState<"original" | "reprint">("original")
   const [composerOpen, setComposerOpen] = useState(false)
 
-  const loadOrders = useCallback(async () => {
-    setIsLoading(true)
+  const loadOrders = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true)
     try {
       const res = await shopOrdersService.getAll({
         status: filter === "all" ? undefined : filter,
@@ -114,16 +115,18 @@ export default function CashierSupplierOrders() {
       setOrders(res.data || [])
       setMigrationRequired(Boolean(res.migration_required))
     } catch (err: any) {
-      toast.error(err.message || "Could not load supplier orders")
+      if (!silent) toast.error(err.message || "Could not load supplier orders")
     } finally {
-      setIsLoading(false)
+      if (!silent) setIsLoading(false)
     }
   }, [filter, search])
 
   useEffect(() => {
-    const timer = setTimeout(loadOrders, search ? 300 : 0)
+    const timer = setTimeout(() => loadOrders(), search ? 300 : 0)
     return () => clearTimeout(timer)
   }, [loadOrders, search])
+
+  useAutoRefresh(() => loadOrders(true))
 
   useEffect(() => {
     setPage(1)
@@ -174,7 +177,7 @@ export default function CashierSupplierOrders() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={loadOrders} disabled={isLoading}>
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => loadOrders()} disabled={isLoading}>
               <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>

@@ -33,6 +33,7 @@ import AdminLayout from "@/components/admin-layout"
 import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/utils/currency"
 import { useSupplierShopAccess } from "@/components/supplier-shop-access"
+import { useServerChangeWatcher } from "@/hooks/use-auto-refresh"
 
 type ReportPeriod = "daily" | "weekly" | "monthly"
 
@@ -792,6 +793,7 @@ function ShopOrderTile({ label, value, tone = "text-foreground" }: { label: stri
 }
 
 export default function AdminDashboard() {
+  useServerChangeWatcher()
   const { allowed: canAccessSupplierShop } = useSupplierShopAccess()
   const [activePeriod, setActivePeriod] = useState<ReportPeriod>("daily")
   const [orders, setOrders] = useState<any[]>([])

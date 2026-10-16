@@ -27,6 +27,7 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 type RangeKey = "today" | "7" | "30" | "all"
 
@@ -85,8 +86,8 @@ export default function CashierOrderHistory() {
 
   const cashierEmail = cashier?.email || ""
 
-  const loadSales = useCallback(async () => {
-    setIsLoading(true)
+  const loadSales = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true)
     try {
       const from = rangeStart(range)
       const res = await inventorySalesService.getAll({
@@ -98,16 +99,18 @@ export default function CashierOrderHistory() {
       })
       setSales(res.data || [])
     } catch (err: any) {
-      toast.error(err.message || "Could not load your order history")
+      if (!silent) toast.error(err.message || "Could not load your order history")
     } finally {
-      setIsLoading(false)
+      if (!silent) setIsLoading(false)
     }
   }, [cashier?.shop, cashierEmail, minePerCashier, range, search])
 
   useEffect(() => {
-    const timer = setTimeout(loadSales, search ? 300 : 0)
+    const timer = setTimeout(() => loadSales(), search ? 300 : 0)
     return () => clearTimeout(timer)
   }, [loadSales, search])
+
+  useAutoRefresh(() => loadSales(true))
 
   useEffect(() => {
     setPage(1)

@@ -8,6 +8,7 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { Badge } from "@/components/ui/badge"
 import { format, startOfDay, endOfDay } from "date-fns"
 
@@ -21,9 +22,9 @@ export default function CashierDashboard() {
     fetchData()
   }, [cashier, selectedDate])
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const shop = cashier?.shop || 'Meegoda'
 
       const start = startOfDay(selectedDate).toISOString()
@@ -38,11 +39,13 @@ export default function CashierDashboard() {
       
       setRecentSales(salesRes.data || [])
     } catch (err: any) {
-      toast.error(err.message || 'Failed to fetch dashboard data')
+      if (!silent) toast.error(err.message || 'Failed to fetch dashboard data')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
+
+  useAutoRefresh(() => fetchData(true))
 
   // Calculate quick stats from sales
   const cashSales = recentSales.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + Number(s.net_amount), 0)

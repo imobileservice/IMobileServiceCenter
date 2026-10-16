@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { productsService } from "@/lib/supabase/services/products"
 import { notifyUpdate } from "@/hooks/use-realtime-updates"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import ProductModal from "@/components/admin/product-modal"
 import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
@@ -70,7 +71,7 @@ export default function ProductsPage() {
   const fetchProducts = async (silent = false) => {
     const sequence = ++fetchSequence.current
     if (!silent) setLoading(true)
-    setBranchStockLoading(true)
+    if (!silent || branchStockError) setBranchStockLoading(true)
     // Branch stock is read separately so its lookup never delays the existing
     // product table, and never exposes inventory quantities on the storefront.
     const stockRequest = inventoryStockService.getAll().then((result) => {
@@ -99,20 +100,12 @@ export default function ProductsPage() {
 
   useEffect(() => {
     fetchProducts()
-    
-    // Listen for product updates
-    const handleProductUpdate = () => {
-      fetchProducts(true)
-    }
-    window.addEventListener('productUpdated', handleProductUpdate)
-    window.addEventListener('inventoryUpdated', handleProductUpdate)
-    
     return () => {
       ++fetchSequence.current
-      window.removeEventListener('productUpdated', handleProductUpdate)
-      window.removeEventListener('inventoryUpdated', handleProductUpdate)
     }
   }, [])
+
+  useAutoRefresh(() => fetchProducts(true), { intervalMs: 20000 })
 
   useEffect(() => {
     setEditingQtyLabelId(null)

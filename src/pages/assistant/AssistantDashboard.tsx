@@ -16,6 +16,7 @@ import { assistantService, type AssistantOverview } from "@/lib/services/assista
 import { formatCurrency } from "@/lib/utils/currency"
 import AssistantLayout from "@/components/assistant/assistant-layout"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 /**
  * The assistant's dashboard: how many products there are, how much stock is on
@@ -41,6 +42,8 @@ export default function AssistantDashboardPage() {
       })
       .finally(() => setLoading(false))
   }, [])
+
+  useAutoRefresh(() => assistantService.overview().then(setOverview).catch(() => {}))
 
   return (
     <AssistantLayout

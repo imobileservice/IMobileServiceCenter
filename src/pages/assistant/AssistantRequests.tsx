@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Clock, CheckCircle2, XCircle, AlertTriangle, Ban, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import AssistantLayout from "@/components/assistant/assistant-layout"
 import { assistantService, type AssistantRequest } from "@/lib/services/assistant.service"
 
@@ -50,14 +51,14 @@ export default function AssistantRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>("")
 
-  const load = async (status?: string) => {
-    setLoading(true)
+  const load = async (status?: string, silent = false) => {
+    if (!silent) setLoading(true)
     try {
       setRequests(await assistantService.requests(status || undefined))
     } catch (error: any) {
-      toast.error(error?.message || "Could not load your requests")
+      if (!silent) toast.error(error?.message || "Could not load your requests")
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -65,6 +66,8 @@ export default function AssistantRequestsPage() {
     load(filter)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
+
+  useAutoRefresh(() => load(filter, true))
 
   const cancel = async (request: AssistantRequest) => {
     try {

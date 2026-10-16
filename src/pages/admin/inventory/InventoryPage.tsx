@@ -23,6 +23,7 @@ import AdminLayout from "@/components/admin-layout"
 import { formatCurrency } from "@/lib/utils/currency"
 import { inventoryStockService, inventoryProductsService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 export default function InventoryPage() {
   const [stockData, setStockData] = useState<any[]>([])
@@ -42,7 +43,7 @@ export default function InventoryPage() {
       setStockData(res.data || [])
     } catch (err) {
       console.error('Failed to fetch stock:', err)
-      toast.error("Failed to load inventory data")
+      if (!silent) toast.error("Failed to load inventory data")
     } finally {
       if (!silent) setLoading(false)
     }
@@ -50,20 +51,9 @@ export default function InventoryPage() {
 
   useEffect(() => {
     fetchStock()
-
-    // Listen for product updates to refresh inventory automatically
-    const handleUpdate = () => {
-      fetchStock(true) // silent background refresh
-    }
-    
-    window.addEventListener('productUpdated', handleUpdate)
-    window.addEventListener('inventoryUpdated', handleUpdate)
-    
-    return () => {
-      window.removeEventListener('productUpdated', handleUpdate)
-      window.removeEventListener('inventoryUpdated', handleUpdate)
-    }
   }, [filter])
+
+  useAutoRefresh(() => fetchStock(true))
 
   const handleAdjust = async () => {
     if (!selectedItem) return

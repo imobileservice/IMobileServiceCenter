@@ -106,6 +106,7 @@ app.use(cookieParser())
 app.use((req, res, next) => {
   const start = Date.now()
   res.on('finish', () => {
+    if (req.path === '/api/updates/version') return
     const duration = Date.now() - start
     console.log(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`)
   })

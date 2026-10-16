@@ -6,6 +6,7 @@ import { Plus, Search, Pencil, Trash2, Lock, X, Tag, PackagePlus } from "lucide-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import AssistantLayout from "@/components/assistant/assistant-layout"
 // The administrator's own dialogs. Adding a product is the same process for an
 // assistant - brand, compatible phone models, images, barcode - and the
@@ -132,22 +133,21 @@ export default function AssistantProductsPage() {
       setProducts(productList as ProductRow[])
       setCategories(categoryList)
     } catch (error: any) {
-      if (error?.code !== "PERMISSION_DENIED") {
+      if (!silent && error?.code !== "PERMISSION_DENIED") {
         toast.error(error?.message || "Could not load products")
       }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     load()
-    // The Add Product dialog announces a save this way, as on the admin screen.
-    const onProductUpdated = () => load(true)
-    window.addEventListener("productUpdated", onProductUpdated)
-    return () => window.removeEventListener("productUpdated", onProductUpdated)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // The Add Product dialog announces a save via productUpdated, which this also picks up.
+  useAutoRefresh(() => load(true), { intervalMs: 20000 })
 
   const categoryName = useMemo(() => {
     const byId = new Map(categories.map((category) => [category.id, category.name]))

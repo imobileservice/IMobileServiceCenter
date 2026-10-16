@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { customersService } from "@/lib/supabase/services/customers"
 import CustomerModal from "@/components/admin/customer-modal"
 import AdminLayout from "@/components/admin-layout"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { formatCurrency } from "@/lib/utils/currency"
 import type { Customer } from "@/lib/supabase/services/customers"
 
@@ -33,17 +34,9 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers()
-    
-    // Listen for customer updates
-    const handleCustomerUpdate = () => {
-      fetchCustomers(true)
-    }
-    window.addEventListener('customerUpdated', handleCustomerUpdate)
-    
-    return () => {
-      window.removeEventListener('customerUpdated', handleCustomerUpdate)
-    }
   }, [])
+
+  useAutoRefresh(() => fetchCustomers(true))
 
   const filteredCustomers = customers.filter(
     (c) =>

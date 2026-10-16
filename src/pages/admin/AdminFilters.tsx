@@ -25,16 +25,16 @@ export default function AdminFilters() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingFilterId, setEditingFilterId] = useState<string | null>(null)
 
-    const fetchFilters = async () => {
+    const fetchFilters = async (silent = false) => {
         try {
-            setLoading(true)
+            if (!silent) setLoading(true)
             const data = await filtersService.getAll()
             setFilters(data)
         } catch (error) {
             console.error("Failed to fetch filters:", error)
-            toast.error("Failed to load filters")
+            if (!silent) toast.error("Failed to load filters")
         } finally {
-            setLoading(false)
+            if (!silent) setLoading(false)
         }
     }
 
@@ -43,7 +43,7 @@ export default function AdminFilters() {
     }, [])
 
     // Subscribe to real-time updates
-    useRealtimeUpdates(fetchFilters)
+    useRealtimeUpdates(() => fetchFilters(true))
 
     const handleDelete = async (id: string) => {
         if (!window.confirm("Are you sure you want to delete this filter?")) return

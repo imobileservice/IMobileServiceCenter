@@ -31,6 +31,7 @@ import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receip
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 interface PosPhoneModel {
   id: string
@@ -216,6 +217,9 @@ export default function CashierPOS() {
     }, 300)
     return () => clearTimeout(delayDebounceFn)
   }, [searchTerm])
+
+  // Keeps the stock shown in the results current while sales happen on other tills.
+  useAutoRefresh(() => searchProducts(searchTerm), { enabled: searchTerm.length >= 2 })
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {

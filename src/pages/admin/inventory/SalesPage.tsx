@@ -22,6 +22,7 @@ import { formatCurrency } from "@/lib/utils/currency"
 import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
 import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import Barcode from "react-barcode"
 
 export default function SalesHistoryPage() {
@@ -43,7 +44,7 @@ export default function SalesHistoryPage() {
       setSales(res.data || [])
     } catch (err) {
       console.error('Failed to fetch sales:', err)
-      toast.error("Failed to load sales history")
+      if (!silent) toast.error("Failed to load sales history")
     } finally {
       if (!silent) setLoading(false)
     }
@@ -62,6 +63,8 @@ export default function SalesHistoryPage() {
     fetchSales()
     fetchSummary()
   }, [dateRange])
+
+  useAutoRefresh(() => Promise.all([fetchSales(true), fetchSummary()]))
 
   const filteredSales = sales.filter(sale => 
     String(sale.invoice_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||

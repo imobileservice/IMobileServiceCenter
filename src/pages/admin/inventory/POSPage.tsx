@@ -26,6 +26,7 @@ import { formatCurrency } from "@/lib/utils/currency"
 import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 
 interface CartItem {
   id: string
@@ -117,6 +118,9 @@ export default function POSPage() {
     }, 300)
     return () => clearTimeout(delayDebounceFn)
   }, [searchTerm])
+
+  // Keeps the stock shown in the results current while sales happen on other tills.
+  useAutoRefresh(() => searchProducts(searchTerm), { enabled: searchTerm.length >= 2 })
 
   const addToCart = (product: any) => {
     setCart(prev => {

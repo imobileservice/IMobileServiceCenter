@@ -8,6 +8,7 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import { inventoryProductsService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 
@@ -21,17 +22,19 @@ export default function CashierInventory() {
     fetchProducts()
   }, [])
 
-  const fetchProducts = async (search?: string) => {
+  const fetchProducts = async (search?: string, silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const res = await inventoryProductsService.getAll({ search })
       setProducts(res.data || [])
     } catch (err: any) {
-      toast.error(err.message || 'Failed to fetch inventory')
+      if (!silent) toast.error(err.message || 'Failed to fetch inventory')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
+
+  useAutoRefresh(() => fetchProducts(searchTerm, true))
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {

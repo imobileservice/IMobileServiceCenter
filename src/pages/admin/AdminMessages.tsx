@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { messagesService } from "@/lib/supabase/services/messages"
 import MessageDetailsModal from "@/components/admin/message-details-modal"
 import AdminLayout from "@/components/admin-layout"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import type { Database } from "@/lib/supabase/types"
 
 type Message = Database['public']['Tables']['messages']['Row']
@@ -18,32 +19,24 @@ export default function MessagesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedMessage, setSelectedMessage] = useState<string | null>(null)
 
-  const fetchMessages = async () => {
+  const fetchMessages = async (silent = false) => {
     try {
-      setLoading(true)
+      if (!silent) setLoading(true)
       const data = await messagesService.getAll()
       setMessages(data || [])
     } catch (error) {
       console.error('Failed to fetch messages:', error)
-      setMessages([])
+      if (!silent) setMessages([])
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchMessages()
-    
-    // Listen for message updates
-    const handleMessageUpdate = () => {
-      fetchMessages()
-    }
-    window.addEventListener('messageUpdated', handleMessageUpdate)
-    
-    return () => {
-      window.removeEventListener('messageUpdated', handleMessageUpdate)
-    }
   }, [])
+
+  useAutoRefresh(() => fetchMessages(true))
 
   const filteredMessages = messages.filter(
     (m) =>

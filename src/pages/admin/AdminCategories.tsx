@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { categoriesService, type Category } from "@/lib/supabase/services/categories"
 import { notifyUpdate } from "@/hooks/use-realtime-updates"
+import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import CategoryModal from "@/components/admin/category-modal"
 import CategoryList from "@/components/admin/categories/category-list"
 import AdminLayout from "@/components/admin-layout"
@@ -37,17 +38,9 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     fetchCategories()
-
-    // Listen for category updates
-    const handleCategoryUpdate = () => {
-      fetchCategories(true)
-    }
-    window.addEventListener('categoryUpdated', handleCategoryUpdate)
-
-    return () => {
-      window.removeEventListener('categoryUpdated', handleCategoryUpdate)
-    }
   }, [])
+
+  useAutoRefresh(() => fetchCategories(true), { intervalMs: 30000 })
 
   const filteredCategories = categories.filter(
     (c) =>
