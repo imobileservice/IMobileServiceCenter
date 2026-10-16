@@ -121,6 +121,12 @@ export default function CashierPOS() {
   // Handle barcode scanner input (most scanners act as rapid keyboard entry + Enter)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // The scan box and the invoice box submit their own Enter; handling it here too added every scan twice.
+      if ((e.target as HTMLElement | null)?.closest?.('[data-scan-input]')) {
+        barcodeBuffer.current = ""
+        return
+      }
+
       const now = Date.now()
       
       // If keystrokes are very fast (e.g. < 50ms), it's likely a scanner
@@ -507,6 +513,7 @@ export default function CashierPOS() {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
                 ref={searchInputRef}
+                data-scan-input
                 placeholder="Scan barcode or type product name..."
                 className="pl-12 h-14 text-lg font-medium rounded-xl border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 shadow-inner"
                 value={searchTerm}
@@ -1162,6 +1169,7 @@ export default function CashierPOS() {
                     <label className="text-sm font-bold text-muted-foreground uppercase">Invoice Number</label>
                     <Input 
                       placeholder="e.g. INV-..." 
+                      data-scan-input
                       className="mt-1 h-12 text-lg uppercase"
                       value={returnInvoiceNumber}
                       onChange={(e) => setReturnInvoiceNumber(e.target.value.toUpperCase())}
