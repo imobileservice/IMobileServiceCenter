@@ -103,6 +103,8 @@ export interface SaleItem {
 
 export interface CreateSalePayload {
   customer_id?: string
+  supplier_id?: string
+  delivery_fee?: number
   customer_name?: string
   customer_phone?: string
   payment_method: 'cash' | 'card' | 'bank_transfer' | 'online'

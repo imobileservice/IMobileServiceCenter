@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
 import crypto from 'crypto'
+import { getDeliveryFee } from '../utils/delivery-fee'
 
 const router = Router()
 
@@ -78,6 +79,25 @@ router.post('/', async (req: Request, res: Response) => {
 
     const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
 
+    const supplierId = req.body.supplier_id || null
+    if (customer_id && supplierId) {
+      return res.status(400).json({ error: 'Select one customer or shop' })
+    }
+    const isDelivery = Boolean(customer_id || supplierId)
+    if (isDelivery) {
+      const { data: recipient, error: recipientError } = await supabase
+        .from(supplierId ? 'inv_suppliers' : 'inv_customers')
+        .select(supplierId ? 'id, is_active' : 'id').eq('id', supplierId || customer_id).maybeSingle()
+      if (recipientError) throw recipientError
+      if (!recipient || (supplierId && (recipient as any).is_active === false)) {
+        return res.status(400).json({ error: 'The selected customer or shop is no longer available' })
+      }
+    }
+    const deliveryFee = isDelivery ? await getDeliveryFee(supabase) : 0
+    if (isDelivery && (req.body.delivery_fee == null || Number(req.body.delivery_fee) !== deliveryFee)) {
+      return res.status(409).json({ error: 'The delivery fee has changed. Review the updated total and complete payment again.' })
+    }
+
     /**
      * Only the fields process_sale understands are forwarded.
      *
@@ -113,9 +133,16 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Call the transactional RPC function
-    const { data, error } = await supabase.rpc('process_sale', rpcArgs)
+    if (isDelivery) {
+      rpcArgs.p_delivery_fee = deliveryFee
+      rpcArgs.p_supplier_id = supplierId
+    }
+    const { data, error } = await supabase.rpc(isDelivery ? 'process_sale_with_delivery' : 'process_sale', rpcArgs)
 
     if (error) {
+      if (isDelivery && (error.code === 'PGRST202' || error.code === '42883')) {
+        return res.status(503).json({ error: 'POS delivery fees require the add_pos_delivery_fee.sql database migration. No sale was completed.' })
+      }
       console.error('[Sales] RPC process_sale error:', error)
       // Check if it's a stock error
       if (error.message?.includes('Insufficient stock')) {
@@ -128,6 +155,7 @@ router.post('/', async (req: Request, res: Response) => {
       data && typeof data === 'object' && !Array.isArray(data)
         ? {
             ...data,
+            delivery_fee: isDelivery ? (data as any).delivery_fee : 0,
             customer_name: (data as any).customer_name || customer_name || 'Walk-in Customer',
             customer_phone: (data as any).customer_phone || customer_phone || null,
             payment_method: (data as any).payment_method || payment_method || 'cash',

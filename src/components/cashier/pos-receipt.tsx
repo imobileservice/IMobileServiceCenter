@@ -26,6 +26,7 @@ export interface ReceiptSale {
   payment_method?: string | null
   total_amount?: number
   discount_amount?: number
+  delivery_fee?: number
   net_amount?: number
   shop?: string | null
   till_code?: string | null
@@ -143,18 +144,18 @@ export default function PosReceipt({
         </div>
         <div className="flex justify-between">
           <span>Delivery fee</span>
-          <span className="font-bold">0.00</span>
+          <span className="font-bold">{amount(sale?.delivery_fee)}</span>
         </div>
       </div>
 
       <div className="space-y-1 mb-3 border-b border-dashed border-black pb-3 text-right">
         <div className="flex justify-between text-sm font-black">
           <span>Total</span>
-          <span>{formatCurrency(sale?.net_amount || sale?.total_amount || 0).replace("Rs. ", "")}</span>
+          <span>{formatCurrency(sale?.net_amount ?? sale?.total_amount ?? 0).replace("Rs. ", "")}</span>
         </div>
         <div className="flex justify-between">
           <span>Paid {formatPaymentMethod(sale?.payment_method).toUpperCase()}</span>
-          <span className="font-bold">{formatCurrency(sale?.net_amount || sale?.total_amount || 0).replace("Rs. ", "")}</span>
+          <span className="font-bold">{formatCurrency(sale?.net_amount ?? sale?.total_amount ?? 0).replace("Rs. ", "")}</span>
         </div>
         <div className="flex justify-between">
           <span>Balance</span>

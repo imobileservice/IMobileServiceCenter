@@ -193,7 +193,7 @@ export default function SalesHistoryPage() {
         <div class="totals">
           <div><span>Sub Total</span><strong>${escapeHtml(formatReceiptAmount(sale.total_amount))}</strong></div>
           <div><span>Total Discount</span><strong>${escapeHtml(formatReceiptAmount(sale.discount_amount))}</strong></div>
-          <div><span>Delivery fee</span><strong>0.00</strong></div>
+          <div><span>Delivery fee</span><strong>${escapeHtml(formatReceiptAmount(sale.delivery_fee || 0))}</strong></div>
         </div>
 
         <div class="pay">
@@ -536,7 +536,7 @@ export default function SalesHistoryPage() {
                       </div>
                       <div className="flex justify-between text-muted-foreground font-medium">
                          <span>Delivery fee</span>
-                         <span>0.00</span>
+                         <span>{formatCurrency(selectedSale.delivery_fee || 0)}</span>
                       </div>
                       <div className="flex justify-between text-xl font-black pt-4 border-t border-dashed border-border">
                          <span>Net Total</span>

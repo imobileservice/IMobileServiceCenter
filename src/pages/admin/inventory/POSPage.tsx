@@ -27,6 +27,7 @@ import { resolveReceiptBranch } from "@/lib/utils/receipt-branch"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import { usePosDeliveryFee } from "@/hooks/use-pos-delivery-fee"
 
 interface CartItem {
   id: string
@@ -43,6 +44,7 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
+  const { deliveryFee, feeUnavailable, confirmDeliveryFee, refreshDeliveryFee } = usePosDeliveryFee(Boolean(selectedCustomer), cart.length > 0)
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer'>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
   const [lastSale, setLastSale] = useState<any>(null)
@@ -167,16 +169,18 @@ export default function POSPage() {
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   const discount = 0 // Basic version
-  const total = subtotal - discount
+  const total = subtotal - discount + deliveryFee
 
   const receiptBranch = resolveReceiptBranch(lastSale?.shop, lastSale?.till_code)
 
   const handleCheckout = async () => {
-    if (cart.length === 0) return
+    if (cart.length === 0 || isProcessing) return
     setIsProcessing(true)
     try {
+      const confirmedFee = await confirmDeliveryFee()
       const saleData = {
         customer_id: selectedCustomer?.id,
+        delivery_fee: confirmedFee,
         customer_name: selectedCustomer?.name || 'Walk-in Customer',
         payment_method: paymentMethod,
         source: 'pos' as const,
@@ -194,6 +198,7 @@ export default function POSPage() {
       setSelectedCustomer(null)
       toast.success("Transaction completed successfully!")
     } catch (err: any) {
+      void refreshDeliveryFee()
       toast.error(err.message || "Failed to process sale")
     } finally {
       setIsProcessing(false)
@@ -430,9 +435,13 @@ export default function POSPage() {
                 <span>Tax (0%)</span>
                 <span className="font-semibold">{formatCurrency(0)}</span>
               </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Delivery fee</span>
+                <span className="font-semibold">{feeUnavailable ? 'Loading / unavailable' : formatCurrency(deliveryFee)}</span>
+              </div>
               <div className="pt-4 border-t border-border flex items-center justify-between">
                 <span className="text-xl font-bold">Total</span>
-                <span className="text-3xl font-black text-primary">{formatCurrency(total)}</span>
+                <span aria-live="polite" className="text-3xl font-black text-primary">{feeUnavailable ? '—' : formatCurrency(total)}</span>
               </div>
             </div>
 
@@ -440,7 +449,7 @@ export default function POSPage() {
                <Button 
                 className="w-full h-16 text-xl font-bold shadow-xl shadow-primary/20" 
                 size="lg"
-                disabled={cart.length === 0 || isProcessing}
+                disabled={cart.length === 0 || isProcessing || feeUnavailable}
                 onClick={handleCheckout}
                >
                  {isProcessing ? (
@@ -512,7 +521,7 @@ export default function POSPage() {
                       </div>
                       <div className="flex justify-between">
                         <span>Delivery fee:</span>
-                        <span>0.00</span>
+                        <span>{formatCurrency(lastSale?.delivery_fee || 0)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-black">
                         <span>NET TOTAL:</span>

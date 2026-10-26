@@ -17,6 +17,9 @@ async function main() {
   let setting: any = null
   let settingsFail = false
   const storedOrders: any[] = []
+  const storedSales: any[] = []
+  let deliveryRpcMissing = false
+  let lastSaleArgs: any
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
     status, headers: { 'Content-Type': 'application/json' },
   })
@@ -42,6 +45,23 @@ async function main() {
       return json(row, 201)
     }
     if (url.pathname === '/rest/v1/order_items' && method === 'POST') return json(null, 201)
+    if (['/rest/v1/inv_customers', '/rest/v1/inv_suppliers'].includes(url.pathname)) {
+      return json(url.searchParams.get('id') === 'eq.missing' ? [] : [{ id: 'recipient-test', is_active: true }])
+    }
+    if (url.pathname === '/rest/v1/inv_sales') return json(storedSales)
+    if (url.pathname.startsWith('/rest/v1/rpc/process_sale')) {
+      const delivery = url.pathname.endsWith('process_sale_with_delivery')
+      if (delivery && deliveryRpcMissing) return json({ code: 'PGRST202', message: 'Missing RPC' }, 404)
+      lastSaleArgs = JSON.parse(String(init?.body))
+      const amount = lastSaleArgs.p_items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0)
+      const row = {
+        id: `sale-${storedSales.length}`, sale_id: `sale-${storedSales.length}`, total_amount: amount,
+        delivery_fee: delivery ? lastSaleArgs.p_delivery_fee : 0,
+        net_amount: amount - lastSaleArgs.p_discount + lastSaleArgs.p_tax + (delivery ? lastSaleArgs.p_delivery_fee : 0),
+      }
+      storedSales.push(row)
+      return json(row)
+    }
     throw new Error(`Unexpected test request: ${method} ${url.pathname}`)
   }
 
@@ -53,6 +73,7 @@ async function main() {
   const { generateInvoicePDF, generateDeliveryBillPDF } = await import('../src/server/api/utils/invoice-generator')
   const { default: OrderSummary } = await import('../src/components/order-summary')
   const { default: PosReceipt } = await import('../src/components/cashier/pos-receipt')
+  const { default: salesRouter } = await import('../src/server/api/inventory/sales.controller')
   invoiceService.sendInvoice = async () => ({ success: true })
   const app = express()
   app.use(express.json())
@@ -68,12 +89,13 @@ async function main() {
   app.get('/settings/:key', getSettingHandler)
   app.put('/settings/:key', updateSettingHandler)
   app.post('/orders', createOrderHandler)
+  app.use('/sales', salesRouter)
   const server = app.listen(0, '127.0.0.1')
   await new Promise<void>((resolve) => server.once('listening', resolve))
   const port = (server.address() as any).port
   const api = async (path: string, body?: unknown, admin = true) => {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: body === undefined ? 'GET' : path === '/orders' ? 'POST' : 'PUT',
+      method: body === undefined ? 'GET' : ['/orders', '/sales'].includes(path) ? 'POST' : 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-session-token': 'test-customer', ...(admin ? { 'x-test-admin': 'yes' } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
@@ -150,6 +172,36 @@ async function main() {
       }))
       assert.match(receipt, /Delivery fee<\/span><span[^>]*>0\.00/)
     }
+    await api('/settings/delivery_fee', { value: '350.25' })
+    const sale = {
+      supplier_id: 'shop-test', customer_name: 'Developer', delivery_fee: 350.25,
+      payment_method: 'cash', source: 'pos', items: [{ product_id: 'product-test', price: 2950, quantity: 1 }],
+    }
+    const deliveredSale = await api('/sales', sale)
+    assert.equal(deliveredSale.status, 201)
+    assert.equal(deliveredSale.body.data.delivery_fee, 350.25)
+    assert.equal(deliveredSale.body.data.net_amount, 3300.25)
+    assert.equal(lastSaleArgs.p_supplier_id, 'shop-test')
+    assert.equal(lastSaleArgs.p_customer_id, null, 'Shop id must not use the customer foreign key')
+    const savedSale = (await api('/sales')).body.data[0]
+    for (const variant of ['original', 'reprint'] as const) {
+      const receipt = renderToStaticMarkup(createElement(PosReceipt, { sale: savedSale, variant }))
+      assert.match(receipt, /Delivery fee<\/span><span[^>]*>350\.25/)
+      assert.match(receipt, /3,300\.25/)
+    }
+    const savedCustomer = await api('/sales', { ...sale, supplier_id: undefined, customer_id: 'customer-test' })
+    assert.equal(savedCustomer.body.data.net_amount, 3300.25)
+    const walkInSale = await api('/sales', { ...sale, supplier_id: undefined, delivery_fee: 999 })
+    assert.equal(walkInSale.status, 201)
+    assert.equal(walkInSale.body.data.delivery_fee, 0)
+    assert.equal(walkInSale.body.data.net_amount, 2950)
+    assert.equal((await api('/sales', { ...sale, delivery_fee: 0 })).status, 409)
+    assert.equal((await api('/sales', { ...sale, supplier_id: 'missing' })).status, 400)
+    assert.equal((await api('/sales', { ...sale, customer_id: 'customer-test' })).status, 400)
+    deliveryRpcMissing = true
+    assert.equal((await api('/sales', sale)).status, 503)
+    assert.equal(storedSales.length, 3, 'Failed or outdated checkout must not create a sale')
+    console.log('PASS: POS selected shop and customer fees, walk-in zero, saved totals, originals/reprints, stale quotes and missing migration without partial sales.')
     console.log('PASS: delivery fee validation, admin access, persistence, checkout totals, walk-in zero, stale fees, existing bills, failure handling, and both PDF formats.')
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))

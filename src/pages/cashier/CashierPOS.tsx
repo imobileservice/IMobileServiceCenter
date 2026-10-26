@@ -29,6 +29,7 @@ import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receipt"
 import PosCustomerPicker, { type PosCustomer } from "@/components/cashier/pos-customer-picker"
+import { usePosDeliveryFee } from "@/hooks/use-pos-delivery-fee"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
@@ -91,6 +92,7 @@ export default function CashierPOS() {
   const [walkInName, setWalkInName] = useState("")
   const [walkInPhone, setWalkInPhone] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<PosCustomer | null>(null)
+  const { deliveryFee, feeUnavailable, confirmDeliveryFee, refreshDeliveryFee } = usePosDeliveryFee(Boolean(selectedCustomer), cart.length > 0)
   const [isSavingCustomer, setIsSavingCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -363,7 +365,7 @@ export default function CashierPOS() {
 
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0)
   const discount = 0 // Basic version
-  const total = subtotal - discount
+  const total = subtotal - discount + deliveryFee
 
   // The server closes a till's session when the same till code is signed in
   // again elsewhere, or when it runs out. This device cannot sell on it any
@@ -378,14 +380,17 @@ export default function CashierPOS() {
   }
 
   const handleCheckout = async () => {
-    if (cart.length === 0) return
+    if (cart.length === 0 || isProcessing) return
     setIsProcessing(true)
     try {
+      const confirmedFee = await confirmDeliveryFee()
       const customerName = selectedCustomer?.name || walkInName.trim() || 'Walk-in Customer'
       const customerPhone = selectedCustomer?.phone || walkInPhone.trim() || undefined
       const saleData = {
         // Supplier ids belong to inv_suppliers, not the inv_customers foreign key.
         customer_id: selectedCustomer?.source === 'customer' ? selectedCustomer.id : undefined,
+        supplier_id: selectedCustomer?.source === 'supplier' ? selectedCustomer.id : undefined,
+        delivery_fee: confirmedFee,
         customer_name: customerName,
         customer_phone: customerPhone,
         payment_method: paymentMethod,
@@ -430,6 +435,7 @@ export default function CashierPOS() {
       setWalkInPhone("")
       toast.success("Transaction completed successfully!")
     } catch (err: any) {
+      void refreshDeliveryFee()
       if (!endTillSessionIfRejected(err)) toast.error(err.message || "Failed to process sale")
     } finally {
       setIsProcessing(false)
@@ -852,9 +858,13 @@ export default function CashierPOS() {
                 <span>Tax (0%)</span>
                 <span className="font-semibold">{formatCurrency(0)}</span>
               </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Delivery fee</span>
+                <span className="font-semibold">{feeUnavailable ? 'Loading / unavailable' : formatCurrency(deliveryFee)}</span>
+              </div>
               <div className="pt-4 border-t border-border flex items-center justify-between">
                 <span className="text-xl font-bold">Total</span>
-                <span className="text-3xl font-black text-primary">{formatCurrency(total)}</span>
+                <span aria-live="polite" className="text-3xl font-black text-primary">{feeUnavailable ? '—' : formatCurrency(total)}</span>
               </div>
             </div>
 
@@ -862,7 +872,7 @@ export default function CashierPOS() {
                <Button 
                 className="w-full h-16 text-xl font-bold shadow-xl shadow-primary/20" 
                 size="lg"
-                disabled={cart.length === 0 || isProcessing}
+                disabled={cart.length === 0 || isProcessing || feeUnavailable}
                 onClick={handleCheckout}
                >
                  {isProcessing ? (
