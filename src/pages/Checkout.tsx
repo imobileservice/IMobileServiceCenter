@@ -14,6 +14,8 @@ import OrderSummary from "@/components/order-summary"
 import { toast } from "sonner"
 import { getApiUrl } from "@/lib/utils/api"
 import { formatCurrency } from "@/lib/utils/currency"
+import { defaultDeliveryFee, isWalkInOrder } from "@/lib/utils/order-totals"
+import { useDeliveryFee } from "@/hooks/use-delivery-fee"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { getSelectedPhoneModel, type SelectedPhoneModel } from "@/lib/phone-model-session"
 
@@ -49,6 +51,8 @@ export default function CheckoutPage() {
     const navigate = useNavigate()
     const user = useAuthStore((state) => state.user)
     const [step, setStep] = useState(1)
+    const [paymentMethod, setPaymentMethod] = useState('cash_on_delivery')
+    const { fee: deliveryFee, error: deliveryFeeError, refresh: refreshDeliveryFee } = useDeliveryFee()
     const [orderPlaced, setOrderPlaced] = useState(false)
     const [orderNumber, setOrderNumber] = useState<string | null>(null)
     const [orderId, setOrderId] = useState<string | null>(null)
@@ -56,6 +60,7 @@ export default function CheckoutPage() {
     const [customerEmail, setCustomerEmail] = useState<string | null>(null)
     const [cartItems, setCartItems] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+    const [submitting, setSubmitting] = useState(false)
     const checkoutStartTime = useRef<number>(Date.now())
     const hasTrackedAbandonment = useRef(false)
 
@@ -123,13 +128,22 @@ export default function CheckoutPage() {
             return
         }
 
-        if (loading) {
+        if (loading || submitting) {
             console.log('[Checkout] Already processing, ignoring duplicate click')
             return
         }
 
         try {
-            setLoading(true)
+            setSubmitting(true)
+            const currentFee = isWalkInOrder(formData.paymentMethod) ? 0 : await refreshDeliveryFee()
+            if (currentFee === null) {
+                toast.error('Unable to load the delivery fee. Please try again.')
+                return
+            }
+            if (formData.paymentMethod !== 'visit_shop' && currentFee !== deliveryFee) {
+                toast.info('The delivery fee has changed. Please review the updated total and place your order again.')
+                return
+            }
             console.log('[Checkout] Starting order creation...', { userId: user.id, itemCount: cartItems.length })
 
             try {
@@ -158,7 +172,7 @@ export default function CheckoutPage() {
             const subtotal = cartItems.reduce((sum, item) => {
                 return sum + (getPrice(item) * item.quantity)
             }, 0)
-            const shipping = subtotal > 15000 ? 0 : 500
+            const shipping = defaultDeliveryFee(currentFee, formData.paymentMethod)
             const tax = 0 // Tax removed as requested
             const total = subtotal + shipping + tax
 
@@ -268,6 +282,7 @@ export default function CheckoutPage() {
             }
         } catch (error: any) {
             console.error("Order creation failed:", error)
+            void refreshDeliveryFee()
             toast.error(error.message || "Failed to place order")
 
             try {
@@ -278,7 +293,7 @@ export default function CheckoutPage() {
                 console.error("Failed to update checkout status:", updateError)
             }
         } finally {
-            setLoading(false)
+            setSubmitting(false)
         }
     }
 
@@ -449,11 +464,12 @@ export default function CheckoutPage() {
                                 onNext={() => setStep(step + 1)}
                                 onPrevious={() => setStep(step - 1)}
                                 onComplete={handleComplete}
+                                onPaymentMethodChange={setPaymentMethod}
                             />
                         </motion.div>
                     </div>
 
-                    <OrderSummary cartItems={cartItems} />
+                    <OrderSummary cartItems={cartItems} paymentMethod={paymentMethod} deliveryFee={deliveryFee} deliveryFeeError={deliveryFeeError} />
                 </div>
             </div>
         </div>

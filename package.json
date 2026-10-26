@@ -20,6 +20,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "e2e": "echo \"Error: no e2e test specified\" && exit 1",
     "verify:assistant": "tsx scripts/verify-assistant-admin.ts",
+    "verify:delivery-fee": "tsx scripts/verify-delivery-fee.ts",
     "verify:supplier-stock": "tsx scripts/verify-supplier-stock.ts",
     "verify:supplier-flow": "node scripts/verify-supplier-flow.cjs",
     "verify:supplier-access": "node scripts/verify-supplier-access.cjs",

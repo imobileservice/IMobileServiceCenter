@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { createClient } from '@supabase/supabase-js'
 import { asyncHandler } from '../utils/async-handler'
+import { parseDeliveryFee } from '../../../lib/utils/order-totals'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -50,7 +51,14 @@ export const getSettingHandler = asyncHandler(async (req: Request, res: Response
 // PUT /api/admin/settings/:key - Update a setting value
 export const updateSettingHandler = asyncHandler(async (req: Request, res: Response) => {
   const { key } = req.params
-  const { value, description } = req.body
+  let { value, description } = req.body
+  if (key === 'delivery_fee') {
+    try {
+      value = parseDeliveryFee(value).toFixed(2)
+    } catch (error: any) {
+      return res.status(400).json({ error: error.message })
+    }
+  }
   const supabase = getSupabaseAdmin()
 
   // Check if setting exists

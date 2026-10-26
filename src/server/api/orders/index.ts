@@ -5,10 +5,12 @@ import { getUserOrdersHandler } from './list'
 import { sendInvoiceHandler } from './send-invoice'
 import { downloadInvoiceHandler } from './download-invoice'
 import { checkOrderNumberHandler } from './check-number'
+import { getDeliveryFeeHandler } from './delivery-fee'
 
 const router = Router()
 
 router.get('/', getUserOrdersHandler)
+router.get('/delivery-fee', getDeliveryFeeHandler)
 router.post('/', createOrderHandler)
 router.post('/whatsapp', sendWhatsAppHandler)
 router.post('/:id/send-invoice', sendInvoiceHandler)

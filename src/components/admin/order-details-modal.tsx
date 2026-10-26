@@ -227,6 +227,15 @@ export default function OrderDetailsModal({ orderId, onClose }: OrderDetailsModa
 
           {/* Total */}
           <div className="border-t border-border pt-6">
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between text-sm">
+                <span>Subtotal</span><span>{formatCurrency(order.subtotal)}</span>
+              </div>
+              {Number(order.tax) > 0 && <div className="flex justify-between text-sm"><span>Tax</span><span>{formatCurrency(order.tax)}</span></div>}
+              <div className="flex justify-between text-sm">
+                <span>Delivery fee</span><span>{formatCurrency(order.shipping || 0)}</span>
+              </div>
+            </div>
             <div className="flex justify-between items-center mb-6">
               <p className="text-lg font-bold">Total Amount</p>
               <p className="text-2xl font-bold text-primary">{formatCurrency(order.total || 0)}</p>

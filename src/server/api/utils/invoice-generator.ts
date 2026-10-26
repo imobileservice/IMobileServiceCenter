@@ -139,8 +139,14 @@ export const generateInvoicePDF = (order: Order, items: OrderItem[]): Promise<Bu
 
         y += 20
         doc
-            .text('Shipping:', labelX, y)
+            .text('Delivery fee:', labelX, y)
             .text(formatCurrency(Number(order.shipping)), valueX, y, { width: valueWidth, align: 'right' })
+
+        if (Number(order.tax) > 0) {
+            y += 20
+            doc.text('Tax:', labelX, y)
+                .text(formatCurrency(Number(order.tax)), valueX, y, { width: valueWidth, align: 'right' })
+        }
 
         y += 25
         doc
@@ -260,8 +266,15 @@ export const generateDeliveryBillPDF = (order: Order, items: OrderItem[]): Promi
             .fontSize(10)
             .text('Subtotal', 370, y)
             .text(formatCurrency(Number(order.subtotal || 0)), 455, y, { width: 98, align: 'right' })
-            .text('Shipping', 370, y + 18)
+            .text('Delivery fee', 370, y + 18)
             .text(formatCurrency(Number(order.shipping || 0)), 455, y + 18, { width: 98, align: 'right' })
+
+        if (Number(order.tax) > 0) {
+            doc.text('Tax', 370, y + 36)
+                .text(formatCurrency(Number(order.tax)), 455, y + 36, { width: 98, align: 'right' })
+            y += 18
+        }
+        doc
             .font('Helvetica-Bold')
             .fontSize(13)
             .text('Total', 370, y + 42)

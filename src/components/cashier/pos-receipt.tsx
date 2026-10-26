@@ -141,6 +141,10 @@ export default function PosReceipt({
           <span>Total Discount</span>
           <span className="font-bold">{formatCurrency(sale?.discount_amount || 0).replace("Rs. ", "")}</span>
         </div>
+        <div className="flex justify-between">
+          <span>Delivery fee</span>
+          <span className="font-bold">0.00</span>
+        </div>
       </div>
 
       <div className="space-y-1 mb-3 border-b border-dashed border-black pb-3 text-right">

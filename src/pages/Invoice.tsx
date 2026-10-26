@@ -101,7 +101,7 @@ export default function InvoicePage() {
       toast.error('Failed to download PDF invoice')
       
       // Fallback to text file if PDF fails
-      const invoiceText = `Order Number: ${order.order_number}\nTotal: ${formatCurrency(Number(order.total))}`
+      const invoiceText = `Order Number: ${order.order_number}\nSubtotal: ${formatCurrency(Number(order.subtotal))}\nDelivery fee: ${formatCurrency(Number(order.shipping))}\nTotal: ${formatCurrency(Number(order.total))}`
       const blob = new Blob([invoiceText], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -295,11 +295,10 @@ export default function InvoicePage() {
                 <span className="font-semibold">{formatCurrency(Number(order.subtotal))}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Shipping:</span>
+                <span className="text-muted-foreground">Delivery fee:</span>
                 <span className="font-semibold">{formatCurrency(Number(order.shipping))}</span>
               </div>
-              {/* Note: There was a duplicate 'Shipping' line here in original code, removed the duplicate */}
-              {/* Tax removed as requested */}
+              {Number(order.tax) > 0 && <div className="flex justify-between text-sm"><span className="text-muted-foreground">Tax:</span><span className="font-semibold">{formatCurrency(order.tax)}</span></div>}
               <div className="flex justify-between text-lg font-bold pt-3 border-t border-border">
                 <span>Total:</span>
                 <span className="text-primary">{formatCurrency(Number(order.total))}</span>

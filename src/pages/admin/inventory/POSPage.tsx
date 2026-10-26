@@ -510,6 +510,10 @@ export default function POSPage() {
                         <span>Total Items:</span>
                         <span>{lastSale?.items_count}</span>
                       </div>
+                      <div className="flex justify-between">
+                        <span>Delivery fee:</span>
+                        <span>0.00</span>
+                      </div>
                       <div className="flex justify-between text-sm font-black">
                         <span>NET TOTAL:</span>
                         <span>{formatCurrency(lastSale?.net_amount || lastSale?.total_amount)}</span>

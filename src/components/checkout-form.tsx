@@ -14,9 +14,10 @@ interface CheckoutFormProps {
   onNext: () => void
   onPrevious: () => void
   onComplete: (orderData: any) => void
+  onPaymentMethodChange?: (method: string) => void
 }
 
-export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: CheckoutFormProps) {
+export default function CheckoutForm({ step, onNext, onPrevious, onComplete, onPaymentMethodChange }: CheckoutFormProps) {
   const user = useAuthStore((state) => state.user)
   const [formData, setFormData] = useState({
     fullName: "",
@@ -119,6 +120,7 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
 
   const handlePaymentChange = (method: string) => {
     setFormData((prev) => ({ ...prev, paymentMethod: method }))
+    onPaymentMethodChange?.(method)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -365,7 +367,7 @@ export default function CheckoutForm({ step, onNext, onPrevious, onComplete }: C
       {/* Buttons */}
       <div className="flex gap-4">
         {step > 1 && (
-          <Button type="button" onClick={onPrevious} variant="outline" className="flex-1 bg-transparent">
+          <Button type="button" onClick={onPrevious} disabled={loading} variant="outline" className="flex-1 bg-transparent">
             Previous
           </Button>
         )}

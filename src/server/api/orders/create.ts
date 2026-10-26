@@ -4,6 +4,8 @@ import { asyncHandler } from '../utils/async-handler'
 import { generateInvoicePDF } from '../utils/invoice-generator'
 import { sendEmail } from '../utils/email'
 import { invoiceService } from '../services/invoice-service'
+import { isWalkInOrder, orderTotals } from '../../../lib/utils/order-totals'
+import { getDeliveryFee } from '../utils/delivery-fee'
 
 /**
  * POST /api/orders
@@ -58,11 +60,17 @@ export const createOrderHandler = asyncHandler(async (req: Request, res: Respons
   // Use admin client for DB operations to bypass RLS policies
   const adminClient = createClient(supabaseUrl, secretKey)
 
+  const shipping = isWalkInOrder(order.payment_method) ? 0 : await getDeliveryFee(adminClient)
+  if (Number(order.shipping) !== shipping) {
+    return res.status(409).json({ error: 'The delivery fee has changed. Please review the updated total and place your order again.' })
+  }
+
   // Create order
   const { data: orderData, error: orderError } = await adminClient
     .from('orders')
     .insert({
       ...order,
+      ...orderTotals(order, shipping),
       user_id: user.id,
     })
     .select()

@@ -9,6 +9,7 @@ import { useAuthStore } from "@/lib/store"
 import { cartService } from "@/lib/supabase/services/cart"
 import { toast } from "sonner"
 import { formatCurrency } from "@/lib/utils/currency"
+import { useDeliveryFee } from "@/hooks/use-delivery-fee"
 import type { Database } from "@/lib/supabase/types"
 
 type CartItem = Database['public']['Tables']['cart_items']['Row'] & {
@@ -28,6 +29,7 @@ export default function CartPage() {
   const user = useAuthStore((state) => state.user)
   const [items, setItems] = useState<CartItem[]>([])
   const [loading, setLoading] = useState(true)
+  const { fee: deliveryFee, error: deliveryFeeError } = useDeliveryFee()
 
   // Redirect if not logged in
   useEffect(() => {
@@ -273,15 +275,15 @@ export default function CartPage() {
                 <span>{formatCurrency(getTotalPrice())}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Shipping</span>
-                <span>{getTotalPrice() > 15000 ? "Free" : formatCurrency(500)}</span>
+                <span className="text-muted-foreground">Delivery fee</span>
+                <span>{deliveryFeeError ? 'Unavailable — please retry' : deliveryFee === null ? 'Loading...' : formatCurrency(deliveryFee)}</span>
               </div>
               {/* Tax removed as requested */}
 
               <div className="border-t border-border pt-4 flex justify-between font-bold text-lg">
                 <span>Total</span>
                 <span className="text-primary">
-                  {formatCurrency(getTotalPrice() + (getTotalPrice() > 15000 ? 0 : 500))}
+                  {deliveryFee === null || deliveryFeeError ? '—' : formatCurrency(getTotalPrice() + deliveryFee)}
                 </span>
               </div>
             </div>
@@ -292,7 +294,7 @@ export default function CartPage() {
               </Button>
             </Link>
 
-            <p className="text-xs text-muted-foreground text-center mt-4">Free shipping on orders over Rs. 15,000</p>
+            <p className="text-xs text-muted-foreground text-center mt-4">Delivery fee is included above. Choose Visit Shop &amp; Pay at checkout for no delivery charge.</p>
           </motion.div>
         </div>
       </div>

@@ -1054,7 +1054,7 @@ export default function ProductDetailPage() {
                     <Truck className="w-5 h-5 text-primary mt-1 flex-shrink-0" />
                     <div>
                       <p className="font-semibold">Free Shipping</p>
-                      <p className="text-sm text-muted-foreground">Free shipping on orders over Rs. 15,000</p>
+                      <p className="text-sm text-muted-foreground">Delivery fee shown at checkout. No delivery charge for shop pickup.</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">

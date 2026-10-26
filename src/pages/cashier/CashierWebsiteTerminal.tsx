@@ -404,7 +404,7 @@ export default function CashierWebsiteTerminal() {
                       <span>{formatCurrency(Number(selectedOrder.subtotal || 0))}</span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Shipping</span>
+                      <span>Delivery fee</span>
                       <span>{formatCurrency(Number(selectedOrder.shipping || 0))}</span>
                     </div>
                     <div className="flex justify-between text-xl font-black">

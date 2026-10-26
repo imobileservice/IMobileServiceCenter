@@ -37,7 +37,8 @@ export const invoiceService = {
           <p>We've received your order <strong>#${order.order_number}</strong> placed on ${new Date(order.created_at).toLocaleDateString()}.</p>
           <p>Your official invoice is attached to this email as a PDF.</p>
           <div style="background-color: #f9f9f9; padding: 15px; margin: 20px 0; border-radius: 5px;">
-            <p style="margin: 0;"><strong>Total Amount:</strong> ${formatCurrency(Number(order.total))}</p>
+            <p style="margin: 0;"><strong>Delivery fee:</strong> ${formatCurrency(Number(order.shipping))}</p>
+            <p style="margin: 5px 0 0;"><strong>Total Amount:</strong> ${formatCurrency(Number(order.total))}</p>
             <p style="margin: 5px 0 0;"><strong>Status:</strong> ${order.status?.toUpperCase() || 'PENDING'}</p>
           </div>
           <p>If you have any questions, please contact us.</p>

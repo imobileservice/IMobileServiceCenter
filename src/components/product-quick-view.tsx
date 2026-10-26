@@ -88,7 +88,7 @@ export default function ProductQuickView({ product, onClose }: ProductQuickViewP
 
                 <div className="mb-6">
                   <p className="text-4xl font-bold text-primary mb-2">{formatCurrency(product.price)}</p>
-                  <p className="text-muted-foreground">Free shipping on orders over Rs. 15,000</p>
+                  <p className="text-muted-foreground">Delivery fee shown at checkout. No delivery charge for shop pickup.</p>
                 </div>
 
                 <div className="space-y-3 mb-6">

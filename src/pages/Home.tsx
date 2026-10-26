@@ -33,8 +33,8 @@ const FEATURES = [
   },
   {
     icon: Truck,
-    title: "Free Shipping",
-    description: "On orders over Rs. 15,000",
+    title: "Delivery or Pickup",
+    description: "Delivery fee shown at checkout; free shop pickup",
   },
 ]
 

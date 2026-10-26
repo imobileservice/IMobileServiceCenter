@@ -1,12 +1,16 @@
 "use client"
 
 import { formatCurrency } from "@/lib/utils/currency"
+import { defaultDeliveryFee } from "@/lib/utils/order-totals"
 
 interface OrderSummaryProps {
   cartItems?: any[]
+  paymentMethod?: string
+  deliveryFee: number | null
+  deliveryFeeError?: boolean
 }
 
-export default function OrderSummary({ cartItems = [] }: OrderSummaryProps) {
+export default function OrderSummary({ cartItems = [], paymentMethod = 'cash_on_delivery', deliveryFee, deliveryFeeError }: OrderSummaryProps) {
   const items = cartItems
   const loading = false
 
@@ -20,7 +24,8 @@ export default function OrderSummary({ cartItems = [] }: OrderSummaryProps) {
   const subtotal = items.reduce((sum: number, item: any) => {
     return sum + (getPrice(item) * item.quantity)
   }, 0)
-  const shipping = subtotal > 15000 ? 0 : 500
+  const shipping = defaultDeliveryFee(deliveryFee || 0, paymentMethod)
+  const feeUnavailable = paymentMethod !== 'visit_shop' && (deliveryFee === null || deliveryFeeError)
   const tax = 0 // Tax removed
   const total = subtotal + shipping + tax
 
@@ -62,14 +67,14 @@ export default function OrderSummary({ cartItems = [] }: OrderSummaryProps) {
           <span>{formatCurrency(subtotal)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Shipping</span>
-          <span>{shipping === 0 ? "Free" : formatCurrency(shipping)}</span>
+          <span className="text-muted-foreground">Delivery fee</span>
+          <span>{feeUnavailable ? (deliveryFeeError ? 'Unavailable — please retry' : 'Loading...') : formatCurrency(shipping)}</span>
         </div>
         {/* Tax removed as requested */}
 
         <div className="border-t border-border pt-3 flex justify-between font-bold text-lg">
           <span>Total</span>
-          <span className="text-primary">{formatCurrency(total)}</span>
+          <span className="text-primary" aria-live="polite">{feeUnavailable ? '—' : formatCurrency(total)}</span>
         </div>
       </div>
     </div>
