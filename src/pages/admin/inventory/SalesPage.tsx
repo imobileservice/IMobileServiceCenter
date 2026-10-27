@@ -380,6 +380,7 @@ export default function SalesHistoryPage() {
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Items</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Payment</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-right">Net Amount</th>
+                  <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground">Status</th>
                   <th className="p-4 font-bold text-xs uppercase tracking-wider text-muted-foreground text-right w-40">Actions</th>
                 </tr>
               </thead>
@@ -393,12 +394,13 @@ export default function SalesHistoryPage() {
                        <td className="p-4 text-center"><div className="h-4 w-8 bg-muted rounded mx-auto" /></td>
                        <td className="p-4"><div className="h-6 w-20 bg-muted rounded-full" /></td>
                        <td className="p-4 text-right"><div className="h-6 w-24 bg-muted rounded ml-auto" /></td>
+                       <td className="p-4"><div className="h-4 w-16 bg-muted rounded" /></td>
                        <td className="p-4"></td>
                     </tr>
                    ))
                 ) : filteredSales.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-12 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-12 text-center text-muted-foreground">
                       No sales records found.
                     </td>
                   </tr>
@@ -436,6 +438,7 @@ export default function SalesHistoryPage() {
                       <td className="p-4 text-right">
                          <span className="font-black text-primary">{formatCurrency(sale.net_amount)}</span>
                       </td>
+                      <td className="p-4 text-sm font-semibold">{hasSaleReturns(sale) ? 'Return' : ''}</td>
                       <td className="p-2 text-right">
                          <div className="flex items-center justify-end gap-2">
                             <Button 
