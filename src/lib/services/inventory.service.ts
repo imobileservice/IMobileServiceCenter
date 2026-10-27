@@ -105,6 +105,7 @@ export interface CreateSalePayload {
   customer_id?: string
   supplier_id?: string
   delivery_fee?: number
+  delivery_fee_override?: boolean
   customer_name?: string
   customer_phone?: string
   payment_method: 'cash' | 'card' | 'bank_transfer' | 'online'
@@ -162,6 +163,7 @@ export const inventorySalesService = {
   },
 
   returnItem: (payload: {
+    sale_item_id?: string
     invoice_number: string
     product_id: string
     quantity: number

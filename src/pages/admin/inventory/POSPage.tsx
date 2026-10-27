@@ -28,6 +28,7 @@ import { inventoryProductsService, inventorySalesService, inventoryCustomersServ
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import { usePosDeliveryFee } from "@/hooks/use-pos-delivery-fee"
+import PosDeliveryFee from "@/components/cashier/pos-delivery-fee"
 
 interface CartItem {
   id: string
@@ -44,7 +45,7 @@ export default function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [customers, setCustomers] = useState<any[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
-  const { deliveryFee, feeUnavailable, confirmDeliveryFee, refreshDeliveryFee } = usePosDeliveryFee(Boolean(selectedCustomer), cart.length > 0)
+  const { deliveryFee, feeUnavailable, confirmDeliveryFee, refreshDeliveryFee, feeInput, setFeeInput, resetFee, feeInvalid, feeLoading, feeOverridden } = usePosDeliveryFee(selectedCustomer?.id || null, cart.length > 0)
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'bank_transfer'>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
   const [lastSale, setLastSale] = useState<any>(null)
@@ -181,6 +182,7 @@ export default function POSPage() {
       const saleData = {
         customer_id: selectedCustomer?.id,
         delivery_fee: confirmedFee,
+        delivery_fee_override: feeOverridden,
         customer_name: selectedCustomer?.name || 'Walk-in Customer',
         payment_method: paymentMethod,
         source: 'pos' as const,
@@ -196,6 +198,7 @@ export default function POSPage() {
       setShowReceipt(true)
       setCart([])
       setSelectedCustomer(null)
+      resetFee()
       toast.success("Transaction completed successfully!")
     } catch (err: any) {
       void refreshDeliveryFee()
@@ -388,6 +391,8 @@ export default function POSPage() {
                    <Plus className="w-4 h-4" />
                  </Button>
                </div>
+              <PosDeliveryFee value={feeInput} onChange={setFeeInput} onReset={resetFee}
+                disabled={!selectedCustomer || isProcessing || feeLoading} invalid={feeInvalid} overridden={feeOverridden} />
             </div>
           </div>
 
@@ -461,7 +466,7 @@ export default function POSPage() {
                    <span className="flex items-center gap-2">COMPLETE PAYMENT <CheckCircle2 className="w-6 h-6" /></span>
                  )}
                </Button>
-               <Button variant="outline" size="lg" className="h-14 font-bold" onClick={() => setCart([])}>
+               <Button variant="outline" size="lg" className="h-14 font-bold" disabled={isProcessing} onClick={() => { setCart([]); resetFee() }}>
                  CANCEL ORDER
                </Button>
             </div>

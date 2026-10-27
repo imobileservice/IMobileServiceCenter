@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
 import crypto from 'crypto'
 import { getDeliveryFee } from '../utils/delivery-fee'
+import { parseDeliveryFee } from '../../../lib/utils/order-totals'
+import { includeSaleReturns } from '../utils/sale-returns'
 
 const router = Router()
 
@@ -93,8 +95,14 @@ router.post('/', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'The selected customer or shop is no longer available' })
       }
     }
-    const deliveryFee = isDelivery ? await getDeliveryFee(supabase) : 0
-    if (isDelivery && (req.body.delivery_fee == null || Number(req.body.delivery_fee) !== deliveryFee)) {
+    const overridden = req.body.delivery_fee_override === true
+    let customFee = 0
+    if (isDelivery && overridden) {
+      try { customFee = parseDeliveryFee(req.body.delivery_fee) }
+      catch (error: any) { return res.status(400).json({ error: error.message }) }
+    }
+    const deliveryFee = isDelivery ? (overridden ? customFee : await getDeliveryFee(supabase)) : 0
+    if (isDelivery && !overridden && (req.body.delivery_fee == null || Number(req.body.delivery_fee) !== deliveryFee)) {
       return res.status(409).json({ error: 'The delivery fee has changed. Review the updated total and complete payment again.' })
     }
 
@@ -224,7 +232,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (error) throw error
 
-    res.json({ data })
+    res.json({ data: await includeSaleReturns(supabase, data || []) })
   } catch (error: any) {
     console.error('[Inventory Sales] GET error:', error)
     res.status(500).json({ error: error.message })
@@ -256,7 +264,7 @@ router.get('/invoice/:invoice_number', async (req: Request, res: Response) => {
       throw error
     }
 
-    res.json({ data })
+    res.json({ data: (await includeSaleReturns(supabase, [data]))[0] })
   } catch (error: any) {
     console.error('[Inventory Sales] GET/invoice/:invoice_number error:', error)
     res.status(500).json({ error: error.message })
@@ -283,7 +291,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (error) throw error
 
-    res.json({ data })
+    res.json({ data: (await includeSaleReturns(supabase, [data]))[0] })
   } catch (error: any) {
     console.error('[Inventory Sales] GET/:id error:', error)
     res.status(500).json({ error: error.message })
@@ -383,20 +391,28 @@ router.post('/return', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'condition must be "good" or "damaged"' })
     }
 
+    if (!Number.isSafeInteger(Number(quantity)) || Number(quantity) <= 0) {
+      return res.status(400).json({ error: 'Return quantity must be a positive whole number' })
+    }
+
     const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
     const sessionNote = posSession ? `POS session ${posSession.id}` : null
 
-    const { data, error } = await supabase.rpc('process_return', {
+    const { data, error } = await supabase.rpc('process_return_item', {
       p_invoice_number: invoice_number,
       p_product_id: product_id,
       p_quantity: Number(quantity),
       p_condition: condition,
       p_notes: [notes, sessionNote].filter(Boolean).join(' | ') || null,
       p_created_by: posSession?.cashier_email || created_by || 'cashier',
+      p_sale_item_id: req.body.sale_item_id || null,
     })
 
     if (error) {
       console.error('[Sales Return] RPC process_return error:', error)
+      if (error.code === 'PGRST202' || error.code === '42883') {
+        return res.status(503).json({ error: 'Return tracking is not installed. Apply add_pos_return_tracking.sql before processing returns.' })
+      }
       return res.status(400).json({ error: error.message })
     }
 

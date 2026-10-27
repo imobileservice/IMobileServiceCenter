@@ -24,6 +24,7 @@ import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import Barcode from "react-barcode"
+import SaleReturnSummary, { ReturnCounts } from "@/components/sale-return-summary"
 
 export default function SalesHistoryPage() {
   const [sales, setSales] = useState<any[]>([])
@@ -397,6 +398,7 @@ export default function SalesHistoryPage() {
                     <tr key={sale.id} className="border-b border-border hover:bg-muted/30 transition-colors group">
                       <td className="p-4">
                         <span className="font-mono font-black text-sm">{sale.invoice_number}</span>
+                        <ReturnCounts sale={sale} />
                         <div className="flex gap-1 mt-1">
                           <Badge variant={sale.source === 'pos' ? 'default' : 'outline'} className="text-[8px] h-4 px-1 leading-none uppercase">{sale.source}</Badge>
                         </div>
@@ -516,7 +518,7 @@ export default function SalesHistoryPage() {
                       <tbody className="divide-y divide-border/50">
                          {getSaleItems(selectedSale).map((item: any) => (
                            <tr key={item.id}>
-                              <td className="py-4 font-bold text-sm">{item.product_name}</td>
+                              <td className="py-4 font-bold text-sm">{item.product_name}<p className="text-xs font-normal text-muted-foreground">Returned: {item.returned_good_quantity || 0} good, {item.returned_bad_quantity || 0} bad</p></td>
                               <td className="py-4 text-center font-bold">{item.quantity}</td>
                               <td className="py-4 text-right">{formatCurrency(item.unit_price)}</td>
                               <td className="py-4 text-right font-black">{formatCurrency(item.total_price)}</td>
@@ -524,6 +526,7 @@ export default function SalesHistoryPage() {
                          ))}
                       </tbody>
                    </table>
+                   <SaleReturnSummary sale={selectedSale} />
 
                    <div className="mt-8 space-y-2 border-t border-border pt-4">
                       <div className="flex justify-between text-muted-foreground font-medium">

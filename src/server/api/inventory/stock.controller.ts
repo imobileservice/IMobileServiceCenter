@@ -9,18 +9,20 @@ router.get('/', async (req: Request, res: Response) => {
     const supabase = getSupabaseAdmin()
     const { low_only } = req.query
 
-    const { data, error } = await supabase
-      .from('inv_stock')
-      .select(`
+    const data: any[] = []
+    for (let offset = 0; ; offset += 1000) {
+      const page = await supabase.from('inv_stock').select(`
         *,
         products (
           id, name, category_id, brand, barcode, price, cost_price, buy_price,
           product_images (url, is_primary)
         )
       `)
-      .order('updated_at', { ascending: false })
-
-    if (error) throw error
+        .order('id').range(offset, offset + 999)
+      if (page.error) throw page.error
+      data.push(...(page.data || []))
+      if (!page.data || page.data.length < 1000) break
+    }
 
     let result = (data || []).map((s: any) => ({
       ...s,

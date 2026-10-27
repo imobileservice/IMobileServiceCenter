@@ -10,6 +10,7 @@ CREATE ROLE authenticated;
 CREATE ROLE service_role;
 CREATE TYPE inv_payment_method AS ENUM ('cash', 'card', 'bank_transfer', 'online');
 CREATE TYPE inv_sale_source AS ENUM ('pos', 'website');
+CREATE TYPE inv_stock_movement_type AS ENUM ('sale', 'return_good', 'return_damaged');
 CREATE TABLE inv_suppliers (id UUID PRIMARY KEY);
 CREATE TABLE phone_models (id UUID PRIMARY KEY);
 CREATE TABLE products (id UUID PRIMARY KEY, name TEXT);
@@ -23,8 +24,8 @@ CREATE TABLE inv_sales (
   source inv_sale_source, notes TEXT, created_by TEXT, shop TEXT,
   pos_session_id UUID, till_id UUID, till_code TEXT
 );
-CREATE TABLE inv_sale_items (sale_id UUID, product_id UUID, product_name TEXT, quantity INT, unit_price NUMERIC, total_price NUMERIC);
-CREATE TABLE inv_stock_movements (product_id UUID, type TEXT, quantity INT, reference_id UUID, notes TEXT, created_by TEXT);
+CREATE TABLE inv_sale_items (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), sale_id UUID, product_id UUID, product_name TEXT, quantity INT, unit_price NUMERIC, total_price NUMERIC);
+CREATE TABLE inv_stock_movements (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID, type inv_stock_movement_type, quantity INT, reference_id UUID, notes TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now());
 CREATE SEQUENCE invoice_seq;
 CREATE FUNCTION generate_invoice_number() RETURNS TEXT LANGUAGE SQL AS $$ SELECT 'TEST-' || nextval('invoice_seq'); $$;
 \ir ../supabase/migrations/add_sold_as_model_name.sql

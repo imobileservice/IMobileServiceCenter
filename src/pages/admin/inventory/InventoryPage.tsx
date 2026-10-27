@@ -24,12 +24,13 @@ import { formatCurrency } from "@/lib/utils/currency"
 import { inventoryStockService, inventoryProductsService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import BadProductCards from "@/components/admin/bad-product-cards"
 
 export default function InventoryPage() {
   const [stockData, setStockData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filter, setFilter] = useState<'all' | 'low'>('all')
+  const [filter, setFilter] = useState<'all' | 'low' | 'bad'>('all')
   const [selectedItem, setSelectedItem] = useState<any>(null)
   const [isAdjusting, setIsAdjusting] = useState(false)
   const [adjustmentValue, setAdjustmentValue] = useState(0)
@@ -39,7 +40,7 @@ export default function InventoryPage() {
   const fetchStock = async (silent = false) => {
     try {
       if (!silent) setLoading(true)
-      const res = await inventoryStockService.getAll(filter === 'low')
+      const res = await inventoryStockService.getAll()
       setStockData(res.data || [])
     } catch (err) {
       console.error('Failed to fetch stock:', err)
@@ -51,7 +52,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     fetchStock()
-  }, [filter])
+  }, [])
 
   useAutoRefresh(() => fetchStock(true))
 
@@ -85,8 +86,9 @@ export default function InventoryPage() {
 
   const filteredStock = stockData.filter(item => {
     const displayName = getDisplayName(item.products);
-    return displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matches = displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
            item.products?.barcode?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matches && (filter === 'all' || (filter === 'low' ? item.is_low_stock : Number(item.damaged_quantity) > 0))
   })
 
   const lowStockCount = stockData.filter(item => item.is_low_stock).length
@@ -108,7 +110,7 @@ export default function InventoryPage() {
         </div>
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -119,8 +121,8 @@ export default function InventoryPage() {
                  <Package className="w-6 h-6 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Total Items</p>
-                <p className="text-3xl font-black">{stockData.reduce((acc, curr) => acc + (curr.quantity || 0), 0)}</p>
+                <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Good Stock</p>
+                <p className="text-3xl font-black">{stockData.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0)}</p>
               </div>
             </div>
           </motion.div>
@@ -160,6 +162,12 @@ export default function InventoryPage() {
               </div>
             </div>
           </motion.div>
+          <button type="button" onClick={() => { setSearchTerm(''); setFilter('bad') }} aria-pressed={filter === 'bad'}
+            className="bg-card border border-red-500/30 p-6 rounded-2xl shadow-sm text-left hover:bg-red-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+            <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Bad Products</p>
+            <p className="text-3xl font-black text-red-500">{stockData.reduce((sum, item) => sum + Number(item.damaged_quantity || 0), 0)}</p>
+            <p className="text-xs text-muted-foreground mt-1">Click to view all damaged products</p>
+          </button>
         </div>
 
         {/* Filters and Search */}
@@ -186,11 +194,12 @@ export default function InventoryPage() {
             >
               Low Stock
             </button>
+            <button type="button" onClick={() => setFilter('bad')} className={`flex-1 px-4 py-2 rounded-md text-sm font-bold ${filter === 'bad' ? 'bg-card shadow-sm text-red-500' : 'text-muted-foreground'}`}>Bad Products</button>
           </div>
         </div>
 
         {/* Stock Table */}
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        {filter === 'bad' ? (loading ? <p role="status">Loading bad products...</p> : <BadProductCards items={filteredStock} />) : <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -217,7 +226,7 @@ export default function InventoryPage() {
                    ))
                 ) : filteredStock.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
+                    <td colSpan={6} className="p-12 text-center text-muted-foreground italic">
                        No products found matching your criteria.
                     </td>
                   </tr>
@@ -287,7 +296,7 @@ export default function InventoryPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Adjustment Modal */}

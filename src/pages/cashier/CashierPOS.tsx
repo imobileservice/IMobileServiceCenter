@@ -30,6 +30,8 @@ import { formatCurrency } from "@/lib/utils/currency"
 import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receipt"
 import PosCustomerPicker, { type PosCustomer } from "@/components/cashier/pos-customer-picker"
 import { usePosDeliveryFee } from "@/hooks/use-pos-delivery-fee"
+import PosDeliveryFee from "@/components/cashier/pos-delivery-fee"
+import SaleReturnSummary from "@/components/sale-return-summary"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
@@ -92,7 +94,7 @@ export default function CashierPOS() {
   const [walkInName, setWalkInName] = useState("")
   const [walkInPhone, setWalkInPhone] = useState("")
   const [selectedCustomer, setSelectedCustomer] = useState<PosCustomer | null>(null)
-  const { deliveryFee, feeUnavailable, confirmDeliveryFee, refreshDeliveryFee } = usePosDeliveryFee(Boolean(selectedCustomer), cart.length > 0)
+  const { deliveryFee, feeUnavailable, confirmDeliveryFee, refreshDeliveryFee, feeInput, setFeeInput, resetFee, feeInvalid, feeLoading, feeOverridden } = usePosDeliveryFee(selectedCustomer ? `${selectedCustomer.source}:${selectedCustomer.id}` : null, cart.length > 0)
   const [isSavingCustomer, setIsSavingCustomer] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -391,6 +393,7 @@ export default function CashierPOS() {
         customer_id: selectedCustomer?.source === 'customer' ? selectedCustomer.id : undefined,
         supplier_id: selectedCustomer?.source === 'supplier' ? selectedCustomer.id : undefined,
         delivery_fee: confirmedFee,
+        delivery_fee_override: feeOverridden,
         customer_name: customerName,
         customer_phone: customerPhone,
         payment_method: paymentMethod,
@@ -431,6 +434,7 @@ export default function CashierPOS() {
       setShowReceipt(true)
       setCart([])
       setSelectedCustomer(null)
+      resetFee()
       setWalkInName("")
       setWalkInPhone("")
       toast.success("Transaction completed successfully!")
@@ -454,12 +458,13 @@ export default function CashierPOS() {
   }
 
   const handleProcessReturn = async () => {
-    if (!returnItemModal || !returnItemModal.condition || !scannedSale) return
+    if (!returnItemModal || !returnItemModal.condition || !scannedSale || isReturning) return
     setIsReturning(true)
     try {
       await inventorySalesService.returnItem({
         invoice_number: scannedSale.invoice_number,
         product_id: returnItemModal.item.product_id,
+        sale_item_id: returnItemModal.item.id,
         quantity: returnItemModal.quantity,
         condition: returnItemModal.condition,
         created_by: cashier?.email || 'cashier',
@@ -715,6 +720,7 @@ export default function CashierPOS() {
                 <PosCustomerPicker
                   value={selectedCustomer}
                   onSelect={customer => {
+                    resetFee()
                     setSelectedCustomer(customer)
                     setWalkInName("")
                     setWalkInPhone("")
@@ -740,6 +746,9 @@ export default function CashierPOS() {
                     </button>
                   </div>
                 )}
+
+                <PosDeliveryFee value={feeInput} onChange={setFeeInput} onReset={resetFee}
+                  disabled={!selectedCustomer || isProcessing || feeLoading} invalid={feeInvalid} overridden={feeOverridden} />
 
                 {showNewCustomer && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border border-border rounded-lg bg-card">
@@ -884,7 +893,7 @@ export default function CashierPOS() {
                    <span className="flex items-center gap-2">COMPLETE PAYMENT <CheckCircle2 className="w-6 h-6" /></span>
                  )}
                </Button>
-               <Button variant="outline" size="lg" className="h-14 font-bold" onClick={() => setCart([])}>
+               <Button variant="outline" size="lg" className="h-14 font-bold" disabled={isProcessing} onClick={() => { setCart([]); resetFee() }}>
                  CANCEL ORDER
                </Button>
                <Button variant="secondary" size="lg" className="h-14 font-bold" onClick={() => setReturnPromptOpen(true)}>
@@ -997,14 +1006,16 @@ export default function CashierPOS() {
                       <tbody className="divide-y divide-border/50">
                          {scannedSale.inv_sale_items?.map((item: any) => (
                            <tr key={item.id}>
-                              <td className="py-4 font-bold text-sm tracking-tight">{item.product_name}</td>
+                              <td className="py-4 font-bold text-sm tracking-tight">{item.product_name}
+                                <p className="text-xs font-normal text-muted-foreground">Returned: {item.returned_good_quantity || 0} good, {item.returned_bad_quantity || 0} bad · Remaining: {item.remaining_returnable_quantity ?? item.quantity}</p>
+                              </td>
                                <td className="py-4 text-center font-black">{item.quantity}</td>
                               <td className="py-4 text-right text-sm">{formatCurrency(item.unit_price)}</td>
                               <td className="py-4 text-right font-black text-primary text-sm">{formatCurrency(item.total_price)}</td>
                               <td className="py-4 text-right">
                                 {(() => {
                                    const isExpired = (new Date().getTime() - new Date(scannedSale.created_at).getTime()) > 4 * 24 * 60 * 60 * 1000;
-                                   return !isExpired ? (
+                                   return !isExpired && Number(item.remaining_returnable_quantity ?? item.quantity) > 0 ? (
                                       <Button variant="outline" size="sm" onClick={() => setReturnItemModal({ item, quantity: 1, condition: null })}>
                                         Return
                                       </Button>
@@ -1015,6 +1026,7 @@ export default function CashierPOS() {
                          ))}
                       </tbody>
                    </table>
+                   <SaleReturnSummary sale={scannedSale} />
                 </div>
 
                 <div className="p-6 border-t border-border bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1049,6 +1061,7 @@ export default function CashierPOS() {
                       <div className="mb-4">
                         <p className="font-semibold">{returnItemModal.item.product_name}</p>
                         <p className="text-sm text-muted-foreground">Original Qty: {returnItemModal.item.quantity}</p>
+                        <p className="text-sm text-muted-foreground">Remaining returnable: {returnItemModal.item.remaining_returnable_quantity ?? returnItemModal.item.quantity}</p>
                       </div>
 
                       <div className="mb-6 space-y-4">
@@ -1062,7 +1075,7 @@ export default function CashierPOS() {
                               <span className="w-10 text-center font-bold">{returnItemModal.quantity}</span>
                               <Button 
                                 variant="outline" size="icon" 
-                                onClick={() => setReturnItemModal(p => p ? {...p, quantity: Math.min(p.item.quantity, p.quantity + 1)} : p)}
+                                onClick={() => setReturnItemModal(p => p ? {...p, quantity: Math.min(p.item.remaining_returnable_quantity ?? p.item.quantity, p.quantity + 1)} : p)}
                               ><Plus className="w-4 h-4"/></Button>
                            </div>
                         </div>
@@ -1082,7 +1095,7 @@ export default function CashierPOS() {
                                className={returnItemModal.condition === 'damaged' ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
                                onClick={() => setReturnItemModal(p => p ? {...p, condition: 'damaged'} : p)}
                              >
-                               Damaged / Defective
+                               Bad / Damaged
                              </Button>
                            </div>
                         </div>

@@ -28,6 +28,7 @@ import { formatCurrency } from "@/lib/utils/currency"
 import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
+import SaleReturnSummary, { ReturnCounts } from "@/components/sale-return-summary"
 
 type RangeKey = "today" | "7" | "30" | "all"
 
@@ -341,7 +342,7 @@ export default function CashierOrderHistory() {
                           {new Date(sale.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           <div className="text-[10px]">{new Date(sale.created_at).toLocaleDateString()}</div>
                         </td>
-                        <td className="px-6 py-4 font-mono text-xs">{sale.invoice_number}</td>
+                        <td className="px-6 py-4 font-mono text-xs">{sale.invoice_number}<ReturnCounts sale={sale} /></td>
                         <td className="px-6 py-4 font-medium">
                           {sale.customer_name || "Walk-in"}
                           {!isMine(sale) && (
@@ -375,7 +376,7 @@ export default function CashierOrderHistory() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-mono text-xs font-bold truncate">{sale.invoice_number}</p>
+                        <p className="font-mono text-xs font-bold truncate">{sale.invoice_number}</p><ReturnCounts sale={sale} />
                         <p className="text-sm font-medium truncate mt-0.5">{sale.customer_name || "Walk-in"}</p>
                         <p className="text-[11px] text-muted-foreground mt-0.5">{formatDateTime(sale.created_at)}</p>
                       </div>
@@ -484,7 +485,7 @@ export default function CashierOrderHistory() {
                   <tbody className="divide-y divide-border/50">
                     {(selectedSale.inv_sale_items || []).map((item: any) => (
                       <tr key={item.id}>
-                        <td className="py-3 font-bold text-sm tracking-tight">{item.product_name}</td>
+                        <td className="py-3 font-bold text-sm tracking-tight">{item.product_name}<p className="text-xs font-normal text-muted-foreground">Returned: {item.returned_good_quantity || 0} good, {item.returned_bad_quantity || 0} bad</p></td>
                         <td className="py-3 text-center font-black">{item.quantity}</td>
                         <td className="py-3 text-right text-sm">{formatCurrency(item.unit_price)}</td>
                         <td className="py-3 text-right font-black text-primary text-sm">
@@ -494,6 +495,7 @@ export default function CashierOrderHistory() {
                     ))}
                   </tbody>
                 </table>
+                <SaleReturnSummary sale={selectedSale} />
 
                 {selectedSale.notes && (
                   <p className="mt-4 text-xs text-muted-foreground">

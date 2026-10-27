@@ -49,6 +49,7 @@ async function main() {
       return json(url.searchParams.get('id') === 'eq.missing' ? [] : [{ id: 'recipient-test', is_active: true }])
     }
     if (url.pathname === '/rest/v1/inv_sales') return json(storedSales)
+    if (url.pathname === '/rest/v1/inv_stock_movements') return json([])
     if (url.pathname.startsWith('/rest/v1/rpc/process_sale')) {
       const delivery = url.pathname.endsWith('process_sale_with_delivery')
       if (delivery && deliveryRpcMissing) return json({ code: 'PGRST202', message: 'Missing RPC' }, 404)
@@ -201,6 +202,19 @@ async function main() {
     deliveryRpcMissing = true
     assert.equal((await api('/sales', sale)).status, 503)
     assert.equal(storedSales.length, 3, 'Failed or outdated checkout must not create a sale')
+    deliveryRpcMissing = false
+    const customSale = await api('/sales', { ...sale, delivery_fee: 125.50, delivery_fee_override: true })
+    assert.equal(customSale.status, 201)
+    assert.equal(customSale.body.data.net_amount, 3075.50)
+    assert.equal(customSale.body.data.delivery_fee, 125.50)
+    const freeSale = await api('/sales', { ...sale, delivery_fee: 0, delivery_fee_override: true })
+    assert.equal(freeSale.body.data.net_amount, 2950)
+    for (const value of [-1, '1.234', null, '']) {
+      assert.equal((await api('/sales', { ...sale, delivery_fee: value, delivery_fee_override: true })).status, 400)
+    }
+    assert.equal((await api('/fee')).body.delivery_fee, 350.25, 'Cashier override must not change admin default')
+    assert.equal((await api('/sales', sale)).body.data.delivery_fee, 350.25, 'The next sale uses the admin default')
+    console.log('PASS: cashier custom fee, zero fee, invalid fees, default preserved and next sale default.')
     console.log('PASS: POS selected shop and customer fees, walk-in zero, saved totals, originals/reprints, stale quotes and missing migration without partial sales.')
     console.log('PASS: delivery fee validation, admin access, persistence, checkout totals, walk-in zero, stale fees, existing bills, failure handling, and both PDF formats.')
   } finally {
