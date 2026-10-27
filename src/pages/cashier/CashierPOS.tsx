@@ -32,6 +32,8 @@ import PosCustomerPicker, { type PosCustomer } from "@/components/cashier/pos-cu
 import { usePosDeliveryFee } from "@/hooks/use-pos-delivery-fee"
 import PosDeliveryFee from "@/components/cashier/pos-delivery-fee"
 import SaleReturnSummary from "@/components/sale-return-summary"
+import ReturnReceiptModal from "@/components/cashier/return-receipt-modal"
+import { receiptFromReturn, type ReturnReceiptData } from "@/lib/utils/return-receipt"
 import { inventoryProductsService, inventorySalesService, inventoryCustomersService } from "@/lib/services/inventory.service"
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
@@ -100,6 +102,7 @@ export default function CashierPOS() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [lastSale, setLastSale] = useState<any>(null)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [returnReceipt, setReturnReceipt] = useState<ReturnReceiptData | null>(null)
   const [scannedSale, setScannedSale] = useState<any>(null)
   const [returnItemModal, setReturnItemModal] = useState<{item: any, quantity: number, condition: 'good' | 'damaged' | null} | null>(null)
   const [isReturning, setIsReturning] = useState(false)
@@ -461,7 +464,7 @@ export default function CashierPOS() {
     if (!returnItemModal || !returnItemModal.condition || !scannedSale || isReturning) return
     setIsReturning(true)
     try {
-      await inventorySalesService.returnItem({
+      const result = await inventorySalesService.returnItem({
         invoice_number: scannedSale.invoice_number,
         product_id: returnItemModal.item.product_id,
         sale_item_id: returnItemModal.item.id,
@@ -471,11 +474,25 @@ export default function CashierPOS() {
         pos_session_id: tillSession?.id,
         pos_session_token: tillSession?.token
       })
+      const confirmed = result.data.receipt
+      setReturnReceipt({
+        return_number: confirmed.return_number, invoice_number: scannedSale.invoice_number,
+        returned_at: confirmed.returned_at, refund_amount: Number(result.data.refund_amount),
+        customer_name: scannedSale.customer_name, customer_phone: scannedSale.customer_phone || scannedSale.inv_customers?.phone,
+        cashier_name: confirmed.cashier_name || cashier?.name,
+        shop: confirmed.shop || scannedSale.shop, till_code: tillSession?.till?.code,
+        items: [{ product_name: returnItemModal.item.product_name, quantity: returnItemModal.quantity, condition: returnItemModal.condition }],
+      })
       toast.success("Return processed successfully!")
       setReturnItemModal(null)
-      // refresh scanned sale
-      const res = await inventorySalesService.getByInvoiceNumber(scannedSale.invoice_number)
-      setScannedSale(res.data)
+      // The return is already committed. A refresh failure must not invite a second refund.
+      try {
+        const res = await inventorySalesService.getByInvoiceNumber(scannedSale.invoice_number)
+        setScannedSale(res.data)
+      } catch {
+        setScannedSale(null)
+        toast.warning('Return saved. The receipt is available; reopen the invoice to refresh its history.')
+      }
     } catch (err: any) {
       if (!endTillSessionIfRejected(err)) toast.error(err.message || "Failed to process return")
     } finally {
@@ -906,7 +923,7 @@ export default function CashierPOS() {
 
       {/* POS Receipt Modal (Hidden by default, shown after checkout) */}
       <AnimatePresence>
-        {showReceipt && (
+        {showReceipt && !returnReceipt && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm print:bg-white print:p-0">
              <motion.div 
                initial={{ scale: 0.9, opacity: 0 }}
@@ -938,7 +955,7 @@ export default function CashierPOS() {
 
       {/* Scanned Sale / Return Window Modal */}
       <AnimatePresence>
-        {scannedSale && (
+        {scannedSale && !returnReceipt && (
            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
              <motion.div 
                initial={{ opacity: 0, y: 20 }}
@@ -1026,7 +1043,7 @@ export default function CashierPOS() {
                          ))}
                       </tbody>
                    </table>
-                   <SaleReturnSummary sale={scannedSale} />
+                   <SaleReturnSummary sale={scannedSale} onPrintReturn={entry => setReturnReceipt(receiptFromReturn(scannedSale, entry))} />
                 </div>
 
                 <div className="p-6 border-t border-border bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1115,6 +1132,8 @@ export default function CashierPOS() {
            </div>
         )}
       </AnimatePresence>
+
+      {returnReceipt && <ReturnReceiptModal receipt={returnReceipt} onClose={() => setReturnReceipt(null)} />}
 
       {/* Return Prompt Modal */}
       <AnimatePresence>

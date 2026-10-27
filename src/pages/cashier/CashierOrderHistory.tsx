@@ -29,6 +29,9 @@ import { inventorySalesService } from "@/lib/services/inventory.service"
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import SaleReturnSummary, { ReturnCounts } from "@/components/sale-return-summary"
+import ReturnHistoryStats from "@/components/return-history-stats"
+import ReturnReceiptModal from "@/components/cashier/return-receipt-modal"
+import { hasSaleReturns, receiptFromReturn, type ReturnReceiptData } from "@/lib/utils/return-receipt"
 
 type RangeKey = "today" | "7" | "30" | "all"
 
@@ -75,6 +78,8 @@ export default function CashierOrderHistory() {
   const [search, setSearch] = useState("")
   const [minePerCashier, setMinePerCashier] = useState(true)
   const [page, setPage] = useState(1)
+  const [returnsOnly, setReturnsOnly] = useState(false)
+  const [returnReceipt, setReturnReceipt] = useState<ReturnReceiptData | null>(null)
 
   const [selectedSale, setSelectedSale] = useState<any>(null)
   const [isLookingUp, setIsLookingUp] = useState(false)
@@ -115,12 +120,13 @@ export default function CashierOrderHistory() {
 
   useEffect(() => {
     setPage(1)
-  }, [range, search, minePerCashier])
+  }, [range, search, minePerCashier, returnsOnly])
 
-  const pageCount = Math.max(1, Math.ceil(sales.length / PAGE_SIZE))
+  const visibleSales = useMemo(() => returnsOnly ? sales.filter(hasSaleReturns) : sales, [sales, returnsOnly])
+  const pageCount = Math.max(1, Math.ceil(visibleSales.length / PAGE_SIZE))
   const pageSales = useMemo(
-    () => sales.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [sales, page]
+    () => visibleSales.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [visibleSales, page]
   )
 
   useEffect(() => {
@@ -265,6 +271,9 @@ export default function CashierOrderHistory() {
         </div>
 
         {/* Filters */}
+        <ReturnHistoryStats sales={sales} active={returnsOnly} onToggle={() => setReturnsOnly(value => !value)} />
+
+        {/* Filters */}
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -305,12 +314,12 @@ export default function CashierOrderHistory() {
             <div className="p-12 flex items-center justify-center gap-3 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" /> Loading orders...
             </div>
-          ) : sales.length === 0 ? (
+          ) : visibleSales.length === 0 ? (
             <div className="p-12 flex flex-col items-center gap-2 text-muted-foreground opacity-70">
               <AlertCircle className="w-8 h-8" />
-              <p className="font-semibold">No orders found</p>
+              <p className="font-semibold">{returnsOnly ? 'No returned invoices found' : 'No orders found'}</p>
               <p className="text-sm">
-                {search ? "Nothing matches that search." : `No sales in ${RANGE_LABELS[range].toLowerCase()}.`}
+                {returnsOnly ? 'No returns match the current filters.' : search ? "Nothing matches that search." : `No sales in ${RANGE_LABELS[range].toLowerCase()}.`}
               </p>
             </div>
           ) : (
@@ -394,7 +403,7 @@ export default function CashierOrderHistory() {
               {pageCount > 1 && (
                 <div className="flex items-center justify-between gap-3 p-4 border-t border-border bg-muted/20">
                   <p className="text-xs text-muted-foreground font-semibold">
-                    {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, sales.length)} of {sales.length}
+                    {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, visibleSales.length)} of {visibleSales.length}
                   </p>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
@@ -421,7 +430,7 @@ export default function CashierOrderHistory() {
 
       {/* Order detail */}
       <AnimatePresence>
-        {selectedSale && !showReceipt && (
+        {selectedSale && !showReceipt && !returnReceipt && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={closeDetail}>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -495,7 +504,7 @@ export default function CashierOrderHistory() {
                     ))}
                   </tbody>
                 </table>
-                <SaleReturnSummary sale={selectedSale} />
+                <SaleReturnSummary sale={selectedSale} onPrintReturn={entry => { setShowReceipt(false); setReturnReceipt(receiptFromReturn(selectedSale, entry)) }} />
 
                 {selectedSale.notes && (
                   <p className="mt-4 text-xs text-muted-foreground">
@@ -526,7 +535,7 @@ export default function CashierOrderHistory() {
 
       {/* Reprint. Same 80mm layout as the till prints, stamped as a reprint. */}
       <AnimatePresence>
-        {showReceipt && selectedSale && (
+        {showReceipt && selectedSale && !returnReceipt && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm print:bg-white print:p-0">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -553,6 +562,7 @@ export default function CashierOrderHistory() {
           </div>
         )}
       </AnimatePresence>
+      {returnReceipt && <ReturnReceiptModal receipt={returnReceipt} onClose={() => setReturnReceipt(null)} />}
     </CashierLayout>
   )
 }

@@ -397,13 +397,15 @@ router.post('/return', async (req: Request, res: Response) => {
 
     const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
     const sessionNote = posSession ? `POS session ${posSession.id}` : null
+    const returnNumber = `RET-${crypto.randomUUID().toUpperCase()}`
+    const returnedAt = new Date().toISOString()
 
     const { data, error } = await supabase.rpc('process_return_item', {
       p_invoice_number: invoice_number,
       p_product_id: product_id,
       p_quantity: Number(quantity),
       p_condition: condition,
-      p_notes: [notes, sessionNote].filter(Boolean).join(' | ') || null,
+      p_notes: [`Return receipt ${returnNumber}`, notes, sessionNote].filter(Boolean).join(' | '),
       p_created_by: posSession?.cashier_email || created_by || 'cashier',
       p_sale_item_id: req.body.sale_item_id || null,
     })
@@ -416,7 +418,12 @@ router.post('/return', async (req: Request, res: Response) => {
       return res.status(400).json({ error: error.message })
     }
 
-    res.status(200).json({ data })
+    res.status(200).json({ data: { ...data, receipt: {
+      return_number: returnNumber, invoice_number, returned_at: returnedAt,
+      quantity: Number(quantity), condition, refund_amount: data.refund_amount,
+      cashier_name: posSession?.cashier_name || posSession?.cashier_email || created_by || 'cashier',
+      shop: data.shop,
+    } } })
   } catch (error: any) {
     console.error('[Inventory Sales Return] POST error:', error)
     res.status(error.statusCode || 500).json({ error: error.message })

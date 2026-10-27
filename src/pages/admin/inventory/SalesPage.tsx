@@ -25,6 +25,9 @@ import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
 import Barcode from "react-barcode"
 import SaleReturnSummary, { ReturnCounts } from "@/components/sale-return-summary"
+import ReturnHistoryStats from "@/components/return-history-stats"
+import ReturnReceiptModal from "@/components/cashier/return-receipt-modal"
+import { hasSaleReturns, receiptFromReturn, type ReturnReceiptData } from "@/lib/utils/return-receipt"
 
 export default function SalesHistoryPage() {
   const [sales, setSales] = useState<any[]>([])
@@ -33,6 +36,8 @@ export default function SalesHistoryPage() {
   const [selectedSale, setSelectedSale] = useState<any>(null)
   const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null)
   const [summary, setSummary] = useState<any>(null)
+  const [returnsOnly, setReturnsOnly] = useState(false)
+  const [returnReceipt, setReturnReceipt] = useState<ReturnReceiptData | null>(null)
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
 
   const fetchSales = async (silent = false) => {
@@ -67,10 +72,11 @@ export default function SalesHistoryPage() {
 
   useAutoRefresh(() => Promise.all([fetchSales(true), fetchSummary()]))
 
-  const filteredSales = sales.filter(sale => 
+  const matchingSales = sales.filter(sale =>
     String(sale.invoice_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(sale.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
+  const filteredSales = returnsOnly ? matchingSales.filter(hasSaleReturns) : matchingSales
 
   const handleDelete = async (sale: any) => {
     const invoice = sale.invoice_number || sale.id
@@ -327,6 +333,9 @@ export default function SalesHistoryPage() {
         )}
 
         {/* Filters */}
+        <ReturnHistoryStats sales={matchingSales} active={returnsOnly} onToggle={() => setReturnsOnly(value => !value)} />
+
+        {/* Filters */}
         <div className="flex flex-col lg:flex-row gap-4 items-center bg-card border border-border p-4 rounded-xl shadow-sm">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -526,7 +535,7 @@ export default function SalesHistoryPage() {
                          ))}
                       </tbody>
                    </table>
-                   <SaleReturnSummary sale={selectedSale} />
+                   <SaleReturnSummary sale={selectedSale} onPrintReturn={entry => setReturnReceipt(receiptFromReturn(selectedSale, entry))} />
 
                    <div className="mt-8 space-y-2 border-t border-border pt-4">
                       <div className="flex justify-between text-muted-foreground font-medium">
@@ -572,6 +581,7 @@ export default function SalesHistoryPage() {
            </div>
         )}
       </AnimatePresence>
+      {returnReceipt && <ReturnReceiptModal receipt={returnReceipt} onClose={() => setReturnReceipt(null)} />}
     </AdminLayout>
   )
 }

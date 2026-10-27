@@ -4,6 +4,10 @@ In POS, choose a saved customer/shop and edit **Delivery fee (Rs.)** in the cust
 
 When processing a return, select the exact sale line, quantity, and **Good** or **Bad / Damaged** condition. Good returns restore sellable stock at the branch where the sale was made. Bad returns only increase `damaged_quantity`; they never increase sellable stock. Admin and cashier sale history show the return condition, quantity, date and refund. Previously returned quantities reduce the remaining returnable amount.
 
+After a successful return, POS opens a printable return receipt showing its return reference, original invoice, returned item/quantity, condition, cashier and confirmed refund. Reprint it using **Print return receipt** in the sale's return details. Older return records without a saved refund show **Not recorded**. No additional database migration is required for the receipt/reference feature once return tracking is installed.
+
+The top of cashier and admin sale history shows **Returned invoices** (distinct original invoices containing returns) and **Returned items** (good/bad quantities) for the current results. Click the returned-invoice count to filter the list; click again to show all sales.
+
 Refunds include the merchandise's share of the sale discount and tax. Delivery fees remain charged. Completed returns and stock updates are transactional, and simultaneous returns on the same invoice are serialized to prevent returning more units than were sold.
 
 In **Admin > Inventory Management**, **Good Stock** shows sellable units and **Bad Products** shows damaged units. Click the bad count for a searchable card list (four columns on desktop, two on tablet, one on mobile).

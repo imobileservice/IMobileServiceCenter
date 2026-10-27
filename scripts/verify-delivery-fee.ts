@@ -20,6 +20,7 @@ async function main() {
   const storedSales: any[] = []
   let deliveryRpcMissing = false
   let lastSaleArgs: any
+  let lastReturnArgs: any
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
     status, headers: { 'Content-Type': 'application/json' },
   })
@@ -50,6 +51,10 @@ async function main() {
     }
     if (url.pathname === '/rest/v1/inv_sales') return json(storedSales)
     if (url.pathname === '/rest/v1/inv_stock_movements') return json([])
+    if (url.pathname === '/rest/v1/rpc/process_return_item') {
+      lastReturnArgs = JSON.parse(String(init?.body))
+      return json({ success: true, refund_amount: 250, condition: lastReturnArgs.p_condition, shop: 'Meegoda' })
+    }
     if (url.pathname.startsWith('/rest/v1/rpc/process_sale')) {
       const delivery = url.pathname.endsWith('process_sale_with_delivery')
       if (delivery && deliveryRpcMissing) return json({ code: 'PGRST202', message: 'Missing RPC' }, 404)
@@ -96,7 +101,7 @@ async function main() {
   const port = (server.address() as any).port
   const api = async (path: string, body?: unknown, admin = true) => {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: body === undefined ? 'GET' : ['/orders', '/sales'].includes(path) ? 'POST' : 'PUT',
+      method: body === undefined ? 'GET' : ['/orders', '/sales', '/sales/return'].includes(path) ? 'POST' : 'PUT',
       headers: { 'Content-Type': 'application/json', 'x-session-token': 'test-customer', ...(admin ? { 'x-test-admin': 'yes' } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     })
@@ -215,6 +220,14 @@ async function main() {
     assert.equal((await api('/fee')).body.delivery_fee, 350.25, 'Cashier override must not change admin default')
     assert.equal((await api('/sales', sale)).body.data.delivery_fee, 350.25, 'The next sale uses the admin default')
     console.log('PASS: cashier custom fee, zero fee, invalid fees, default preserved and next sale default.')
+    const returned = await api('/sales/return', { invoice_number: 'INV-TEST', product_id: 'product-test', quantity: 1, condition: 'damaged', created_by: 'cashier-test' })
+    assert.equal(returned.status, 200)
+    assert.match(returned.body.data.receipt.return_number, /^RET-[0-9A-F-]+$/)
+    assert.equal(returned.body.data.receipt.invoice_number, 'INV-TEST')
+    assert.equal(returned.body.data.receipt.refund_amount, 250)
+    assert.match(lastReturnArgs.p_notes, new RegExp(returned.body.data.receipt.return_number))
+    assert.equal((await api('/sales/return', { invoice_number: 'INV-TEST', product_id: 'product-test', quantity: 1.5, condition: 'good' })).status, 400)
+    console.log('PASS: confirmed return receipt details and persistent receipt reference in the return ledger.')
     console.log('PASS: POS selected shop and customer fees, walk-in zero, saved totals, originals/reprints, stale quotes and missing migration without partial sales.')
     console.log('PASS: delivery fee validation, admin access, persistence, checkout totals, walk-in zero, stale fees, existing bills, failure handling, and both PDF formats.')
   } finally {

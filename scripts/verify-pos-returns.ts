@@ -5,6 +5,9 @@ import { summarizeSaleReturns } from '../src/lib/utils/sale-returns'
 import SaleReturnSummary from '../src/components/sale-return-summary'
 import BadProductCards from '../src/components/admin/bad-product-cards'
 import PosDeliveryFee from '../src/components/cashier/pos-delivery-fee'
+import ReturnReceipt from '../src/components/cashier/return-receipt'
+import ReturnHistoryStats from '../src/components/return-history-stats'
+import { receiptFromReturn, returnHistoryTotals, hasSaleReturns } from '../src/lib/utils/return-receipt'
 
 const sale = { id: 'sale', inv_sale_items: [
   { id: 'a', product_id: 'product', product_name: 'Samsung M02 Display', quantity: 2 },
@@ -42,3 +45,29 @@ assert.match(fee, /Use admin default/)
 assert.match(fee, /value="125.50"/)
 assert.doesNotMatch(fee, /disabled=""/)
 console.log('PASS: exact-line/legacy return summaries, history conditions/refunds, four-column bad-product cards, editable fee and default reset.')
+
+const receiptSale = { ...updated, invoice_number: 'INV-TEST', customer_name: 'Customer', shop: 'Meegoda', returns: [
+  { ...updated.returns[0], notes: 'Return receipt RET-ABC123', created_at: '2026-10-27T10:00:00Z', created_by: 'cashier@example.test' },
+  { ...updated.returns[1], notes: 'Return receipt RET-DEF456', refund_amount: 125, created_at: '2026-10-27T11:00:00Z' },
+] }
+const returnReceipt = receiptFromReturn(receiptSale, receiptSale.returns[0])
+assert.equal(returnReceipt.return_number, 'RET-ABC123')
+assert.equal(returnReceipt.refund_amount, 500, 'Each return receipt contains only its own refund')
+assert.equal(returnReceipt.items.length, 1)
+const print = renderToStaticMarkup(createElement(ReturnReceipt, { receipt: returnReceipt }))
+assert.match(print, /RETURN RECEIPT/)
+assert.match(print, /Original invoice: INV-TEST/)
+assert.match(print, /RET-ABC123/)
+assert.match(print, /Bad — damaged stock/)
+assert.match(print, /500\.00/)
+const legacyReceipt = receiptFromReturn(updated, updated.returns[1])
+assert.equal(legacyReceipt.refund_amount, null)
+assert.match(renderToStaticMarkup(createElement(ReturnReceipt, { receipt: legacyReceipt })), /Not recorded/)
+const historySales = [receiptSale, { id: 'untouched' }, { id: 'other', return_good_quantity: 2 }]
+assert.deepEqual(returnHistoryTotals(historySales), { invoices: 2, good: 3, bad: 2, items: 5 })
+assert.equal(historySales.filter(hasSaleReturns).length, 2)
+const stats = renderToStaticMarkup(createElement(ReturnHistoryStats, { sales: historySales, active: true, onToggle: () => {} }))
+assert.match(stats, /Returned invoices/)
+assert.match(stats, /Returned items/)
+assert.match(stats, /aria-pressed="true"/)
+console.log('PASS: individual return receipts, original invoice references, legacy refunds, returned invoice/unit counts and filter.')
