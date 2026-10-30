@@ -19,8 +19,9 @@ export default function CashierInventory() {
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
+    setProducts([])
     fetchProducts()
-  }, [])
+  }, [cashier?.id])
 
   const fetchProducts = async (search?: string, silent = false) => {
     try {

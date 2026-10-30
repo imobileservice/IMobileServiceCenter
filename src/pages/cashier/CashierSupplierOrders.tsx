@@ -119,7 +119,14 @@ export default function CashierSupplierOrders() {
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [filter, search])
+  }, [filter, search, cashier?.id])
+
+  useEffect(() => {
+    setOrders([])
+    setSelected(null)
+    setSlipOrder(null)
+    setComposerOpen(false)
+  }, [cashier?.id])
 
   useEffect(() => {
     const timer = setTimeout(() => loadOrders(), search ? 300 : 0)

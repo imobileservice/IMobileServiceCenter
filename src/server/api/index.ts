@@ -18,6 +18,7 @@ import { guardInventoryApi } from './utils/inventory-guard'
 import { SUPPLIER_SHOP_ENABLED } from '../../config/features'
 import { requireSupplierShopOwner, requireSupplierShopStaff } from './utils/supplier-shop-access'
 import { trackDataVersion, dataVersionHandler } from './utils/data-version'
+import { attachCashierCatalogAccess } from './utils/cashier-catalog-access'
 
 const router = Router()
 
@@ -38,6 +39,7 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
 
 // Screens poll this to refresh within seconds of a sale or stock change on another device.
 router.use(trackDataVersion)
+router.use(asyncHandler(attachCashierCatalogAccess))
 router.get('/updates/version', dataVersionHandler)
 
 // Mount route handlers

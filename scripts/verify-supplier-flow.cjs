@@ -74,9 +74,14 @@ const orders = load('src/server/api/supplier/orders.ts', {
 const routes = []
 const fakeRouter = {}
 for (const method of ['get', 'post', 'put', 'delete']) fakeRouter[method] = (url, handler) => routes.push({ method, url, handler })
+const cashierCatalog = load('src/server/api/utils/cashier-catalog-access.ts', {
+  '../../../config/cashier-catalog-access': load('src/config/cashier-catalog-access.ts'),
+  './inventory-guard': {}, './panel-session': {},
+})
 load('src/server/api/inventory/supplier-orders.controller.ts', {
   express: { Router: () => fakeRouter }, './supabase-admin': { getSupabaseAdmin },
   './restock.shared': shared, '../supplier/shop.shared': shared, '../supplier/order-items.shared': quantities,
+  '../utils/cashier-catalog-access': cashierCatalog,
 })
 const shop = { id: 'shop-a', name: 'Shop A', email: 'a@example.test', portal_enabled: true, is_active: true,
   portal_password: 'fixture-password', category_access_mode: 'default' }

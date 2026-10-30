@@ -1,13 +1,14 @@
 "use client"
 
 import { ReactNode, useEffect } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate, Navigate } from "react-router-dom"
 import { LogOut, Calculator, ClipboardList, LayoutDashboard, Package, Receipt, ShoppingCart, Truck } from "lucide-react"
 import { useCashierStore } from "@/lib/cashier-store"
 import { Button } from "@/components/ui/button"
 import { getApiUrl } from "@/lib/utils/api"
 import { toast } from "sonner"
 import { SUPPLIER_SHOP_ENABLED } from "@/config/features"
+import { CASHIER_ALLOWED_CATEGORIES, isRestrictedCashier, RESTRICTED_CASHIER_PAGES } from "@/config/cashier-catalog-access"
 
 const SESSION_CHECK_INTERVAL_MS = 30 * 1000
 const MAX_TIMEOUT_MS = 2 ** 31 - 1
@@ -30,6 +31,8 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { cashier, tillSession, isAuthenticated, logout } = useCashierStore()
+  const restricted = isRestrictedCashier(cashier)
+  const navItems = restricted ? NAV_ITEMS.filter(item => RESTRICTED_CASHIER_PAGES.has(item.path)) : NAV_ITEMS
 
   const expiresAt = tillSession?.expires_at
 
@@ -104,6 +107,9 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
   if (!isAuthenticated) {
     return null // or loading spinner
   }
+  if (restricted && !RESTRICTED_CASHIER_PAGES.has(location.pathname.replace(/\/+$/, ''))) {
+    return <Navigate to="/cashier/pos" replace />
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -121,7 +127,7 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
           </div>
 
           <nav className="hidden md:flex items-center gap-1 bg-muted/50 p-1 rounded-lg">
-            {NAV_ITEMS.map(({ path, label, Icon }) => (
+            {navItems.map(({ path, label, Icon }) => (
               <Button
                 key={path}
                 variant={location.pathname === path ? 'default' : 'ghost'}
@@ -151,7 +157,7 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
       
       {/* Mobile Navigation */}
       <div className="md:hidden flex items-center gap-2 overflow-x-auto p-4 border-b border-border bg-background">
-        {NAV_ITEMS.map(({ path, shortLabel, Icon }) => (
+        {navItems.map(({ path, shortLabel, Icon }) => (
           <Button
             key={path}
             variant={location.pathname === path ? 'default' : 'outline'}
@@ -165,7 +171,8 @@ export default function CashierLayout({ children }: CashierLayoutProps) {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-6 mx-auto w-full max-w-[1920px]">
+      <main key={cashier?.id} className="flex-1 p-4 sm:p-6 mx-auto w-full max-w-[1920px]">
+        {restricted && <p className="text-sm text-muted-foreground mb-4">Available categories: {CASHIER_ALLOWED_CATEGORIES.map(category => category.name).join(' · ')}</p>}
         {children}
       </main>
     </div>

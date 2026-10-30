@@ -3,10 +3,13 @@
  * All API calls for the inventory management and POS system
  */
 import { getApiUrl } from '@/lib/utils/api'
+import { tillSessionToken } from '@/lib/session-fetch'
 
 const BASE = '/api/inventory'
 
 async function apiFetch<T = any>(endpoint: string, options?: RequestInit): Promise<T> {
+  const cashierRead = typeof window !== 'undefined' && window.location.pathname.startsWith('/cashier/') && (!options?.method || options.method === 'GET')
+  const requestedTill = cashierRead ? tillSessionToken.get() : null
   const url = getApiUrl(`${BASE}${endpoint}`)
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -14,6 +17,9 @@ async function apiFetch<T = any>(endpoint: string, options?: RequestInit): Promi
   })
 
   const json = await res.json()
+  if (cashierRead && requestedTill !== tillSessionToken.get()) {
+    throw new Error('The cashier session changed. Please retry.')
+  }
   if (!res.ok) {
     const error: any = new Error(json.error || `API error: ${res.status}`)
     // Callers that have to tell "your password is wrong" apart from "there is

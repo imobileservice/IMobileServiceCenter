@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from './supabase-admin'
 import { readOrderItems } from '../supplier/order-items.shared'
 import { resolveQuantity } from '../supplier/shop.shared'
 import { isMissingSchema } from './restock.shared'
+import { cashierCanAccessProducts, filterCashierSupplierOrders } from '../utils/cashier-catalog-access'
 
 /**
  * Orders the shops we supply placed for themselves in /supplier.
@@ -111,7 +112,8 @@ router.get('/', async (req: Request, res: Response) => {
       throw error
     }
 
-    const orders = (data || []).map(shapeOrder)
+    const visibleOrders = await filterCashierSupplierOrders(supabase, req, data || [])
+    const orders = visibleOrders.map(shapeOrder)
 
     /*
      * Counters are read separately rather than derived from `orders`: the list
@@ -120,12 +122,13 @@ router.get('/', async (req: Request, res: Response) => {
      */
     const { data: statusRows, error: statusError } = await supabase
       .from('inv_supplier_orders')
-      .select('status, total_qty')
+      .select(`status, total_qty${req.cashierCatalogRestricted ? ', inv_supplier_order_items(product_id)' : ''}`)
 
     if (statusError && !isMissingSchema(statusError)) throw statusError
 
     const totals = { ...migrationPayload.totals, total: 0 }
-    for (const row of statusRows || []) {
+    const visibleStatusRows = await filterCashierSupplierOrders(supabase, req, statusRows || [])
+    for (const row of visibleStatusRows) {
       totals.total += 1
       if (row.status in totals) (totals as any)[row.status] += 1
       if (row.status === 'pending') totals.pending_units += Number(row.total_qty || 0)
@@ -151,6 +154,7 @@ router.get('/', async (req: Request, res: Response) => {
  * the shop's category list is not enforced (staff order what the shop asks for,
  * not what a list allows), and an out-of-stock line is accepted rather than
  * refused - it is recorded with was_in_stock false so the packer can see it.
+ * Individual cashier category restrictions still apply to counter orders.
  *
  * There is no way to create a supplier here. An id that is not already on file
  * is rejected, so the till can never quietly add a shop to the books.
@@ -170,6 +174,10 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const supabase = getSupabaseAdmin()
+
+    if (!await cashierCanAccessProducts(supabase, req, Array.from(wanted.keys()))) {
+      return res.status(403).json({ error: 'This order contains products outside your permitted categories.' })
+    }
 
     // Registered shops only. Selecting from a list in the browser is a
     // convenience; this is the part that actually enforces it.
@@ -209,7 +217,7 @@ router.post('/', async (req: Request, res: Response) => {
       supplier_id: supplier.id,
       supplier_name: supplier.name,
       supplier_town: supplier.town || null,
-      placed_by: placed_by ? String(placed_by).slice(0, 120) : 'counter',
+      placed_by: req.verifiedTillSession?.cashier_email || (placed_by ? String(placed_by).slice(0, 120) : 'counter'),
       status: 'pending',
       item_count: rows.length,
       total_qty: rows.reduce((sum, row) => sum + row.quantity, 0),
@@ -277,6 +285,9 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Order not found' })
 
+    if (!(await filterCashierSupplierOrders(supabase, req, [data])).length) {
+      return res.status(404).json({ error: 'Order not found' })
+    }
     res.json({ data: shapeOrder(data) })
   } catch (error: any) {
     console.error('[Supplier Orders] GET/:id error:', error)
@@ -312,6 +323,17 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const supabase = getSupabaseAdmin()
+
+    if (req.cashierCatalogRestricted) {
+      const { data: existing, error } = await selectTolerantly((select) =>
+        supabase.from('inv_supplier_orders').select(select).eq('id', req.params.id).maybeSingle()
+      )
+      if (error) throw error
+      if (!existing || !(await filterCashierSupplierOrders(supabase, req, [existing])).length) {
+        return res.status(404).json({ error: 'Order not found' })
+      }
+      updates.handled_by = req.verifiedTillSession?.cashier_email
+    }
 
     // The write asks for nothing but the id, and the full row is read back
     // separately. Putting the tolerant select on the update itself would re-run

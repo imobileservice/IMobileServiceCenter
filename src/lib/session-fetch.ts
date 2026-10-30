@@ -12,8 +12,9 @@
  *   /api/admin/*      x-panel-session: the administrator's token, or the
  *                     assistant's for the routes they share
  *   /api/assistant/*  x-panel-session: the assistant's token
- *   /api/inventory/*  x-panel-session (admin or assistant, whichever is signed
- *                     in) and x-till-session for a POS session
+ *   /api/inventory/*  x-panel-session for panel pages
+ *   Cashier pages use x-till-session for these APIs, taking precedence over
+ *   any panel login retained in the same tab.
  *
  * Requests to anywhere else are passed through untouched - a token must never
  * leak to a third-party host, so the URL is resolved and matched against this
@@ -124,6 +125,8 @@ export function installSessionFetch() {
     if (!kind) return originalFetch(input as any, init)
 
     const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined))
+    const cashierSurface = window.location.pathname.startsWith('/cashier/')
+    const till = cashierSurface ? tillSessionToken.get() : null
 
     // The panel token: whichever of the two matches the surface being called.
     // On /api/admin an assistant's token is sent when there is no
@@ -137,15 +140,13 @@ export function installSessionFetch() {
         ? assistantSessionToken.get()
         : adminSessionToken.get() || assistantSessionToken.get()
 
-    if (panelToken && !headers.has(PANEL_SESSION_HEADER)) {
+    if (till) {
+      // A cashier tab must use its till identity even when this browser also holds an admin login.
+      headers.delete(PANEL_SESSION_HEADER)
+      headers.set(TILL_SESSION_HEADER, till)
+    } else if (panelToken && !headers.has(PANEL_SESSION_HEADER)) {
       headers.set(PANEL_SESSION_HEADER, panelToken)
     }
-
-    if (kind === 'inventory') {
-      const till = tillSessionToken.get()
-      if (till && !headers.has(TILL_SESSION_HEADER)) headers.set(TILL_SESSION_HEADER, till)
-    }
-
     return originalFetch(input as any, {
       ...init,
       headers,

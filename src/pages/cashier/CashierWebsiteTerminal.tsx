@@ -190,8 +190,20 @@ export default function CashierWebsiteTerminal() {
     }
   }
 
-  const openDeliveryBill = (order: WebsiteOrder) => {
-    window.open(getApiUrl(`/api/admin/orders/${order.id}/delivery-bill`), "_blank", "noopener,noreferrer")
+  const openDeliveryBill = async (order: WebsiteOrder) => {
+    const preview = window.open('about:blank', '_blank')
+    if (preview) preview.opener = null
+    try {
+      if (!preview) throw new Error('Allow pop-ups to open this delivery bill')
+      const response = await fetch(getApiUrl(`/api/admin/orders/${order.id}/delivery-bill`))
+      if (!response.ok) throw new Error('Unable to open this delivery bill')
+      const url = URL.createObjectURL(await response.blob())
+      preview.location.href = url
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (error: any) {
+      preview?.close()
+      toast.error(error.message || 'Unable to open this delivery bill')
+    }
   }
 
   return (

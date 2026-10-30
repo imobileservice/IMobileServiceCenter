@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import { getDeliveryFee } from '../utils/delivery-fee'
 import { parseDeliveryFee } from '../../../lib/utils/order-totals'
 import { includeSaleReturns } from '../utils/sale-returns'
+import { cashierCanAccessProducts, filterCashierSales } from '../utils/cashier-catalog-access'
 
 const router = Router()
 
@@ -79,7 +80,10 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
+    const posSession = req.verifiedTillSession || await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
+    if (!await cashierCanAccessProducts(supabase, req, items.map((item: any) => item.product_id))) {
+      return res.status(403).json({ error: 'This sale contains products outside your permitted categories.' })
+    }
 
     const supplierId = req.body.supplier_id || null
     if (customer_id && supplierId) {
@@ -232,7 +236,8 @@ router.get('/', async (req: Request, res: Response) => {
 
     if (error) throw error
 
-    res.json({ data: await includeSaleReturns(supabase, data || []) })
+    const visibleSales = await filterCashierSales(supabase, req, data || [])
+    res.json({ data: await includeSaleReturns(supabase, visibleSales) })
   } catch (error: any) {
     console.error('[Inventory Sales] GET error:', error)
     res.status(500).json({ error: error.message })
@@ -264,7 +269,9 @@ router.get('/invoice/:invoice_number', async (req: Request, res: Response) => {
       throw error
     }
 
-    res.json({ data: (await includeSaleReturns(supabase, [data]))[0] })
+    const visibleSales = await filterCashierSales(supabase, req, [data])
+    if (!visibleSales.length) return res.status(404).json({ error: 'Invoice not found' })
+    res.json({ data: (await includeSaleReturns(supabase, visibleSales))[0] })
   } catch (error: any) {
     console.error('[Inventory Sales] GET/invoice/:invoice_number error:', error)
     res.status(500).json({ error: error.message })
@@ -291,7 +298,9 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (error) throw error
 
-    res.json({ data: (await includeSaleReturns(supabase, [data]))[0] })
+    const visibleSales = await filterCashierSales(supabase, req, [data])
+    if (!visibleSales.length) return res.status(404).json({ error: 'Sale not found' })
+    res.json({ data: (await includeSaleReturns(supabase, visibleSales))[0] })
   } catch (error: any) {
     console.error('[Inventory Sales] GET/:id error:', error)
     res.status(500).json({ error: error.message })
@@ -342,7 +351,7 @@ router.get('/today/summary', async (req: Request, res: Response) => {
 
     let query = supabase
       .from('inv_sales')
-      .select('id, net_amount, payment_method, source, shop')
+      .select(`id, net_amount, payment_method, source, shop${req.cashierCatalogRestricted ? ', inv_sale_items(product_id)' : ''}`)
       .gte('created_at', todayStr)
 
     if (shop && typeof shop === 'string') {
@@ -353,7 +362,7 @@ router.get('/today/summary', async (req: Request, res: Response) => {
 
     if (error) throw error
 
-    const sales = data || []
+    const sales = await filterCashierSales(supabase, req, data || [])
     const totalSales = sales.length
     const totalRevenue = sales.reduce((sum: number, s: any) => sum + Number(s.net_amount || 0), 0)
     const cashSales = sales.filter((s: any) => s.payment_method === 'cash').length
@@ -395,8 +404,17 @@ router.post('/return', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Return quantity must be a positive whole number' })
     }
 
-    const posSession = await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
+    const posSession = req.verifiedTillSession || await resolveOpenPosSession(supabase, pos_session_id, pos_session_token)
     const sessionNote = posSession ? `POS session ${posSession.id}` : null
+    if (req.cashierCatalogRestricted) {
+      const { data: sale, error: saleError } = await supabase.from('inv_sales')
+        .select('id, inv_sale_items(product_id)').eq('invoice_number', invoice_number).maybeSingle()
+      if (saleError) throw saleError
+      const visible = sale ? await filterCashierSales(supabase, req, [sale]) : []
+      if (!visible.length || !await cashierCanAccessProducts(supabase, req, [product_id])) {
+        return res.status(403).json({ error: 'This invoice or product is outside your permitted categories.' })
+      }
+    }
     const returnNumber = `RET-${crypto.randomUUID().toUpperCase()}`
     const returnedAt = new Date().toISOString()
 

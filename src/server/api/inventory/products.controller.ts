@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
+import { allowedCashierCategoryIds, cashierCanSeeProduct, cashierCategoryLabel } from '../utils/cashier-catalog-access'
 import {
   findCompatibleProductIds,
   findMatchingModelIds,
@@ -50,6 +51,7 @@ router.get('/', async (req: Request, res: Response) => {
         )
       `)
       .order('created_at', { ascending: false })
+    if (req.cashierCatalogRestricted) query = query.in('category_id', allowedCashierCategoryIds)
 
     // Phone models matching the search text, so "A02" also finds the display
     // that is merely COMPATIBLE with an A02 (stocked as "M02 Display").
@@ -104,7 +106,7 @@ router.get('/', async (req: Request, res: Response) => {
 
       return withInventoryPricing({
         ...p,
-        category: p.category || p.category_id,
+        category: cashierCategoryLabel(req, p),
         image: primaryImage, // attach the resolved image to the product root for the frontend
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (p.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : 0,
@@ -137,12 +139,13 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (error) throw error
 
+    if (!cashierCanSeeProduct(req, data)) return res.status(404).json({ error: 'Product not found' })
     const stockRec = data.inv_stock?.[0];
 
     res.json({
       data: {
         ...withInventoryPricing(data),
-        category: data.category || data.category_id,
+        category: cashierCategoryLabel(req, data),
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),
         qty_meegoda: stockRec ? (stockRec.qty_meegoda ?? 0) : (data.stock ?? 0),
         qty_padukka: stockRec ? (stockRec.qty_padukka ?? 0) : 0,
@@ -173,6 +176,7 @@ router.get('/barcode/:barcode', async (req: Request, res: Response) => {
       throw error
     }
 
+    if (!cashierCanSeeProduct(req, data)) return res.status(404).json({ error: 'Product not found with this barcode' })
     const stockRec = data.inv_stock?.[0];
 
     // A scanned box may fit several phones - the till needs the list so the
@@ -182,7 +186,7 @@ router.get('/barcode/:barcode', async (req: Request, res: Response) => {
     res.json({
       data: {
         ...withInventoryPricing(data),
-        category: data.category || data.category_id,
+        category: cashierCategoryLabel(req, data),
         compatible_models: scannedCompatibility.get(data.id) || [],
         matched_models: [],
         stock_quantity: stockRec ? (stockRec.quantity ?? 0) : (data.stock ?? 0),

@@ -7,11 +7,13 @@ import suppliersController from './suppliers.controller'
 import supplierOrdersController from './supplier-orders.controller'
 import customersController from './customers.controller'
 import reportsController from './reports.controller'
+import categoriesController from './categories.controller'
 
 const router = Router()
 
 // Mount inventory sub-routes
 router.use('/products', productsController)
+router.use('/categories', categoriesController)
 router.use('/stock', stockController)
 router.use('/sales', salesController)
 router.use('/purchases', purchasesController)
