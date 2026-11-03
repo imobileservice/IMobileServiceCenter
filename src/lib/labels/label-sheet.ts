@@ -1,5 +1,13 @@
 import JsBarcode from 'jsbarcode'
 
+// Shop stickers carry the inventory (POS) price, not the website price.
+export function labelPrice(product: { buy_price?: number | string | null; price?: number | string | null }): number | undefined {
+  const inventory = Number(product.buy_price ?? 0)
+  if (inventory > 0) return inventory
+  const website = Number(product.price ?? 0)
+  return website > 0 ? website : undefined
+}
+
 export interface LabelProduct {
   id: string
   name: string

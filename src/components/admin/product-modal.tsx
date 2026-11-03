@@ -1024,7 +1024,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         // Notify parent with created product so barcode modal auto-opens
         if (onProductSaved && created) {
           const barcode = (created as any).barcode || (created as any).data?.barcode
-          const price = (created as any).price ?? (created as any).data?.price ?? basePrice
+          const price = buyPrice || ((created as any).price ?? (created as any).data?.price ?? basePrice)
           const name = (created as any).name ?? (created as any).data?.name ?? formData.name
           if (barcode) {
             setTimeout(() => onProductSaved({
