@@ -288,6 +288,10 @@ export default function CompatibilityImportModal({
     }
   }, [displayProducts])
 
+  // Load once per opening (or once the product list arrives). The parent passes
+  // a fresh products array on every background refresh, and reloading on that
+  // would reset the table and wipe unsaved ticks while the admin is working.
+  const hasDisplays = displayProducts.length > 0
   useEffect(() => {
     if (!isOpen) return
     setOpenRow(null)
@@ -296,7 +300,8 @@ export default function CompatibilityImportModal({
     setNewModelName("")
     setNewModelCode("")
     loadTable()
-  }, [isOpen, loadTable])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, hasDisplays])
 
   const productBrands = useMemo(() => {
     const names = new Set<string>()

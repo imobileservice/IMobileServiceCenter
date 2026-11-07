@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 
 // Writes that never change stock, orders or catalogue data. A read sent as POST
 // must be listed here, or every screen polling it would refresh in a loop.
-const IGNORED_WRITES = /(login|logout|signin|signup|signout|verify|resend|password|security-event|product-search|customer-models|\/email|whatsapp|send-invoice|wishlist|\/addresses|\/cart|\/profile)/i
+const IGNORED_WRITES = /(login|logout|signin|signup|signout|verify|resend|password|security-event|product-search|customer-models|compatibility\/bulk|\/email|whatsapp|send-invoice|wishlist|\/addresses|\/cart|\/profile)/i
 
 let version = Date.now()
 

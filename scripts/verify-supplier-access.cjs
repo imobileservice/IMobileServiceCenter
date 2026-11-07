@@ -50,6 +50,7 @@ async function main() {
     ['assistant using owner email', { type: 'assistant', email: 'dexlanka@gmail.com' }, 'GET', 'header', 403],
     ['owner', { type: 'admin', email: 'dexlanka@gmail.com' }, 'GET', 'header', 200],
     ['owner email normalization', { type: 'admin', email: ' DexLanka@Gmail.com ' }, 'GET', 'header', 200],
+    ['shop owner', { type: 'admin', email: 'imobile9498@gmail.com' }, 'GET', 'header', 200],
     ['owner write', { type: 'admin', email: 'dexlanka@gmail.com' }, 'POST', 'header', 200],
     ['owner cookie-only write', { type: 'admin', email: 'dexlanka@gmail.com' }, 'DELETE', 'cookie', 401],
     ['invalid or revoked owner session', null, 'GET', 'header', 401],

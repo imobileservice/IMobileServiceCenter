@@ -1,6 +1,6 @@
 # Supplier shop QA — 11 October 2026
 
-The supplier portal is enabled for registered, active shops with portal access and an existing password. Each shop retains its assigned categories and its own order history. Admin shop management remains restricted to `dexlanka@gmail.com`; authenticated open tills can list shops, create counter orders, and process orders, while password access, supplier management, cancellation, and deletion remain owner-only.
+The supplier portal is enabled for registered, active shops with portal access and an existing password. Each shop retains its assigned categories and its own order history. Admin shop management remains restricted to `dexlanka@gmail.com` and `imobile9498@gmail.com`; authenticated open tills can list shops, create counter orders, and process orders, while password access, supplier management, cancellation, and deletion remain owner-only.
 
 Availability uses Meegoda inventory only. Padukka and Padukka New remain visible in admin inventory and do not make products available in the supplier catalog. Pending shop orders remain requests: they do not deduct inventory or produce a final invoice; fulfillment and billing remain in the existing POS flow.
 
