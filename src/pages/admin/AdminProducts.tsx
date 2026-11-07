@@ -16,6 +16,7 @@ import type { Database } from "@/lib/supabase/types"
 import BarcodeLabelModal from "@/components/admin/barcode-label-modal"
 import CompatibilityImportModal from "@/components/admin/compatibility-import-modal"
 import { printLabelCopies } from "@/lib/labels/print-labels"
+import { labelPrice } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { inventoryStockService } from "@/lib/services/inventory.service"
@@ -229,7 +230,7 @@ export default function ProductsPage() {
       id: p.id,
       name: getDisplayName(p),
       barcode: (p as any).barcode,
-      price: p.price,
+      price: labelPrice(p as any),
       brand: (p as any).brand || undefined,
       model: (p as any).specs?.model || undefined,
     })));
@@ -375,7 +376,7 @@ export default function ProductsPage() {
             id: product.id,
             name: getDisplayName(product),
             barcode,
-            price: product.price,
+            price: labelPrice(product as any),
             brand: (product as any).brand || undefined,
             model: (product as any).specs?.model || undefined,
           }

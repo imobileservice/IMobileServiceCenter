@@ -14,6 +14,7 @@ import AssistantLayout from "@/components/assistant/assistant-layout"
 // ASSISTANT_SHARED_ROUTES (server/api/utils/panel-auth.ts).
 import ProductModal from "@/components/admin/product-modal"
 import BarcodeLabelModal, { type LabelProduct } from "@/components/admin/barcode-label-modal"
+import { labelPrice } from "@/lib/labels/label-sheet"
 import { assistantService } from "@/lib/services/assistant.service"
 import { useAssistantStore } from "@/lib/assistant-store"
 import { formatCurrency } from "@/lib/utils/currency"
@@ -88,7 +89,7 @@ const toLabel = (product: ProductRow): LabelProduct => ({
   id: product.id,
   name: displayName(product),
   barcode: product.barcode,
-  price: product.price ?? undefined,
+  price: labelPrice(product),
   brand: product.brand || undefined,
   model: product.specs?.model || undefined,
 })
