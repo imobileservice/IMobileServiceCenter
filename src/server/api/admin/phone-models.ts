@@ -348,6 +348,63 @@ export const bulkProductCompatibilityHandler = asyncHandler(async (req: Request,
   return res.json({ compatibility })
 })
 
+/**
+ * GET /api/admin/phone-models/products?ids=a,b
+ *
+ * Products already compatible with any of these phones, with their stock - so
+ * the product form can let a new product that is the same part (Narzo 20
+ * Display = Oppo A17K Display) share the stock of the one already on the shelf.
+ */
+export const productsForPhoneModelsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const supabase = getSupabaseAdmin()
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .slice(0, 100)
+
+  if (ids.length === 0) return res.json({ products: [] })
+
+  const { data: links, error } = await supabase
+    .from('product_compatibility')
+    .select('product_id')
+    .in('phone_model_id', ids)
+
+  if (error) {
+    if (isMissingRelation(error)) return res.json({ products: [] })
+    return res.status(500).json({ error: error.message })
+  }
+
+  const productIds = Array.from(new Set((links || []).map((l: any) => l.product_id)))
+  if (productIds.length === 0) return res.json({ products: [] })
+
+  const [{ data: products, error: productError }, { data: stock }] = await Promise.all([
+    supabase.from('products').select('id, name, category_id, stock').in('id', productIds),
+    supabase
+      .from('inv_stock')
+      .select('product_id, quantity, qty_meegoda, qty_padukka, qty_padukka_new')
+      .in('product_id', productIds),
+  ])
+
+  if (productError) return res.status(500).json({ error: productError.message })
+
+  const stockById = new Map((stock || []).map((s: any) => [s.product_id, s]))
+  return res.json({
+    products: (products || []).map((p: any) => {
+      const row: any = stockById.get(p.id)
+      return {
+        id: p.id,
+        name: p.name,
+        category_id: p.category_id,
+        stock: row ? Number(row.quantity) || 0 : Number(p.stock) || 0,
+        qty_meegoda: Number(row?.qty_meegoda) || 0,
+        qty_padukka: Number(row?.qty_padukka) || 0,
+        qty_padukka_new: Number(row?.qty_padukka_new) || 0,
+      }
+    }),
+  })
+})
+
 // GET /api/admin/products/:id/compatibility
 export const getProductCompatibilityHandler = asyncHandler(async (req: Request, res: Response) => {
   const supabase = getSupabaseAdmin()

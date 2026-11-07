@@ -245,14 +245,9 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
     supabase.from('products').select('id', { count: 'exact', head: true }),
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     supabase.from('inv_customers').select('id', { count: 'exact', head: true }),
-    supabase.from('inv_stock').select(`
-      quantity,
-      products (
-        buy_price,
-        cost_price,
-        price
-      )
-    `)
+    // products(*) rather than a column list so stock_source_id is read when the
+    // shared-stock migration exists, without breaking the query before it does.
+    supabase.from('inv_stock').select('quantity, products (*)')
   ])
 
   const orders = (ordersResult.data || []).filter(isRevenueOrder)
@@ -261,7 +256,12 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
   const websiteCustomersCount = profilesResult.count || 0
   const shopCustomersCount = invCustomersResult.count || 0
   const totalCustomers = websiteCustomersCount + shopCustomersCount
-  const stockRows = stockResult.data || []
+  // A product sharing another product's stock holds the same units, so only the
+  // main product of each group is counted.
+  const stockRows = (stockResult.data || []).filter((s: any) => {
+    const product = Array.isArray(s.products) ? s.products[0] : s.products
+    return !product?.stock_source_id
+  })
   const totalQuantity = stockRows.reduce((sum: number, s: any) => sum + toNumber(s.quantity), 0)
   const shopStockValue = stockRows.reduce((sum: number, s: any) => {
     const product = Array.isArray(s.products) ? s.products[0] : s.products

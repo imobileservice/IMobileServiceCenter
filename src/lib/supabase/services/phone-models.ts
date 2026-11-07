@@ -43,6 +43,17 @@ export interface PhoneModel {
   label: string
 }
 
+/** A product that fits a phone, with its shop stock - a candidate to share stock with. */
+export interface StockedProduct {
+  id: string
+  name: string
+  category_id: string | null
+  stock: number
+  qty_meegoda: number
+  qty_padukka: number
+  qty_padukka_new: number
+}
+
 export interface CompatibilityBrand {
   id: string
   name: string
@@ -154,6 +165,13 @@ export const phoneModelsService = {
   async getForProduct(productId: string): Promise<PhoneModel[]> {
     const data = await getJson(`/api/admin/products/${productId}/compatibility`)
     return Array.isArray(data?.models) ? data.models : []
+  },
+
+  /** Products already compatible with any of these phones, with their stock. */
+  async getProductsForModels(phoneModelIds: string[]): Promise<StockedProduct[]> {
+    if (phoneModelIds.length === 0) return []
+    const data = await getJson(`/api/admin/phone-models/products?ids=${encodeURIComponent(phoneModelIds.join(','))}`)
+    return Array.isArray(data?.products) ? data.products : []
   },
 
   /** Compatible models for many products at once, keyed by product id. */

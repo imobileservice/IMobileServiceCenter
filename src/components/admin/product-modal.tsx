@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { motion } from "framer-motion"
 import { X, Plus, Trash2, Upload, Loader2, Sparkles, CheckCircle, ScanBarcode } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,7 +19,7 @@ import {
   isPlaceholderBrand,
 } from "@/constants/models"
 import { brandsService, type Brand } from "@/lib/supabase/services/brands"
-import { phoneModelsService, type PhoneModel } from "@/lib/supabase/services/phone-models"
+import { phoneModelsService, type PhoneModel, type StockedProduct } from "@/lib/supabase/services/phone-models"
 import CompatibleModelsPicker from "@/components/admin/compatible-models-picker"
 import { createClient } from "@/lib/supabase/client"
 import { getApiUrl } from "@/lib/utils/api"
@@ -87,6 +87,17 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
   // Phone models this ONE product fits. Saved to product_compatibility, never
   // to the products row - so it can never duplicate the product or its stock.
   const [compatibleModels, setCompatibleModels] = useState<PhoneModel[]>([])
+  /**
+   * The product whose stock this one shares: "Narzo 20 Display" is the same
+   * part as "Oppo A17K Display", so both show and sell from one count.
+   */
+  const [stockSource, setStockSource] = useState<StockedProduct | null>(null)
+  /** Products fitting the ticked phones, offered as stock to share. */
+  const [stockOptions, setStockOptions] = useState<StockedProduct[]>([])
+  /** The link the product had when the form opened. */
+  const savedStockSourceId = useRef<string | null>(null)
+  /** Set once the admin picks an option, so a suggestion never overrides it. */
+  const stockSourceTouched = useRef(false)
   const [formData, setFormData] = useState({
     name: "",
     category: "",
@@ -364,6 +375,43 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
               console.error('Failed to fetch shop stock:', err)
             }
 
+            // The product this one shares stock with. Both stock rows always hold
+            // the same counts, so this product's own quantities describe it.
+            let sharedWith: StockedProduct | null = null
+            try {
+              const supabase = createClient()
+              const linkResult = await withTimeout<{ data: any }>(
+                supabase.from('products').select('*').eq('id', editingProductId).single(),
+                6000,
+                'shared stock'
+              )
+              const sourceId = linkResult?.data?.stock_source_id
+              if (sourceId) {
+                const { data: source } = await supabase
+                  .from('products')
+                  .select('id, name, category_id')
+                  .eq('id', sourceId)
+                  .single()
+                if (source) {
+                  const qty = [shopQtyMeegoda, shopQtyPadukka, shopQtyPadukkaNew].map((q) => Number(q) || 0)
+                  sharedWith = {
+                    id: source.id,
+                    name: source.name,
+                    category_id: source.category_id,
+                    stock: qty[0] + qty[1] + qty[2],
+                    qty_meegoda: qty[0],
+                    qty_padukka: qty[1],
+                    qty_padukka_new: qty[2],
+                  }
+                }
+              }
+            } catch (err) {
+              console.error('Failed to fetch shared stock link:', err)
+            }
+            savedStockSourceId.current = sharedWith?.id ?? null
+            stockSourceTouched.current = false
+            setStockSource(sharedWith)
+
             setFormData({
               name: resolvedName,
               category: product.category || "",
@@ -412,6 +460,10 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
     } else {
       // Reset form for new product
       setCompatibleModels([])
+      setStockSource(null)
+      setStockOptions([])
+      savedStockSourceId.current = null
+      stockSourceTouched.current = false
       setFormData({
         name: "",
         category: "",
@@ -444,6 +496,34 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       setSearchQuery("")
     }
   }, [editingProductId, isOpen])
+
+  // Products of the same category that fit the ticked phones are offered as
+  // stock to share. A new product with no stock typed in takes the best-stocked
+  // one straight away; an edit never links on its own.
+  useEffect(() => {
+    if (!isOpen) return
+    let active = true
+    const categoryId = categories.find((c) => c.slug === formData.category)?.id
+
+    phoneModelsService.getProductsForModels(compatibleModels.map((m) => m.id)).then((products) => {
+      if (!active) return
+      const options = products
+        .filter((p) => p.id !== editingProductId && (!categoryId || p.category_id === categoryId))
+        .sort((a, b) => b.stock - a.stock)
+      setStockOptions(options)
+
+      if (!editingProductId && !stockSourceTouched.current) {
+        const ownStockTyped = [formData.qty_meegoda, formData.qty_padukka, formData.qty_padukka_new]
+          .some((q) => Number(q) > 0)
+        setStockSource(!ownStockTyped && options[0]?.stock > 0 ? options[0] : null)
+      }
+    })
+
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, compatibleModels, formData.category, categories, editingProductId])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -925,6 +1005,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       const qtyPadukkaNew = Number.parseInt(formData.qty_padukka_new) || 0
       const totalStock = qtyMeegoda + qtyPadukka + qtyPadukkaNew
 
+      // stock_source_id is only sent when it changes, so a database without the
+      // shared-stock migration keeps saving ordinary products.
+      const stockSourceId = stockSource?.id ?? null
+      const stockSourceChanged = stockSourceId !== savedStockSourceId.current
+      // A new link takes the other product's stock as it is; the form's own
+      // quantities are left out so they cannot overwrite the shared count.
+      const takesSharedStock = Boolean(stockSource) && stockSourceChanged
+
       const productData: any = {
         name: formData.name,
         category: formData.category,
@@ -947,6 +1035,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         // Relationship rows, saved by the API into product_compatibility.
         // One product, many models - stock stays a single value.
         compatible_model_ids: compatibleModels.map((m) => m.id),
+      }
+
+      if (stockSourceChanged) productData.stock_source_id = stockSourceId
+      if (takesSharedStock) {
+        delete productData.stock
+        delete productData.qty_meegoda
+        delete productData.qty_padukka
+        delete productData.qty_padukka_new
       }
 
       // Keep scanned codes as text so leading zeros survive. Existing products
@@ -981,20 +1077,22 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       if (editingProductId) {
         await productsService.update(editingProductId, productData)
         // Directly upsert inv_stock from frontend to ensure shop quantities are saved
-        try {
-          const supabase = createClient()
-          await supabase.from('inv_stock').upsert({
-            product_id: editingProductId,
-            qty_meegoda: qtyMeegoda,
-            qty_padukka: qtyPadukka,
-            qty_padukka_new: qtyPadukkaNew,
-            quantity: totalStock,
-            low_stock_threshold: 5,
-          }, { onConflict: 'product_id' })
-          // Also sync products.stock column directly
-          await supabase.from('products').update({ stock: totalStock }).eq('id', editingProductId)
-        } catch (stockErr) {
-          console.error('Failed to sync inv_stock from frontend:', stockErr)
+        if (!takesSharedStock) {
+          try {
+            const supabase = createClient()
+            await supabase.from('inv_stock').upsert({
+              product_id: editingProductId,
+              qty_meegoda: qtyMeegoda,
+              qty_padukka: qtyPadukka,
+              qty_padukka_new: qtyPadukkaNew,
+              quantity: totalStock,
+              low_stock_threshold: 5,
+            }, { onConflict: 'product_id' })
+            // Also sync products.stock column directly
+            await supabase.from('products').update({ stock: totalStock }).eq('id', editingProductId)
+          } catch (stockErr) {
+            console.error('Failed to sync inv_stock from frontend:', stockErr)
+          }
         }
         toast.success('Product updated successfully')
         onClose()
@@ -1002,7 +1100,7 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
         const created = await productsService.create(productData)
         // Directly upsert inv_stock from frontend to ensure shop quantities are saved
         const createdId = (created as any)?.id || (created as any)?.data?.id
-        if (createdId) {
+        if (createdId && !takesSharedStock) {
           try {
             const supabase = createClient()
             await supabase.from('inv_stock').upsert({
@@ -1049,6 +1147,14 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
       setLoading(false)
     }
   }
+
+  // A link made in this session shows the other product's stock read-only; an
+  // existing link edits the shared count like any other product's stock.
+  const stockLocked = Boolean(stockSource) && (stockSource?.id ?? null) !== savedStockSourceId.current
+  const shareOptions =
+    stockSource && !stockOptions.some((option) => option.id === stockSource.id)
+      ? [stockSource, ...stockOptions]
+      : stockOptions
 
   if (!isOpen) return null
 
@@ -1316,6 +1422,36 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                 />
               </div>
 
+              {/* The same part as a product already on the shelf: one shared count. */}
+              {shareOptions.length > 0 && (
+                <div className="rounded-lg border border-border p-4 space-y-2">
+                  <label htmlFor="stock-source-select" className="block text-sm font-semibold">Stock</label>
+                  <select
+                    id="stock-source-select"
+                    value={stockSource?.id || ""}
+                    onChange={(e) => {
+                      stockSourceTouched.current = true
+                      setStockSource(shareOptions.find((option) => option.id === e.target.value) || null)
+                    }}
+                    className="w-full px-3 py-2 border border-border rounded-lg bg-background"
+                    disabled={loading}
+                  >
+                    <option value="">Own stock - enter the quantities below</option>
+                    {shareOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        Same stock as {option.name} ({option.stock} in stock)
+                      </option>
+                    ))}
+                  </select>
+                  {stockSource && (
+                    <p className="text-xs text-muted-foreground">
+                      This product and {stockSource.name} share one stock count. Selling, returning or
+                      restocking either one updates both.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="condition-select" className="block text-sm font-semibold mb-2">Condition *</label>
@@ -1339,8 +1475,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     <Input
                       type="number"
                       name="qty_meegoda"
-                      value={formData.qty_meegoda}
+                      value={stockLocked ? String(stockSource?.qty_meegoda ?? 0) : formData.qty_meegoda}
                       onChange={handleChange}
+                      disabled={stockLocked}
                       placeholder="0"
                       min="0"
                       required
@@ -1351,8 +1488,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     <Input
                       type="number"
                       name="qty_padukka"
-                      value={formData.qty_padukka}
+                      value={stockLocked ? String(stockSource?.qty_padukka ?? 0) : formData.qty_padukka}
                       onChange={handleChange}
+                      disabled={stockLocked}
                       placeholder="0"
                       min="0"
                       required
@@ -1363,8 +1501,9 @@ export default function ProductModal({ isOpen, onClose, editingProductId, onProd
                     <Input
                       type="number"
                       name="qty_padukka_new"
-                      value={formData.qty_padukka_new}
+                      value={stockLocked ? String(stockSource?.qty_padukka_new ?? 0) : formData.qty_padukka_new}
                       onChange={handleChange}
+                      disabled={stockLocked}
                       placeholder="0"
                       min="0"
                       required

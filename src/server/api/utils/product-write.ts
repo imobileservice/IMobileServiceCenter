@@ -17,6 +17,9 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { isMissingRelation, setProductCompatibility } from './compatibility'
 
+const SHARED_STOCK_MISSING =
+  'Shared stock is not set up yet. Run supabase/migrations/20261107_shared_stock.sql in the Supabase SQL editor.'
+
 export interface WriteResult<T = any> {
   ok: boolean
   status?: number
@@ -150,6 +153,10 @@ export async function createProductRecord(
   const qty_padukka = Number(productData.qty_padukka) || 0
   const qty_padukka_new = Number(productData.qty_padukka_new) || 0
   const totalStock = Number(productData.stock) || 0
+  // A product sharing another product's stock gets it from the database
+  // trigger; writing the form's quantities here would overwrite the shared count.
+  const sharesStock = Boolean(productData.stock_source_id)
+  if (sharesStock) delete productData.stock
 
   delete productData.image
   delete productData.images
@@ -193,6 +200,10 @@ export async function createProductRecord(
     error = retry.error
   }
 
+  if (error && isMissingRelation(error) && /stock_source_id/.test(error.message || '')) {
+    return { ok: false, status: 503, error: SHARED_STOCK_MISSING }
+  }
+
   if (error) {
     console.error('[ProductWrite] Error creating product:', error)
     // The unique constraint also catches two staff saving the same code at once.
@@ -206,7 +217,7 @@ export async function createProductRecord(
 
   // Initialise stock in inv_stock so the product appears in Inventory. The DB
   // trigger trg_update_total_quantity recomputes quantity from the shop qtys.
-  if (data?.id) {
+  if (data?.id && !sharesStock) {
     const { error: stockError } = await supabase.from('inv_stock').upsert(
       {
         product_id: data.id,
@@ -265,6 +276,10 @@ export async function updateProductRecord(
     const retry = await supabase.from('products').update(withoutSku).eq('id', id).select().single()
     data = retry.data
     error = retry.error
+  }
+
+  if (error && isMissingRelation(error) && /stock_source_id/.test(error.message || '')) {
+    return { ok: false, status: 503, error: SHARED_STOCK_MISSING }
   }
 
   if (error) {

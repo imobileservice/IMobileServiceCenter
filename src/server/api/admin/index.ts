@@ -37,6 +37,7 @@ import {
   getProductCompatibilityHandler,
   setProductCompatibilityHandler,
   bulkProductCompatibilityHandler,
+  productsForPhoneModelsHandler,
 } from './phone-models'
 import { importCompatibilityHandler } from './compatibility-import'
 import { guardAdminApi } from '../utils/panel-auth'
@@ -112,6 +113,7 @@ router.get('/products/:id/compatibility', getProductCompatibilityHandler)
 router.put('/products/:id/compatibility', setProductCompatibilityHandler)
 
 router.get('/phone-models', getPhoneModelsHandler)
+router.get('/phone-models/products', productsForPhoneModelsHandler)
 router.post('/phone-models', createPhoneModelHandler)
 router.post('/phone-models/bulk', bulkCreatePhoneModelsHandler)
 router.put('/phone-models/:id', updatePhoneModelHandler)

@@ -145,11 +145,14 @@ router.get('/stock-value', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
 
-    const { data, error } = await supabase
+    const { data: rows, error } = await supabase
       .from('inv_stock')
-      .select(`quantity, products (id, name, price, cost_price, category)`)
+      .select('quantity, products (*)')
 
     if (error) throw error
+
+    // Products sharing another product's stock hold the same units; count each group once.
+    const data = (rows || []).filter((s: any) => !s.products?.stock_source_id)
 
     let totalRetailValue = 0
     let totalCostValue = 0

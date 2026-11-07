@@ -112,7 +112,8 @@ export async function assistantOverviewHandler(req: Request, res: Response) {
     const [{ data: categories }, { data: products }, { data: stock }, { count: pendingCount }] =
       await Promise.all([
         supabase.from('categories').select('id, name, slug, is_active, sort_order').order('sort_order'),
-        supabase.from('products').select('id, name, category_id, brand, price, cost_price, buy_price, created_at'),
+        // '*' so stock_source_id is read once the shared-stock migration exists.
+        supabase.from('products').select('*'),
         supabase
           .from('inv_stock')
           .select('product_id, quantity, qty_meegoda, qty_padukka, qty_padukka_new, low_stock_threshold, updated_at'),
@@ -143,15 +144,19 @@ export async function assistantOverviewHandler(req: Request, res: Response) {
       const quantity = Math.max(num(row?.quantity), 0)
       const threshold = num(row?.low_stock_threshold) || 5
 
-      totalQuantity += quantity
-      retailValue += quantity * num(product.price)
-      // Cost falls back through the same chain the dashboard uses: an explicit
-      // cost, then the purchase price, then the sell price when neither is set.
-      costValue += quantity * (num(product.cost_price) || num(product.buy_price) || num(product.price))
+      // A product sharing another product's stock holds the same units, so the
+      // totals count only the main product of each group.
+      if (!product.stock_source_id) {
+        totalQuantity += quantity
+        retailValue += quantity * num(product.price)
+        // Cost falls back through the same chain the dashboard uses: an explicit
+        // cost, then the purchase price, then the sell price when neither is set.
+        costValue += quantity * (num(product.cost_price) || num(product.buy_price) || num(product.price))
 
-      shopSplit.meegoda += Math.max(num(row?.qty_meegoda), 0)
-      shopSplit.padukka += Math.max(num(row?.qty_padukka), 0)
-      shopSplit.padukka_new += Math.max(num(row?.qty_padukka_new), 0)
+        shopSplit.meegoda += Math.max(num(row?.qty_meegoda), 0)
+        shopSplit.padukka += Math.max(num(row?.qty_padukka), 0)
+        shopSplit.padukka_new += Math.max(num(row?.qty_padukka_new), 0)
+      }
 
       if (quantity === 0) {
         outOfStock += 1

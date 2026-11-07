@@ -255,8 +255,12 @@ function getShopInventoryUnitPrice(product: any) {
   return price || 0
 }
 
+// A product sharing another product's stock holds the same units, so totals
+// count only the main product of each group.
+const ownsStock = (product: any) => !product?.stock_source_id
+
 function calculateShopStockValue(products: any[]) {
-  return products.reduce(
+  return products.filter(ownsStock).reduce(
     (sum, product) => sum + getProductStockQuantity(product) * getShopInventoryUnitPrice(product),
     0
   )
@@ -1057,7 +1061,7 @@ export default function AdminDashboard() {
     // and the profit figure are directly comparable.
     let totalBuyValue = 0
     let stockUnits = 0
-    inCategory.forEach(product => {
+    inCategory.filter(ownsStock).forEach(product => {
       const quantity = getProductStockQuantity(product)
       const unitCost = toNumber(product.cost_price ?? product.buy_price ?? product.inventory_price)
       stockUnits += quantity
