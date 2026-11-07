@@ -20,6 +20,7 @@ import { Request, Response } from 'express'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { getServiceClient } from '../utils/panel-session'
 import { recordAudit, redact } from '../utils/assistant-audit'
+import { loadSharedStockIds } from '../utils/shared-stock'
 import {
   createProductRecord,
   deleteProductRecord,
@@ -473,10 +474,14 @@ export async function assistantStockHandler(req: Request, res: Response) {
 
     if (error) throw error
 
+    const sharedIds = await loadSharedStockIds(supabase)
+
     let rows = (data || []).map((row: any) => ({
       ...row,
       products: Array.isArray(row.products) ? row.products[0] : row.products,
       is_low_stock: num(row.quantity) <= (num(row.low_stock_threshold) || 5),
+      // Mirrors another product's stock: listed, but left out of stock totals.
+      shares_stock: sharedIds.has(row.product_id),
     }))
 
     if (lowOnly) rows = rows.filter((row: any) => row.is_low_stock)

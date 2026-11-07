@@ -91,7 +91,9 @@ export default function InventoryPage() {
     return matches && (filter === 'all' || (filter === 'low' ? item.is_low_stock : Number(item.damaged_quantity) > 0))
   })
 
-  const lowStockCount = stockData.filter(item => item.is_low_stock).length
+  // Products sharing another product's stock hold the same units; count each group once.
+  const ownedStock = stockData.filter(item => !item.shares_stock)
+  const lowStockCount = ownedStock.filter(item => item.is_low_stock).length
 
   return (
     <AdminLayout>
@@ -122,7 +124,7 @@ export default function InventoryPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Good Stock</p>
-                <p className="text-3xl font-black">{stockData.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0)}</p>
+                <p className="text-3xl font-black">{ownedStock.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0)}</p>
               </div>
             </div>
           </motion.div>
@@ -165,7 +167,7 @@ export default function InventoryPage() {
           <button type="button" onClick={() => { setSearchTerm(''); setFilter('bad') }} aria-pressed={filter === 'bad'}
             className="bg-card border border-red-500/30 p-6 rounded-2xl shadow-sm text-left hover:bg-red-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
             <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider">Bad Products</p>
-            <p className="text-3xl font-black text-red-500">{stockData.reduce((sum, item) => sum + Number(item.damaged_quantity || 0), 0)}</p>
+            <p className="text-3xl font-black text-red-500">{ownedStock.reduce((sum, item) => sum + Number(item.damaged_quantity || 0), 0)}</p>
             <p className="text-xs text-muted-foreground mt-1">Click to view all damaged products</p>
           </button>
         </div>

@@ -19,6 +19,8 @@ interface StockRow {
   low_stock_threshold: number
   updated_at: string
   is_low_stock: boolean
+  /** Mirrors another product's stock, so it is left out of the totals. */
+  shares_stock?: boolean
   products: {
     id: string
     name: string
@@ -152,13 +154,14 @@ export default function AssistantInventoryPage() {
     }
   }
 
-  const totals = useMemo(
-    () => ({
-      units: rows.reduce((sum, row) => sum + Math.max(row.quantity || 0, 0), 0),
-      low: rows.filter((row) => row.is_low_stock).length,
-    }),
-    [rows]
-  )
+  // Products sharing another product's stock hold the same units; count each group once.
+  const totals = useMemo(() => {
+    const owned = rows.filter((row) => !row.shares_stock)
+    return {
+      units: owned.reduce((sum, row) => sum + Math.max(row.quantity || 0, 0), 0),
+      low: owned.filter((row) => row.is_low_stock).length,
+    }
+  }, [rows])
 
   return (
     <AssistantLayout

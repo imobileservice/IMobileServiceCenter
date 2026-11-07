@@ -215,13 +215,15 @@ export const productsServiceEnhanced = {
     return withRetry(async () => {
       const supabase = createClient()
       
-      const [total, inStock, outOfStock, categories, brands, stockResult] = await Promise.all([
+      const [total, inStock, outOfStock, categories, brands, stockResult, sharedResult] = await Promise.all([
         supabase.from('products').select('id', { count: 'exact', head: true }),
         supabase.from('products').select('id', { count: 'exact', head: true }).gt('stock', 0),
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('stock', 0),
         supabase.from('products').select('category_id'),
         supabase.from('products').select('brand'),
-        supabase.from('inv_stock').select('quantity')
+        supabase.from('inv_stock').select('product_id, quantity'),
+        // Fails harmlessly (no rows) until the shared-stock migration exists.
+        supabase.from('products').select('id').not('stock_source_id', 'is', null),
       ])
 
       // Count unique category_ids (excluding nulls)
@@ -229,7 +231,11 @@ export const productsServiceEnhanced = {
         categories.data?.map((p: any) => p.category_id).filter(Boolean) || []
       )
 
-      const totalQuantity = stockResult.data?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0
+      // Products sharing another product's stock hold the same units; count each group once.
+      const sharedIds = new Set((sharedResult.data || []).map((p: any) => p.id))
+      const totalQuantity = stockResult.data
+        ?.filter((item: any) => !sharedIds.has(item.product_id))
+        .reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0
 
       return {
         total: total.count || 0,

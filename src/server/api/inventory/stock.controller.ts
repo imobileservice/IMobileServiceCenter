@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { getSupabaseAdmin } from './supabase-admin'
+import { loadSharedStockIds } from '../utils/shared-stock'
 
 const router = Router()
 
@@ -24,8 +25,12 @@ router.get('/', async (req: Request, res: Response) => {
       if (!page.data || page.data.length < 1000) break
     }
 
+    const sharedIds = await loadSharedStockIds(supabase)
+
     let result = (data || []).map((s: any) => ({
       ...s,
+      // Mirrors another product's stock: listed, but left out of stock totals.
+      shares_stock: sharedIds.has(s.product_id),
       products: {
         ...s.products,
         category: s.products?.category || s.products?.category_id,
