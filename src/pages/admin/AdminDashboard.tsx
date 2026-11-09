@@ -921,7 +921,7 @@ export default function AdminDashboard() {
           webOrdersCount: revenueOrders.length,
           posOrdersCount: posSalesData.length,
           shopStockValue,
-          totalProducts: statsData?.totalProducts ?? (productStats?.total || productsData.length || 0),
+          totalProducts: statsData?.totalProducts ?? (productStats?.total || productsData.filter(ownsStock).length || 0),
           totalQuantity: statsData?.totalQuantity ?? (productStats?.totalQuantity || 0),
           totalCustomers: websiteCustomersCount + shopCustomersCount,
           websiteCustomersCount,
@@ -1025,15 +1025,16 @@ export default function AdminDashboard() {
 
     products.forEach(product => {
       const key = getProductCategoryKey(product)
+      const counted = ownsStock(product) ? 1 : 0
       const existing = grouped.get(key)
       if (existing) {
-        existing.productCount += 1
+        existing.productCount += counted
         return
       }
       grouped.set(key, {
         key,
         label: labels.get(key) || prettifyCategoryKey(key),
-        productCount: 1,
+        productCount: counted,
       })
     })
 

@@ -238,7 +238,7 @@ export const productsServiceEnhanced = {
         .reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0
 
       return {
-        total: total.count || 0,
+        total: Math.max((total.count || 0) - sharedIds.size, 0),
         inStock: inStock.count || 0,
         outOfStock: outOfStock.count || 0,
         categories: uniqueCategories.size,

@@ -145,11 +145,14 @@ router.get('/stock-value', async (req: Request, res: Response) => {
   try {
     const supabase = getSupabaseAdmin()
 
-    const { data: rows, error } = await supabase
-      .from('inv_stock')
-      .select('quantity, products (*)')
-
-    if (error) throw error
+    // Paged: PostgREST caps a select at 1000 rows.
+    const rows: any[] = []
+    for (let offset = 0; ; offset += 1000) {
+      const page = await supabase.from('inv_stock').select('quantity, products (*)').order('id').range(offset, offset + 999)
+      if (page.error) throw page.error
+      rows.push(...(page.data || []))
+      if (!page.data || page.data.length < 1000) break
+    }
 
     // Products sharing another product's stock hold the same units; count each group once.
     const data = (rows || []).filter((s: any) => !s.products?.stock_source_id)

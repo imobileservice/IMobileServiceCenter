@@ -224,6 +224,29 @@ export const getOrderByIdHandler = asyncHandler(async (req: Request, res: Respon
  * GET /api/admin/data/stats
  * Get dashboard statistics (admin only)
  */
+// Products sharing another product's stock are the same physical part, so they
+// are not counted as products of their own. Falls back to every product until
+// the shared-stock migration has added stock_source_id.
+async function countMainProducts(supabase: any) {
+  const main = await supabase.from('products').select('id', { count: 'exact', head: true }).is('stock_source_id', null)
+  if (!main.error) return main
+  return supabase.from('products').select('id', { count: 'exact', head: true })
+}
+
+// PostgREST caps a select at 1000 rows, which would silently undercount stock.
+// products(*) rather than a column list so stock_source_id is read when the
+// shared-stock migration exists, without breaking the query before it does.
+async function loadAllStockRows(supabase: any) {
+  const data: any[] = []
+  for (let offset = 0; ; offset += 1000) {
+    const page = await supabase.from('inv_stock').select('quantity, products (*)').order('id').range(offset, offset + 999)
+    if (page.error) return { data, error: page.error }
+    data.push(...(page.data || []))
+    if (!page.data || page.data.length < 1000) break
+  }
+  return { data, error: null }
+}
+
 export const getStatsHandler = asyncHandler(async (req: Request, res: Response) => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -242,12 +265,10 @@ export const getStatsHandler = asyncHandler(async (req: Request, res: Response) 
   const [ordersResult, posSalesResult, productsResult, profilesResult, invCustomersResult, stockResult] = await Promise.all([
     supabase.from('orders').select('total, created_at, status, payment_status'),
     supabase.from('inv_sales').select('net_amount, created_at'),
-    supabase.from('products').select('id', { count: 'exact', head: true }),
+    countMainProducts(supabase),
     supabase.from('profiles').select('id', { count: 'exact', head: true }),
     supabase.from('inv_customers').select('id', { count: 'exact', head: true }),
-    // products(*) rather than a column list so stock_source_id is read when the
-    // shared-stock migration exists, without breaking the query before it does.
-    supabase.from('inv_stock').select('quantity, products (*)')
+    loadAllStockRows(supabase)
   ])
 
   const orders = (ordersResult.data || []).filter(isRevenueOrder)
