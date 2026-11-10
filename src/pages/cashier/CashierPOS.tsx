@@ -28,6 +28,7 @@ import CashierLayout from "@/components/cashier-layout"
 import { useCashierStore } from "@/lib/cashier-store"
 import { formatCurrency } from "@/lib/utils/currency"
 import PosReceipt, { formatPaymentMethod } from "@/components/cashier/pos-receipt"
+import PosCompatibleModels, { type PosPhoneModel } from "@/components/cashier/pos-compatible-models"
 import PosCustomerPicker, { type PosCustomer } from "@/components/cashier/pos-customer-picker"
 import { usePosDeliveryFee } from "@/hooks/use-pos-delivery-fee"
 import PosDeliveryFee from "@/components/cashier/pos-delivery-fee"
@@ -38,14 +39,6 @@ import { inventoryProductsService, inventorySalesService, inventoryCustomersServ
 import { composeModelLabelName } from "@/lib/labels/label-sheet"
 import { toast } from "sonner"
 import { useAutoRefresh } from "@/hooks/use-auto-refresh"
-
-interface PosPhoneModel {
-  id: string
-  name: string
-  label: string
-  /** The PHONE brand - a Poco panel also fits a Redmi, and the bill must say Redmi. */
-  brand_name?: string
-}
 
 interface CartItem {
   id: string
@@ -126,7 +119,7 @@ export default function CashierPOS() {
   // Auto-focus search input for barcode scanning
   useEffect(() => {
     const focusTimer = setInterval(() => {
-      if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+      if (!document.activeElement?.closest('input, textarea, select, button, [role="combobox"], [contenteditable="true"]')) {
         searchInputRef.current?.focus()
       }
     }, 1000)
@@ -530,7 +523,7 @@ export default function CashierPOS() {
               <Input
                 ref={searchInputRef}
                 data-scan-input
-                placeholder="Scan barcode or type product name..."
+                placeholder="Scan barcode or search product / compatible phone model..."
                 className="pl-12 h-14 text-lg font-medium rounded-xl border-primary/20 focus:border-primary focus:ring-4 focus:ring-primary/10 shadow-inner"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -585,6 +578,7 @@ export default function CashierPOS() {
                           <Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-4">{product.category}</Badge>
                           <span className="text-[10px] text-muted-foreground font-mono">ID: {product.barcode || 'NO-BARCODE'}</span>
                         </div>
+                        <PosCompatibleModels models={product.compatible_models} />
                       </div>
                       <div className="text-right flex-shrink-0">
                         <p className="font-black text-primary text-sm">{formatCurrency(getInventoryPrice(product))}</p>
@@ -657,13 +651,14 @@ export default function CashierPOS() {
                           {item.soldAs || getDisplayName(item)}
                         </h4>
                         <p className="text-sm text-primary font-semibold">{formatCurrency(item.price)}</p>
+                        <PosCompatibleModels models={item.compatibleModels} selectedModelId={item.phoneModelId} />
 
                         {(item.compatibleModels?.length || 0) > 0 && (
-                          <div className="mt-1 flex items-center gap-1.5">
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
                             <select
                               value={item.phoneModelId || ''}
                               onChange={(e) => setCartItemModel(item.id, e.target.value)}
-                              className="text-[11px] px-1.5 py-0.5 border border-border rounded bg-background max-w-[220px]"
+                              className="text-xs px-1.5 py-1 border border-border rounded bg-background max-w-full"
                               aria-label="Customer's phone model"
                             >
                               <option value="">Customer's phone: not set</option>
