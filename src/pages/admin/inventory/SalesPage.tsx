@@ -28,6 +28,14 @@ import SaleReturnSummary, { ReturnCounts } from "@/components/sale-return-summar
 import ReturnHistoryStats from "@/components/return-history-stats"
 import ReturnReceiptModal from "@/components/cashier/return-receipt-modal"
 import { hasSaleReturns, receiptFromReturn, type ReturnReceiptData } from "@/lib/utils/return-receipt"
+import SalesDatePicker from "@/components/sales-date-picker"
+import { format } from "date-fns"
+
+/** A yyyy-MM-dd from the date inputs, as that day's local midnight. */
+const parseDay = (value: string) => {
+  const [y, m, d] = value.split("-").map(Number)
+  return y && m && d ? new Date(y, m - 1, d) : null
+}
 
 export default function SalesHistoryPage() {
   const [sales, setSales] = useState<any[]>([])
@@ -40,12 +48,25 @@ export default function SalesHistoryPage() {
   const [returnReceipt, setReturnReceipt] = useState<ReturnReceiptData | null>(null)
   const [dateRange, setDateRange] = useState({ from: '', to: '' })
 
+  // From and To on the same date is one day, which the calendar shows and steps through.
+  const pickedDay = dateRange.from && dateRange.from === dateRange.to ? parseDay(dateRange.from) : null
+  const pickDay = (date: Date | null) => {
+    const value = date ? format(date, 'yyyy-MM-dd') : ''
+    setDateRange({ from: value, to: value })
+  }
+
   const fetchSales = async (silent = false) => {
     try {
       if (!silent) setLoading(true)
+      // Whole local days: "to" runs to 23:59:59 so the last day is included, and
+      // both ends use the browser's midnight rather than UTC's.
+      const from = dateRange.from ? parseDay(dateRange.from) : null
+      const to = dateRange.to ? parseDay(dateRange.to) : null
+      if (to) to.setHours(23, 59, 59, 999)
       const res = await inventorySalesService.getAll({
-        from_date: dateRange.from || undefined,
-        to_date: dateRange.to || undefined
+        from_date: from?.toISOString(),
+        to_date: to?.toISOString(),
+        limit: from || to ? 1000 : undefined,
       })
       setSales(res.data || [])
     } catch (err) {
@@ -77,6 +98,19 @@ export default function SalesHistoryPage() {
     String(sale.customer_name || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
   const filteredSales = returnsOnly ? matchingSales.filter(hasSaleReturns) : matchingSales
+
+  // With a day picked, the tiles describe that day instead of today.
+  const daySummary = pickedDay
+    ? {
+        total_revenue: sales.reduce((sum, sale) => sum + Number(sale.net_amount || 0), 0),
+        total_sales: sales.length,
+        cash_sales: sales.filter(sale => sale.payment_method === 'cash').length,
+        pos_sales: sales.filter(sale => sale.source === 'pos').length,
+        web_sales: sales.filter(sale => sale.source === 'website').length,
+      }
+    : null
+  const shownSummary = daySummary || summary
+  const revenueLabel = pickedDay ? `Revenue · ${format(pickedDay, 'd MMM yyyy')}` : "Today's Revenue"
 
   const handleDelete = async (sale: any) => {
     const invoice = sale.invoice_number || sale.id
@@ -308,24 +342,24 @@ export default function SalesHistoryPage() {
         </div>
 
         {/* Quick Stats */}
-        {summary && (
+        {shownSummary && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
              <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
-                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mb-1 leading-none">Today's Revenue</p>
-                <p className="text-2xl font-black text-primary">{formatCurrency(summary.total_revenue)}</p>
+                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mb-1 leading-none">{revenueLabel}</p>
+                <p className="text-2xl font-black text-primary">{formatCurrency(shownSummary.total_revenue)}</p>
              </div>
              <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
                 <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mb-1 leading-none">Total Sales</p>
-                <p className="text-2xl font-black">{summary.total_sales}</p>
+                <p className="text-2xl font-black">{shownSummary.total_sales}</p>
              </div>
              <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
                 <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mb-1 leading-none">POS / Online</p>
-                <p className="text-2xl font-black text-blue-600">{summary.pos_sales} <span className="text-muted-foreground text-sm font-medium">/ {summary.web_sales}</span></p>
+                <p className="text-2xl font-black text-blue-600">{shownSummary.pos_sales} <span className="text-muted-foreground text-sm font-medium">/ {shownSummary.web_sales}</span></p>
              </div>
              <div className="bg-card border border-border p-4 rounded-xl shadow-sm">
                 <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest mb-1 leading-none">Cash Ratio</p>
                 <div className="w-full bg-muted h-2 rounded-full mt-2 overflow-hidden flex">
-                    <div className="bg-green-500 h-full" style={{ width: `${(summary.cash_sales / summary.total_sales) * 100}%` }} />
+                    <div className="bg-green-500 h-full" style={{ width: `${shownSummary.total_sales ? (shownSummary.cash_sales / shownSummary.total_sales) * 100 : 0}%` }} />
                     <div className="bg-blue-500 h-full flex-1" />
                 </div>
              </div>
@@ -346,8 +380,14 @@ export default function SalesHistoryPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          <SalesDatePicker
+            value={pickedDay}
+            onChange={pickDay}
+            clearLabel="All dates"
+            className="w-full lg:w-auto"
+          />
           <div className="flex items-center gap-2 w-full lg:w-auto">
-             <div className="flex items-center gap-2 bg-muted p-1 rounded-lg flex-1 lg:flex-initial">
+             <div className="flex items-center gap-2 bg-muted p-1 rounded-lg flex-1 lg:flex-initial" title="Or pick a date range">
                 <Input 
                    type="date" 
                    className="h-9 border-0 bg-transparent shadow-none" 
@@ -401,7 +441,7 @@ export default function SalesHistoryPage() {
                 ) : filteredSales.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-12 text-center text-muted-foreground">
-                      No sales records found.
+                      {pickedDay ? `No sales on ${format(pickedDay, 'd MMM yyyy')}.` : 'No sales records found.'}
                     </td>
                   </tr>
                 ) : (

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import { format } from "date-fns"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   AlertCircle,
@@ -32,6 +33,7 @@ import SaleReturnSummary, { ReturnCounts } from "@/components/sale-return-summar
 import ReturnHistoryStats from "@/components/return-history-stats"
 import ReturnReceiptModal from "@/components/cashier/return-receipt-modal"
 import { hasSaleReturns, receiptFromReturn, type ReturnReceiptData } from "@/lib/utils/return-receipt"
+import SalesDatePicker, { dayRange, describeDay } from "@/components/sales-date-picker"
 
 type RangeKey = "today" | "7" | "30" | "all"
 
@@ -75,6 +77,8 @@ export default function CashierOrderHistory() {
   const [sales, setSales] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [range, setRange] = useState<RangeKey>("7")
+  /** One exact day picked on the calendar. Takes over from the range buttons while set. */
+  const [day, setDay] = useState<Date | null>(null)
   const [search, setSearch] = useState("")
   const [minePerCashier, setMinePerCashier] = useState(true)
   const [page, setPage] = useState(1)
@@ -95,13 +99,14 @@ export default function CashierOrderHistory() {
   const loadSales = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true)
     try {
-      const from = rangeStart(range)
+      const span = day ? dayRange(day) : { from_date: rangeStart(range) || undefined, to_date: undefined }
       const res = await inventorySalesService.getAll({
         shop: cashier?.shop || "Meegoda",
         created_by: minePerCashier && cashierEmail ? cashierEmail : undefined,
         search: search.trim() || undefined,
-        from_date: from || undefined,
-        limit: 500,
+        from_date: span.from_date,
+        to_date: span.to_date,
+        limit: day ? 1000 : 500,
       })
       setSales(res.data || [])
     } catch (err: any) {
@@ -109,7 +114,7 @@ export default function CashierOrderHistory() {
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [cashier?.shop, cashierEmail, minePerCashier, range, search])
+  }, [cashier?.shop, cashierEmail, minePerCashier, range, day, search])
 
   useEffect(() => {
     const timer = setTimeout(() => loadSales(), search ? 300 : 0)
@@ -120,7 +125,7 @@ export default function CashierOrderHistory() {
 
   useEffect(() => {
     setPage(1)
-  }, [range, search, minePerCashier, returnsOnly])
+  }, [range, day, search, minePerCashier, returnsOnly])
 
   const visibleSales = useMemo(() => returnsOnly ? sales.filter(hasSaleReturns) : sales, [sales, returnsOnly])
   const pageCount = Math.max(1, Math.ceil(visibleSales.length / PAGE_SIZE))
@@ -224,7 +229,7 @@ export default function CashierOrderHistory() {
             <p className="text-muted-foreground text-sm mt-1">
               {minePerCashier ? `Sales rang up by ${cashier?.name || "you"}` : `All sales at ${cashier?.shop || "this shop"}`}
               {" · "}
-              {RANGE_LABELS[range]}
+              {day ? describeDay(day) : RANGE_LABELS[range]}
             </p>
           </div>
           <Badge variant="outline" className="text-sm px-3 py-1 font-bold text-primary border-primary/50">
@@ -285,13 +290,23 @@ export default function CashierOrderHistory() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <SalesDatePicker
+              value={day}
+              onChange={setDay}
+              shop={cashier?.shop || "Meegoda"}
+              createdBy={minePerCashier && cashierEmail ? cashierEmail : undefined}
+              className="w-full sm:w-auto"
+            />
             {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
               <Button
                 key={key}
                 size="sm"
-                variant={range === key ? "default" : "outline"}
+                variant={!day && range === key ? "default" : "outline"}
                 className="font-bold"
-                onClick={() => setRange(key)}
+                onClick={() => {
+                  setDay(null)
+                  setRange(key)
+                }}
               >
                 {RANGE_LABELS[key]}
               </Button>
@@ -319,7 +334,7 @@ export default function CashierOrderHistory() {
               <AlertCircle className="w-8 h-8" />
               <p className="font-semibold">{returnsOnly ? 'No returned invoices found' : 'No orders found'}</p>
               <p className="text-sm">
-                {returnsOnly ? 'No returns match the current filters.' : search ? "Nothing matches that search." : `No sales in ${RANGE_LABELS[range].toLowerCase()}.`}
+                {returnsOnly ? 'No returns match the current filters.' : search ? "Nothing matches that search." : day ? `No sales on ${format(day, "d MMM yyyy")}.` : `No sales in ${RANGE_LABELS[range].toLowerCase()}.`}
               </p>
             </div>
           ) : (

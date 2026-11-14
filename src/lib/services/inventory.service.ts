@@ -159,6 +159,14 @@ export const inventorySalesService = {
 
   getById: (id: string) => apiFetch(`/sales/${id}`),
 
+  /** Timestamp and amount of every sale in a window, for the sales calendar. */
+  getSaleDays: (params: { from_date: string; to_date: string; shop?: string; created_by?: string }) => {
+    const qs = new URLSearchParams({ from_date: params.from_date, to_date: params.to_date })
+    if (params.shop) qs.set('shop', params.shop)
+    if (params.created_by) qs.set('created_by', params.created_by)
+    return apiFetch(`/sales/days?${qs.toString()}`) as Promise<{ data: { created_at: string; net_amount: number }[] }>
+  },
+
   getByInvoiceNumber: (invoice: string) => apiFetch(`/sales/invoice/${invoice}`),
 
   delete: (id: string) => apiFetch(`/sales/${id}`, { method: 'DELETE' }),

@@ -244,6 +244,50 @@ router.get('/', async (req: Request, res: Response) => {
   }
 })
 
+// GET /api/inventory/sales/days - When sales happened in a window, for the
+// sales calendar's markers. Only the timestamp and amount are returned; the
+// browser buckets them into its own local days, because the server does not
+// know which timezone the shop is looking from.
+router.get('/days', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { from_date, to_date, shop, created_by } = req.query
+
+    if (typeof from_date !== 'string' || typeof to_date !== 'string') {
+      return res.status(400).json({ error: 'from_date and to_date are required' })
+    }
+
+    const columns = `id, created_at, net_amount${req.cashierCatalogRestricted ? ', inv_sale_items(product_id)' : ''}`
+    const rows: any[] = []
+    // A calendar month at a busy shop can pass PostgREST's 1000-row page.
+    for (let offset = 0; offset < 20000; offset += 1000) {
+      let query = supabase
+        .from('inv_sales')
+        .select(columns)
+        .gte('created_at', from_date)
+        .lte('created_at', to_date)
+        .order('created_at', { ascending: true })
+        .range(offset, offset + 999)
+
+      if (typeof shop === 'string' && shop) query = query.eq('shop', shop)
+      if (typeof created_by === 'string' && created_by) query = query.ilike('created_by', created_by)
+
+      const { data, error } = await query
+      if (error) throw error
+      rows.push(...(data || []))
+      if (!data || data.length < 1000) break
+    }
+
+    const visible = await filterCashierSales(supabase, req, rows)
+    res.json({
+      data: visible.map((sale: any) => ({ created_at: sale.created_at, net_amount: Number(sale.net_amount || 0) })),
+    })
+  } catch (error: any) {
+    console.error('[Inventory Sales] GET/days error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // GET /api/inventory/sales/invoice/:invoice_number - Get single sale by barcode/invoice number
 router.get('/invoice/:invoice_number', async (req: Request, res: Response) => {
   try {
